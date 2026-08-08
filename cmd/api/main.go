@@ -70,9 +70,13 @@ func main() {
 	})
 
 	// CORS Setup - Protects against web abuse
+	allowedOrigin := os.Getenv("FRONTEND_URL")
+	if allowedOrigin == "" {
+		allowedOrigin = "https://astraaaaaa.netlify.app" // Secure default for production
+	}
+	
 	r.Use(cors.Handler(cors.Options{
-		// TODO: Change "*" to your Netlify URL in production
-		AllowedOrigins: []string{"*"}, 
+		AllowedOrigins: []string{allowedOrigin, "http://localhost:*", "http://127.0.0.1:*"}, 
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
 		MaxAge:         300,
