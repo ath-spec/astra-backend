@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -51,13 +52,24 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Context Enrichment! (Backend Patterns)
-	// We inject a powerful financial system prompt hidden from the frontend.
+	// Fetch user's bank accounts from DB
+	accounts, err := h.userRepo.GetBankAccounts(r.Context(), userID)
+	
+	contextStr := "The user has linked the following accounts:\n"
+	if err == nil && len(accounts) > 0 {
+		for _, acc := range accounts {
+			contextStr += fmt.Sprintf("- %s (%s): ₹%.2f\n", acc.BankName, acc.AccountType, acc.Balance)
+		}
+	} else {
+		contextStr += "No accounts linked yet."
+	}
+
 	systemPrompt := map[string]interface{}{
 		"role": "system",
-		"content": `You are Astra, an elite financial and investment advisor AI. 
+		"content": fmt.Sprintf(`You are Astra, an elite financial and investment advisor AI. 
 The user is asking you for investment advice, portfolio analysis, or budget tracking. 
 Be concise, highly professional, and use specific numbers. 
-Context: The user has linked 2 bank accounts. They hold ₹2,50,000 in Mutual Funds and ₹1,20,000 in stocks.`,
+Context: %s`, contextStr),
 	}
 	
 	// Prepend the system prompt to the messages

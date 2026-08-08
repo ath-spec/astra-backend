@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/yourusername/astra-backend/internal/database"
 )
 
@@ -19,8 +18,15 @@ type User struct {
 	CreatedAt    time.Time
 }
 
+type BankAccount struct {
+	BankName    string
+	AccountType string
+	Balance     float64
+}
+
 type UserRepository interface {
 	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string) (*User, error)
+	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 }
 
 type PostgresUserRepository struct {
@@ -40,17 +46,6 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	}
 
 	var user User
-	}
-	
-	if err != pgx.ErrNoRows {
-		return nil, fmt.Errorf("error querying user: %w", err)
-	}
-
-	// User not found, create them
-	user.ID = uuid.New()
-	user.AstraUserID = astraUserID
-	user.PhoneNumber = phoneNumber
-
 
 	query := `
 		INSERT INTO users (id, astra_user_id, phone_number, name)
@@ -80,5 +75,32 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		VALUES (gen_random_uuid(), $1, $2::jsonb)
 	`, user.ID, dummyMessages)
 
+	// 4. Inject Dummy Bank Accounts!
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
+		VALUES 
+		($1, 'HDFC Mutual Fund', 'Investment', 250000.00),
+		($1, 'Zerodha Demat', 'Stocks', 120000.00)
+	`, user.ID)
+
 	return &user, nil
+}
+
+func (r *PostgresUserRepository) GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error) {
+	query := `SELECT bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1`
+	rows, err := r.db.Pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var accounts []BankAccount
+	for rows.Next() {
+		var acc BankAccount
+		if err := rows.Scan(&acc.BankName, &acc.AccountType, &acc.Balance); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, acc)
+	}
+	return accounts, nil
 }
