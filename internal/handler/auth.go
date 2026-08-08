@@ -12,6 +12,7 @@ import (
 type TokenRequest struct {
 	AstraUserID string `json:"astra_user_id"`
 	PhoneNumber string `json:"phone_number"`
+	Name        string `json:"name"`
 }
 
 type AuthHandler struct {
@@ -40,7 +41,7 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Find or Create User
-	user, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber)
+	user, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber, req.Name)
 	if err != nil {
 		log.Printf("User DB Error: %v", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")

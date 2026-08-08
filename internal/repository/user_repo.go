@@ -20,7 +20,7 @@ type User struct {
 }
 
 type UserRepository interface {
-	FindOrCreateUser(ctx context.Context, astraUserID string, phoneNumber string) (*User, error)
+	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string) (*User, error)
 }
 
 type PostgresUserRepository struct {
@@ -31,17 +31,15 @@ func NewPostgresUserRepository(db *database.Database) *PostgresUserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
-func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID string, phoneNumber string) (*User, error) {
-	// First, try to find the user
-	query := `SELECT id, astra_user_id, name, phone_number, pan_number, created_at FROM users WHERE astra_user_id = $1 OR phone_number = $2 LIMIT 1`
-	
-	row := r.db.Pool.QueryRow(ctx, query, astraUserID, phoneNumber)
-	
+func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string) (*User, error) {
+	// 1. Hackathon "Fresh Start": Delete any existing user with this phone number
+	// This will cascade and delete all their old chats and bank accounts.
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE phone_number = $1`, phoneNumber)
+	if err != nil {
+		return nil, err
+	}
+
 	var user User
-	err := row.Scan(&user.ID, &user.AstraUserID, &user.Name, &user.PhoneNumber, &user.PanNumber, &user.CreatedAt)
-	
-	if err == nil {
-		return &user, nil // Found existing user
 	}
 	
 	if err != pgx.ErrNoRows {

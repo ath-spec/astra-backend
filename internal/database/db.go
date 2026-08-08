@@ -45,14 +45,22 @@ func (db *Database) Close() {
 
 func (db *Database) initSchema(ctx context.Context) error {
 	const schema = `
-	CREATE TABLE IF NOT EXISTS users (
-		id UUID PRIMARY KEY,
-		astra_user_id VARCHAR(255) UNIQUE NOT NULL,
-		name VARCHAR(255),
-		phone_number VARCHAR(50) UNIQUE NOT NULL,
-		pan_number VARCHAR(50),
-		created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-	);
+		CREATE TABLE IF NOT EXISTS users (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			astra_user_id VARCHAR(255) UNIQUE NOT NULL,
+			name VARCHAR(255),
+			phone_number VARCHAR(50) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS bank_accounts (
+			id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+			user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+			bank_name VARCHAR(100) NOT NULL,
+			account_type VARCHAR(50) NOT NULL,
+			balance DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
 
 	CREATE TABLE IF NOT EXISTS chat_sessions (
 		id UUID PRIMARY KEY,
