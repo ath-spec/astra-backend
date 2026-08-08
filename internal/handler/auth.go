@@ -47,7 +47,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mock OTP send for demo
-	log.Printf("MOCK OTP: Sent OTP 1234 to %s", req.PhoneNumber)
+	log.Printf("MOCK OTP: Sent OTP 123456 to %s", req.PhoneNumber)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -68,7 +68,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.OTP != "1234" {
+	if req.OTP != "123456" {
 		respondAuthError(w, http.StatusUnauthorized, "Invalid OTP")
 		return
 	}
