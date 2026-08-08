@@ -38,9 +38,9 @@ func NewPostgresUserRepository(db *database.Database) *PostgresUserRepository {
 }
 
 func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (*User, error) {
-	// 1. Hackathon "Fresh Start": Delete any existing user with this phone number
-	// This will cascade and delete all their old chats and bank accounts.
-	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE phone_number = $1`, phoneNumber)
+	// 1. Hackathon "Fresh Start": Delete ALL users to ensure we never have 2 users in the DB at the same time.
+	// This cascades and wipes all previous chat sessions, ensuring memory persistence only for the current session.
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users`)
 	if err != nil {
 		return nil, err
 	}
