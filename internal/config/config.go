@@ -12,6 +12,7 @@ type Config struct {
 	AppAuthToken string
 	GroqAPIKey   string
 	DatabaseURL  string
+	JWTSecret    string
 }
 
 func Load() *Config {
@@ -22,6 +23,7 @@ func Load() *Config {
 		AppAuthToken: os.Getenv("APP_AUTH_TOKEN"),
 		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
 		DatabaseURL:  os.Getenv("DATABASE_URL"),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
 	}
 
 	if cfg.Port == "" {
@@ -38,6 +40,10 @@ func Load() *Config {
 
 	if cfg.DatabaseURL == "" {
 		log.Println("WARNING: DATABASE_URL is not set. Database features will fail.")
+	}
+
+	if cfg.JWTSecret == "" {
+		log.Println("WARNING: JWT_SECRET is not set. Authentication will fail.")
 	}
 
 	return cfg

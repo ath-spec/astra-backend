@@ -41,9 +41,11 @@ func main() {
 
 	// 4. Initialize Services
 	aiService := service.NewGroqAIService(cfg.GroqAPIKey, chatRepo)
+	authService := service.NewAuthService(cfg.JWTSecret)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(aiService, userRepo)
+	authHandler := handler.NewAuthHandler(authService, userRepo)
 
 	// 6. Setup Router
 	r := chi.NewRouter()
@@ -55,22 +57,37 @@ func main() {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// CORS Setup
+	// CORS Setup - Protects against web abuse
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"*"}, // Restrict this in production
+		// TODO: Change "*" to your Netlify URL in production
+		AllowedOrigins: []string{"*"}, 
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth", "X-Astra-User-Id", "X-Astra-Phone-Number"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
 		MaxAge:         300,
 	}))
 
-	// Health check route
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Astra Backend is running cleanly with Postgres Database!"))
+		w.Write([]byte("Astra Backend is running with JWT Authentication!"))
 	})
 
-	// API Routes (Protected)
+	// Unprotected Route (But requires static X-Astra-Auth secret to prevent random internet abuse)
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.RequireAuth(cfg.AppAuthToken))
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				token := req.Header.Get("X-Astra-Auth")
+				if cfg.AppAuthToken != "" && token != cfg.AppAuthToken {
+					http.Error(w, `{"error": "Unauthorized App"}`, http.StatusUnauthorized)
+					return
+				}
+				next.ServeHTTP(w, req)
+			})
+		})
+		r.Post("/api/auth/token", authHandler.GenerateToken)
+	})
+
+	// Protected Routes (Requires JWT Bearer Token)
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequireAuth(authService))
 		r.Post("/api/chat", chatHandler.HandleChat)
 	})
 
@@ -87,7 +104,6 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

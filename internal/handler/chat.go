@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/google/uuid"
+	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
 )
@@ -26,12 +28,16 @@ func NewChatHandler(aiService service.AIService, userRepo repository.UserReposit
 }
 
 func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
-	// 1. Extract identification headers from the app
-	astraUserID := r.Header.Get("X-Astra-User-Id")
-	phoneNumber := r.Header.Get("X-Astra-Phone-Number")
-
-	if astraUserID == "" || phoneNumber == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing X-Astra-User-Id or X-Astra-Phone-Number headers")
+	// 1. Securely extract the User ID from the Context (set by JWT middleware)
+	userIDValue := r.Context().Value(middleware.UserIDKey)
+	if userIDValue == nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized: No user in context")
+		return
+	}
+	
+	userID, ok := userIDValue.(uuid.UUID)
+	if !ok {
+		respondWithError(w, http.StatusInternalServerError, "Internal Error: Invalid user ID format")
 		return
 	}
 
@@ -42,16 +48,8 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Find or Create the User in the Database
-	user, err := h.userRepo.FindOrCreateUser(r.Context(), astraUserID, phoneNumber)
-	if err != nil {
-		log.Printf("User DB Error: %v", err)
-		respondWithError(w, http.StatusInternalServerError, "Error identifying user")
-		return
-	}
-
-	// 4. Get the AI response and let the service handle saving the chat history
-	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), user.ID, chatReq.Messages)
+	// 3. Get the AI response and let the service handle saving the chat history
+	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, chatReq.Messages)
 	if err != nil {
 		log.Printf("AI Service Error: %v", err)
 		respondWithError(w, statusCode, "Error processing chat request")
