@@ -126,9 +126,16 @@ CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what
 	// 4. Get the AI response
 	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, messagesWithContext)
 	if err != nil {
-		log.Printf("AI Service Error: %v", err)
+		log.Printf("[DEBUG] AI Service Network Error: %v", err)
 		respondWithError(w, statusCode, "Error processing chat request")
 		return
+	}
+
+	// Extensive Debug Logs
+	if statusCode >= 400 {
+		log.Printf("[DEBUG] GROQ API FAILURE (Status %d): %s", statusCode, string(responseBytes))
+	} else {
+		log.Printf("[DEBUG] GROQ API SUCCESS (Status %d): Response received", statusCode)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
