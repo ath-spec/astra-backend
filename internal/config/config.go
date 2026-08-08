@@ -11,6 +11,7 @@ type Config struct {
 	Port         string
 	AppAuthToken string
 	GroqAPIKey   string
+	DatabaseURL  string
 }
 
 func Load() *Config {
@@ -20,6 +21,7 @@ func Load() *Config {
 		Port:         os.Getenv("PORT"),
 		AppAuthToken: os.Getenv("APP_AUTH_TOKEN"),
 		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
+		DatabaseURL:  os.Getenv("DATABASE_URL"),
 	}
 
 	if cfg.Port == "" {
@@ -32,6 +34,10 @@ func Load() *Config {
 
 	if cfg.GroqAPIKey == "" {
 		log.Println("WARNING: GROQ_API_KEY is not set. Chat calls will fail.")
+	}
+
+	if cfg.DatabaseURL == "" {
+		log.Println("WARNING: DATABASE_URL is not set. Database features will fail.")
 	}
 
 	return cfg

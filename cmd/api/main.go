@@ -15,22 +15,37 @@ import (
 	"github.com/go-chi/cors"
 
 	"github.com/yourusername/astra-backend/internal/config"
+	"github.com/yourusername/astra-backend/internal/database"
 	"github.com/yourusername/astra-backend/internal/handler"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
+	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
 func main() {
+	ctx := context.Background()
+
 	// 1. Load Configuration
 	cfg := config.Load()
 
-	// 2. Initialize Services
-	aiService := service.NewGroqAIService(cfg.GroqAPIKey)
+	// 2. Initialize Database
+	db, err := database.NewDatabase(ctx, cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("Could not initialize database: %v", err)
+	}
+	defer db.Close()
 
-	// 3. Initialize Handlers
-	chatHandler := handler.NewChatHandler(aiService)
+	// 3. Initialize Repositories
+	userRepo := repository.NewPostgresUserRepository(db)
+	chatRepo := repository.NewPostgresChatRepository(db)
 
-	// 4. Setup Router
+	// 4. Initialize Services
+	aiService := service.NewGroqAIService(cfg.GroqAPIKey, chatRepo)
+
+	// 5. Initialize Handlers
+	chatHandler := handler.NewChatHandler(aiService, userRepo)
+
+	// 6. Setup Router
 	r := chi.NewRouter()
 
 	// Base Middleware
@@ -44,13 +59,13 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"*"}, // Restrict this in production
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
+		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth", "X-Astra-User-Id", "X-Astra-Phone-Number"},
 		MaxAge:         300,
 	}))
 
 	// Health check route
 	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Astra Backend is running cleanly"))
+		w.Write([]byte("Astra Backend is running cleanly with Postgres Database!"))
 	})
 
 	// API Routes (Protected)
@@ -59,7 +74,7 @@ func main() {
 		r.Post("/api/chat", chatHandler.HandleChat)
 	})
 
-	// 5. Start Server with Graceful Shutdown
+	// 7. Start Server with Graceful Shutdown
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
 		Handler: r,
@@ -78,10 +93,10 @@ func main() {
 	<-quit
 
 	log.Println("Shutting down server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
