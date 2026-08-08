@@ -76,7 +76,7 @@ func main() {
 	}
 	
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{allowedOrigin, "http://localhost:*", "http://127.0.0.1:*"}, 
+		AllowedOrigins: []string{"*"}, 
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
 		MaxAge:         300,
