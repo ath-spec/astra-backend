@@ -64,16 +64,7 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		return nil, fmt.Errorf("error creating user: %w", err)
 	}
 
-	// 3. Inject Dummy Chat History for the Demo!
-	dummyMessages := `[
-		{"role": "user", "content": "Can you analyze my current investment portfolio based on my linked accounts?"},
-		{"role": "assistant", "content": "I have analyzed your connected accounts. You currently hold ₹2,50,000 in Mutual Funds (primarily large-cap equity) and ₹1,20,000 in direct stocks. Your portfolio is somewhat conservative for your age. Given the current market rally, I recommend rebalancing 15% of your debt exposure into mid-cap index funds to optimize your long-term returns. Would you like a detailed breakdown of which funds to consider?"}
-	]`
-	
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO chat_sessions (id, user_id, messages) 
-		VALUES (gen_random_uuid(), $1, $2::jsonb)
-	`, user.ID, dummyMessages)
+	// 3. (Removed) We no longer inject a dummy chat history. The user starts with a blank chat screen!
 
 	// 4. Inject Dynamic Bank Accounts from UI!
 	// Type assert the slice of structs passed from handler
