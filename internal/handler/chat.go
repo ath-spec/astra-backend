@@ -17,6 +17,10 @@ type ChatRequest struct {
 	IsNavPill bool                     `json:"is_nav_pill"`
 }
 
+type TTSRequest struct {
+	Text string `json:"text"`
+}
+
 type ChatHandler struct {
 	aiService service.AIService
 	userRepo  repository.UserRepository
@@ -151,6 +155,30 @@ func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"messages": session.Messages,
 	})
+}
+
+func (h *ChatHandler) HandleTTS(w http.ResponseWriter, r *http.Request) {
+	var ttsReq TTSRequest
+	if err := json.NewDecoder(r.Body).Decode(&ttsReq); err != nil {
+		http.Error(w, `{"error": "Invalid JSON"}`, http.StatusBadRequest)
+		return
+	}
+
+	if ttsReq.Text == "" {
+		http.Error(w, `{"error": "Text is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	bodyBytes, statusCode, err := h.aiService.GetTextToSpeech(r.Context(), ttsReq.Text)
+	if err != nil {
+		log.Printf("TTS error: %v", err)
+		http.Error(w, `{"error": "TTS failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	w.Write(bodyBytes)
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {

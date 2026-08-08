@@ -16,6 +16,7 @@ type Config struct {
 	DatabaseURL       string
 	JWTSecret         string
 	MasterInternalKey string
+	SarvamAPIKey      string
 }
 
 func Load() *Config {
@@ -32,6 +33,7 @@ func Load() *Config {
 		AppAuthToken:      os.Getenv("APP_AUTH_TOKEN"),
 		GroqAPIKey:        os.Getenv("GROQ_API_KEY"),
 		JWTSecret:         os.Getenv("JWT_SECRET"),
+		SarvamAPIKey:      os.Getenv("SARVAM_API_KEY"),
 	}
 
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
@@ -40,6 +42,7 @@ func Load() *Config {
 		cfg.AppAuthToken = decryptOrFatal(cfg.AppAuthToken, masterKey, "APP_AUTH_TOKEN")
 		cfg.GroqAPIKey = decryptOrFatal(cfg.GroqAPIKey, masterKey, "GROQ_API_KEY")
 		cfg.JWTSecret = decryptOrFatal(cfg.JWTSecret, masterKey, "JWT_SECRET")
+		cfg.SarvamAPIKey = decryptOrFatal(cfg.SarvamAPIKey, masterKey, "SARVAM_API_KEY")
 	} else if masterKey != "" {
 		log.Fatalf("FATAL: MASTER_INTERNAL_KEY is set but is %d characters long (must be 32).", len(masterKey))
 	} else {
@@ -56,6 +59,10 @@ func Load() *Config {
 
 	if cfg.GroqAPIKey == "" {
 		log.Println("WARNING: GROQ_API_KEY is not set. Chat calls will fail.")
+	}
+
+	if cfg.SarvamAPIKey == "" {
+		log.Println("WARNING: SARVAM_API_KEY is not set. TTS calls will fail.")
 	}
 
 	if cfg.DatabaseURL == "" {

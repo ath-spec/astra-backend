@@ -16,19 +16,22 @@ const groqAPIURL = "https://api.groq.com/openai/v1/chat/completions"
 
 type AIService interface {
 	GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}) ([]byte, int, error)
+	GetTextToSpeech(ctx context.Context, text string) ([]byte, int, error)
 }
 
 type GroqAIService struct {
-	apiKey   string
-	client   *http.Client
-	chatRepo repository.ChatRepository
+	groqAPIKey   string
+	sarvamAPIKey string
+	client       *http.Client
+	chatRepo     repository.ChatRepository
 }
 
-func NewGroqAIService(apiKey string, chatRepo repository.ChatRepository) *GroqAIService {
+func NewGroqAIService(groqAPIKey, sarvamAPIKey string, chatRepo repository.ChatRepository) *GroqAIService {
 	return &GroqAIService{
-		apiKey:   apiKey,
-		client:   &http.Client{},
-		chatRepo: chatRepo,
+		groqAPIKey:   groqAPIKey,
+		sarvamAPIKey: sarvamAPIKey,
+		client:       &http.Client{},
+		chatRepo:     chatRepo,
 	}
 }
 
@@ -48,7 +51,7 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 		return nil, http.StatusInternalServerError, fmt.Errorf("error creating request: %w", err)
 	}
 
-	req.Header.Set("Authorization", "Bearer "+s.apiKey)
+	req.Header.Set("Authorization", "Bearer "+s.groqAPIKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.client.Do(req)
@@ -84,4 +87,37 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 	}
 
 	return bodyBytes, resp.StatusCode, nil
+}
+
+func (s *GroqAIService) GetTextToSpeech(ctx context.Context, text string) ([]byte, int, error) {
+	url := "https://api.sarvam.ai/text-to-speech"
+	
+	payload := map[string]interface{}{
+		"inputs":               []string{text},
+		"target_language_code": "en-IN",
+		"speaker":              "shubh",
+		"model":                "bulbul:v3",
+	}
+	
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	
+	req.Header.Set("api-subscription-key", s.sarvamAPIKey)
+	req.Header.Set("Content-Type", "application/json")
+	
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, http.StatusBadGateway, err
+	}
+	defer resp.Body.Close()
+	
+	bodyBytes, err := io.ReadAll(resp.Body)
+	return bodyBytes, resp.StatusCode, err
 }

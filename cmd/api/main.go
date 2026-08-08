@@ -41,7 +41,7 @@ func main() {
 	chatRepo := repository.NewPostgresChatRepository(db)
 
 	// 4. Initialize Services
-	aiService := service.NewGroqAIService(cfg.GroqAPIKey, chatRepo)
+	aiService := service.NewGroqAIService(cfg.GroqAPIKey, cfg.SarvamAPIKey, chatRepo)
 	authService := service.NewAuthService(cfg.JWTSecret)
 
 	// 5. Initialize Handlers
@@ -102,6 +102,7 @@ func main() {
 		r.Use(authmw.RequireAuth(authService))
 		r.Post("/api/chat", chatHandler.HandleChat)
 		r.Get("/api/chat/history", chatHandler.GetHistory)
+		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route
 	})
 
 	// 7. Start Server with Graceful Shutdown
