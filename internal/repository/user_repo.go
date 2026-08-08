@@ -25,7 +25,7 @@ type BankAccount struct {
 }
 
 type UserRepository interface {
-	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string) (*User, error)
+	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (*User, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 }
 
@@ -37,7 +37,7 @@ func NewPostgresUserRepository(db *database.Database) *PostgresUserRepository {
 	return &PostgresUserRepository{db: db}
 }
 
-func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string) (*User, error) {
+func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (*User, error) {
 	// 1. Hackathon "Fresh Start": Delete any existing user with this phone number
 	// This will cascade and delete all their old chats and bank accounts.
 	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE phone_number = $1`, phoneNumber)
@@ -75,13 +75,29 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		VALUES (gen_random_uuid(), $1, $2::jsonb)
 	`, user.ID, dummyMessages)
 
-	// 4. Inject Dummy Bank Accounts!
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES 
-		($1, 'HDFC Mutual Fund', 'Investment', 250000.00),
-		($1, 'Zerodha Demat', 'Stocks', 120000.00)
-	`, user.ID)
+	// 4. Inject Dynamic Bank Accounts from UI!
+	// Type assert the slice of structs passed from handler
+	// In Go, since we pass from another package with a different struct, we can marshal/unmarshal or use a common struct.
+	// Actually, wait, auth.go defines BankAccount, and user_repo defines BankAccount.
+	// To avoid circular deps, we can just pass []BankAccount from user_repo directly into the handler.
+	// Let's assume uiBanks is []BankAccount (the one from user_repo).
+	banks, ok := uiBanks.([]BankAccount)
+	if ok && len(banks) > 0 {
+		for _, b := range banks {
+			_, _ = r.db.Pool.Exec(ctx, `
+				INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
+				VALUES ($1, $2, $3, $4)
+			`, user.ID, b.BankName, b.AccountType, b.Balance)
+		}
+	} else {
+		// Fallback if none provided
+		_, _ = r.db.Pool.Exec(ctx, `
+			INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
+			VALUES 
+			($1, 'HDFC Mutual Fund', 'Investment', 250000.00),
+			($1, 'Zerodha Demat', 'Stocks', 120000.00)
+		`, user.ID)
+	}
 
 	return &user, nil
 }
