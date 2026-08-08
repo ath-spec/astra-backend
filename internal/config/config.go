@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/joho/godotenv"
 	"github.com/yourusername/astra-backend/internal/crypto"
 )
 
@@ -19,8 +18,6 @@ type Config struct {
 }
 
 func Load() *Config {
-	_ = godotenv.Load()
-
 	masterKey := os.Getenv("MASTER_INTERNAL_KEY")
 
 	cfg := &Config{
