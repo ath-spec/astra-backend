@@ -11,7 +11,6 @@ import (
 
 type Config struct {
 	Port              string
-	AppAuthToken      string
 	GroqAPIKey        string
 	DatabaseURL       string
 	JWTSecret         string
@@ -30,7 +29,6 @@ func Load() *Config {
 		MasterInternalKey: masterKey,
 		
 		// These might be encrypted, we will check below
-		AppAuthToken:      os.Getenv("APP_AUTH_TOKEN"),
 		GroqAPIKey:        os.Getenv("GROQ_API_KEY"),
 		JWTSecret:         os.Getenv("JWT_SECRET"),
 		SarvamAPIKey:      os.Getenv("SARVAM_API_KEY"),
@@ -39,7 +37,6 @@ func Load() *Config {
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
 	if len(masterKey) == 32 {
 		log.Println("🔐 MASTER_INTERNAL_KEY detected. Decrypting internal secrets...")
-		cfg.AppAuthToken = decryptOrFatal(cfg.AppAuthToken, masterKey, "APP_AUTH_TOKEN")
 		cfg.GroqAPIKey = decryptOrFatal(cfg.GroqAPIKey, masterKey, "GROQ_API_KEY")
 		cfg.JWTSecret = decryptOrFatal(cfg.JWTSecret, masterKey, "JWT_SECRET")
 		cfg.SarvamAPIKey = decryptOrFatal(cfg.SarvamAPIKey, masterKey, "SARVAM_API_KEY")
@@ -51,10 +48,6 @@ func Load() *Config {
 
 	if cfg.Port == "" {
 		cfg.Port = "8080"
-	}
-
-	if cfg.AppAuthToken == "" {
-		log.Println("WARNING: APP_AUTH_TOKEN is not set. API is vulnerable.")
 	}
 
 	if cfg.GroqAPIKey == "" {

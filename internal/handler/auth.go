@@ -9,9 +9,14 @@ import (
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
-type TokenRequest struct {
+type OTPRequest struct {
+	PhoneNumber string `json:"phone_number"`
+}
+
+type VerifyRequest struct {
 	AstraUserID string                   `json:"astra_user_id"`
 	PhoneNumber string                   `json:"phone_number"`
+	OTP         string                   `json:"otp"`
 	Name        string                   `json:"name"`
 	Banks       []repository.BankAccount `json:"banks"` // Dynamic UI accounts
 }
@@ -28,9 +33,31 @@ func NewAuthHandler(authService *service.AuthService, userRepo repository.UserRe
 	}
 }
 
-// GenerateToken handles the POST /api/auth/token endpoint
-func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
-	var req TokenRequest
+// SendOTP handles the POST /api/auth/otp/send endpoint
+func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
+	var req OTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondAuthError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+
+	if req.PhoneNumber == "" {
+		respondAuthError(w, http.StatusBadRequest, "Missing phone_number")
+		return
+	}
+
+	// Mock OTP send for demo
+	log.Printf("MOCK OTP: Sent OTP 1234 to %s", req.PhoneNumber)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "OTP sent successfully",
+	})
+}
+
+// VerifyOTP handles the POST /api/auth/otp/verify endpoint
+func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
+	var req VerifyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondAuthError(w, http.StatusBadRequest, "Invalid request payload")
 		return
@@ -38,6 +65,11 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 
 	if req.AstraUserID == "" || req.PhoneNumber == "" {
 		respondAuthError(w, http.StatusBadRequest, "Missing astra_user_id or phone_number")
+		return
+	}
+
+	if req.OTP != "1234" {
+		respondAuthError(w, http.StatusUnauthorized, "Invalid OTP")
 		return
 	}
 

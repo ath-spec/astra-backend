@@ -82,19 +82,10 @@ func main() {
 		w.Write([]byte("Astra Backend is running with JWT Authentication!"))
 	})
 
-	// Unprotected Route (But requires static X-Astra-Auth secret to prevent random internet abuse)
+	// Unprotected Routes (OTP Flow)
 	r.Group(func(r chi.Router) {
-		r.Use(func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-				token := req.Header.Get("X-Astra-Auth")
-				if cfg.AppAuthToken != "" && token != cfg.AppAuthToken {
-					http.Error(w, `{"error": "Unauthorized App"}`, http.StatusUnauthorized)
-					return
-				}
-				next.ServeHTTP(w, req)
-			})
-		})
-		r.Post("/api/auth/token", authHandler.GenerateToken)
+		r.Post("/api/auth/otp/send", authHandler.SendOTP)
+		r.Post("/api/auth/otp/verify", authHandler.VerifyOTP)
 	})
 
 	// Protected Routes (Requires JWT Bearer Token)
