@@ -18,12 +18,14 @@ type ChatRequest struct {
 type ChatHandler struct {
 	aiService service.AIService
 	userRepo  repository.UserRepository
+	chatRepo  repository.ChatRepository
 }
 
-func NewChatHandler(aiService service.AIService, userRepo repository.UserRepository) *ChatHandler {
+func NewChatHandler(aiService service.AIService, userRepo repository.UserRepository, chatRepo repository.ChatRepository) *ChatHandler {
 	return &ChatHandler{
 		aiService: aiService,
 		userRepo:  userRepo,
+		chatRepo:  chatRepo,
 	}
 }
 
@@ -48,8 +50,21 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Get the AI response and let the service handle saving the chat history
-	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, chatReq.Messages)
+	// 3. Context Enrichment! (Backend Patterns)
+	// We inject a powerful financial system prompt hidden from the frontend.
+	systemPrompt := map[string]interface{}{
+		"role": "system",
+		"content": `You are Astra, an elite financial and investment advisor AI. 
+The user is asking you for investment advice, portfolio analysis, or budget tracking. 
+Be concise, highly professional, and use specific numbers. 
+Context: The user has linked 2 bank accounts. They hold ₹2,50,000 in Mutual Funds and ₹1,20,000 in stocks.`,
+	}
+	
+	// Prepend the system prompt to the messages
+	messagesWithContext := append([]map[string]interface{}{systemPrompt}, chatReq.Messages...)
+
+	// 4. Get the AI response
+	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, messagesWithContext)
 	if err != nil {
 		log.Printf("AI Service Error: %v", err)
 		respondWithError(w, statusCode, "Error processing chat request")
@@ -59,6 +74,27 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(responseBytes)
+}
+
+// GetHistory returns the user's existing chat messages
+func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	userIDValue := r.Context().Value(middleware.UserIDKey)
+	if userIDValue == nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	
+	userID := userIDValue.(uuid.UUID)
+	session, err := h.chatRepo.GetSessionForUser(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to load chat history")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"messages": session.Messages,
+	})
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {

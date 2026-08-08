@@ -45,7 +45,7 @@ func main() {
 	authService := service.NewAuthService(cfg.JWTSecret)
 
 	// 5. Initialize Handlers
-	chatHandler := handler.NewChatHandler(aiService, userRepo)
+	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 
 	// 6. Setup Router
@@ -101,6 +101,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(authService))
 		r.Post("/api/chat", chatHandler.HandleChat)
+		r.Get("/api/chat/history", chatHandler.GetHistory)
 	})
 
 	// 7. Start Server with Graceful Shutdown
