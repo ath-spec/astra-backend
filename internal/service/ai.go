@@ -37,7 +37,7 @@ func NewGroqAIService(groqAPIKey, sarvamAPIKey string, chatRepo repository.ChatR
 
 func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}) ([]byte, int, error) {
 	groqPayload := map[string]interface{}{
-		"model":    "llama-3.3-70b-versatile",
+		"model":    "openai/gpt-oss-120b",
 		"messages": messages,
 	}
 
