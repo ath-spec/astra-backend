@@ -3,27 +3,47 @@ package config
 import (
 	"log"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
+	"github.com/yourusername/astra-backend/internal/crypto"
 )
 
 type Config struct {
-	Port         string
-	AppAuthToken string
-	GroqAPIKey   string
-	DatabaseURL  string
-	JWTSecret    string
+	Port              string
+	AppAuthToken      string
+	GroqAPIKey        string
+	DatabaseURL       string
+	JWTSecret         string
+	MasterInternalKey string
 }
 
 func Load() *Config {
 	_ = godotenv.Load()
 
+	masterKey := os.Getenv("MASTER_INTERNAL_KEY")
+
 	cfg := &Config{
-		Port:         os.Getenv("PORT"),
-		AppAuthToken: os.Getenv("APP_AUTH_TOKEN"),
-		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
-		DatabaseURL:  os.Getenv("DATABASE_URL"),
-		JWTSecret:    os.Getenv("JWT_SECRET"),
+		Port:              os.Getenv("PORT"),
+		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		MasterInternalKey: masterKey,
+		
+		// These might be encrypted, we will check below
+		AppAuthToken:      os.Getenv("APP_AUTH_TOKEN"),
+		GroqAPIKey:        os.Getenv("GROQ_API_KEY"),
+		JWTSecret:         os.Getenv("JWT_SECRET"),
+	}
+
+	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
+	if len(masterKey) == 32 {
+		log.Println("🔐 MASTER_INTERNAL_KEY detected. Decrypting internal secrets...")
+		cfg.AppAuthToken = decryptOrFatal(cfg.AppAuthToken, masterKey, "APP_AUTH_TOKEN")
+		cfg.GroqAPIKey = decryptOrFatal(cfg.GroqAPIKey, masterKey, "GROQ_API_KEY")
+		cfg.JWTSecret = decryptOrFatal(cfg.JWTSecret, masterKey, "JWT_SECRET")
+	} else if masterKey != "" {
+		log.Fatalf("FATAL: MASTER_INTERNAL_KEY is set but is %d characters long (must be 32).", len(masterKey))
+	} else {
+		log.Println("⚠️ MASTER_INTERNAL_KEY not set. Falling back to plain text secrets (Not recommended for production).")
 	}
 
 	if cfg.Port == "" {
@@ -47,4 +67,21 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+func decryptOrFatal(ciphertext, key, varName string) string {
+	if ciphertext == "" {
+		return ""
+	}
+	
+	// If it doesn't look like base64, warn the user (maybe they forgot to encrypt it in the env)
+	if !strings.HasSuffix(ciphertext, "=") && !strings.ContainsAny(ciphertext, "+/") && len(ciphertext) < 20 {
+		log.Printf("WARNING: %s does not look like a base64 encrypted string. Decryption may fail.", varName)
+	}
+
+	plaintext, err := crypto.Decrypt(ciphertext, key)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to decrypt %s: %v", varName, err)
+	}
+	return plaintext
 }
