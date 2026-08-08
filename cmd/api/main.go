@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -70,13 +71,23 @@ func main() {
 	})
 
 	// CORS Setup - Protects against web abuse by restricting to trusted frontend domains
-	allowedOrigin := os.Getenv("FRONTEND_URL")
-	if allowedOrigin == "" {
-		allowedOrigin = "https://astraaaaaa.netlify.app" // Secure lockdown for production
+	allowedOriginsStr := os.Getenv("FRONTEND_URL")
+	var allowedOrigins []string
+	
+	if allowedOriginsStr == "" {
+		// Secure default lockdown. We will add the exact Netlify links here once the user provides them!
+		allowedOrigins = []string{"https://astra-production.netlify.app", "http://localhost:*", "http://127.0.0.1:*"} 
+	} else {
+		// Split by comma in case multiple frontend URLs are passed in the environment variable
+		for _, origin := range strings.Split(allowedOriginsStr, ",") {
+			allowedOrigins = append(allowedOrigins, strings.TrimSpace(origin))
+		}
+		// Always allow local development
+		allowedOrigins = append(allowedOrigins, "http://localhost:*", "http://127.0.0.1:*")
 	}
 	
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"*"}, 
+		AllowedOrigins: allowedOrigins, 
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
 		MaxAge:         300,
