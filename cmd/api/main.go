@@ -69,14 +69,8 @@ func main() {
 		w.Write([]byte(`{"error": "Route not found", "code": 404}`))
 	})
 
-	// CORS Setup - Protects against web abuse
-	allowedOrigin := os.Getenv("FRONTEND_URL")
-	if allowedOrigin == "" {
-		allowedOrigin = "https://astraaaaaa.netlify.app" // Secure default for production
-	}
-	
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{allowedOrigin, "http://localhost:*", "http://127.0.0.1:*"}, 
+		AllowedOrigins: []string{"*"}, 
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{"Accept", "Authorization", "Content-Type", "X-Astra-Auth"},
 		MaxAge:         300,
