@@ -75,16 +75,17 @@ func main() {
 	var allowedOrigins []string
 	
 	if allowedOriginsStr == "" {
-		// Secure default lockdown. We will add the exact Netlify links here once the user provides them!
-		allowedOrigins = []string{"https://astra-production.netlify.app", "http://localhost:*", "http://127.0.0.1:*"} 
+		// Secure default lockdown based on your exact provided domain
+		allowedOrigins = []string{"https://astraaaaaa.netlify.app", "http://localhost:*", "http://127.0.0.1:*"} 
 	} else {
 		// Split by comma in case multiple frontend URLs are passed in the environment variable
 		for _, origin := range strings.Split(allowedOriginsStr, ",") {
 			allowedOrigins = append(allowedOrigins, strings.TrimSpace(origin))
 		}
-		// Always allow local development
-		allowedOrigins = append(allowedOrigins, "http://localhost:*", "http://127.0.0.1:*")
 	}
+	
+	// Always allow the known production frontend and local development
+	allowedOrigins = append(allowedOrigins, "https://astraaaaaa.netlify.app", "http://localhost:*", "http://127.0.0.1:*")
 	
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: allowedOrigins, 
