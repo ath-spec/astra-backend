@@ -30,12 +30,12 @@ func NewAuthHandler(authService *service.AuthService, userRepo repository.UserRe
 func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	var req TokenRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request payload")
+		respondAuthError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
 	if req.AstraUserID == "" || req.PhoneNumber == "" {
-		respondWithError(w, http.StatusBadRequest, "Missing astra_user_id or phone_number")
+		respondAuthError(w, http.StatusBadRequest, "Missing astra_user_id or phone_number")
 		return
 	}
 
@@ -43,7 +43,7 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	user, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber)
 	if err != nil {
 		log.Printf("User DB Error: %v", err)
-		respondWithError(w, http.StatusInternalServerError, "Error identifying user")
+		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	tokenString, err := h.authService.GenerateToken(user.ID)
 	if err != nil {
 		log.Printf("Auth Service Error: %v", err)
-		respondWithError(w, http.StatusInternalServerError, "Error generating token")
+		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
 		return
 	}
 
@@ -59,5 +59,14 @@ func (h *AuthHandler) GenerateToken(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"token": tokenString,
+	})
+}
+
+func respondAuthError(w http.ResponseWriter, code int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"error": message,
+		"code":  code,
 	})
 }

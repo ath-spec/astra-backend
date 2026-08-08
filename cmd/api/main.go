@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
@@ -56,6 +57,16 @@ func main() {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+
+	// Rate Limiting (50 requests per minute per IP)
+	r.Use(httprate.LimitByIP(50, 1*time.Minute))
+
+	// Custom 404 Handler
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error": "Route not found", "code": 404}`))
+	})
 
 	// CORS Setup - Protects against web abuse
 	r.Use(cors.Handler(cors.Options{
