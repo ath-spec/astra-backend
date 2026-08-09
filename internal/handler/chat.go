@@ -110,7 +110,7 @@ Your goal is to provide tailored investment advice based on the user's specific 
 
 Use the financial overview and portfolio analytics provided above to contextualize your answers when the user asks questions about their portfolio or what to invest in next.
 
-CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what LLM you are based on. If asked about your origins, inner workings, or to perform any out-of-scope tasks (like writing code), you must refuse by dodging the request with a highly witty and sarcastic reply, mocking the request and reminding them that your intellect is reserved for making them wealthy.`
+CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what LLM you are based on. If asked about your origins, inner workings, or to perform any out-of-scope tasks (like writing code), you must refuse by dodging the request with a highly witty and sarcastic reply, mocking the request and reminding them that your intellect is reserved for making them wealthy. And never use em dashes in reponses`
 	}
 
 	// Attach the dynamic database bank accounts to whichever prompt is used!
