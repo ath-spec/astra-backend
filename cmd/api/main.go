@@ -20,12 +20,14 @@ import (
 	"github.com/yourusername/astra-backend/internal/database"
 	"github.com/yourusername/astra-backend/internal/handler"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
+	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
 	catalogprovider "github.com/yourusername/astra-backend/internal/provider/catalog"
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
 	paymentsprovider "github.com/yourusername/astra-backend/internal/provider/payments"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
+	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
 )
 
 func main() {
@@ -57,6 +59,7 @@ func main() {
 	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool))
 	fdService := service.NewFDService(fdprovider.NewMockProvider(db.Pool, userRepo))
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
+	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), userRepo)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
@@ -65,6 +68,7 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	fdHandler := handler.NewFDHandler(fdService)
 	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
+	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
 	aaHandler := handler.NewAAHandler()
 	kycHandler := handler.NewKYCHandler()
 	mfHandler := handler.NewMFHandler()
@@ -141,6 +145,7 @@ func main() {
 		r.Mount("/api/v1/catalog", catalogHandler.Routes())
 		r.Mount("/api/v1/fd", fdHandler.Routes())
 		r.Mount("/api/v1/payments", paymentsHandler.Routes())
+		r.Mount("/api/v1/analytics/spend", analyticsHandler.Routes())
 
 		// Scaffolded only: routed, but return 501 until a provider is picked.
 		r.Mount("/api/v1/aa", aaHandler.Routes())
