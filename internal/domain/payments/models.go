@@ -3,7 +3,7 @@
 // names.
 package payments
 
-import "time"
+import "github.com/yourusername/astra-backend/internal/apitime"
 
 type PaymentRequest struct {
 	TxnID         string  `json:"txn_id"` // client-generated idempotency key
@@ -15,14 +15,14 @@ type PaymentRequest struct {
 }
 
 type Payment struct {
-	PaymentID    string     `json:"payment_id"`
-	TxnID        string     `json:"txn_id"`
-	Status       string     `json:"status"` // SUCCESS / FAILURE / PENDING / CANCELLED
-	Mode         string     `json:"mode"`
-	BankRefNum   *string    `json:"bank_ref_num,omitempty"`
-	ErrorCode    *string    `json:"error_code,omitempty"`
-	ErrorMessage *string    `json:"error_message,omitempty"`
-	ProcessedAt  *time.Time `json:"processed_at,omitempty"`
+	PaymentID    string        `json:"payment_id"`
+	TxnID        string        `json:"txn_id"`
+	Status       string        `json:"status"` // SUCCESS / FAILURE / PENDING / CANCELLED
+	Mode         string        `json:"mode"`
+	BankRefNum   *string       `json:"bank_ref_num,omitempty"`
+	ErrorCode    *string       `json:"error_code,omitempty"`
+	ErrorMessage *string       `json:"error_message,omitempty"`
+	ProcessedAt  *apitime.Time `json:"processed_at,omitempty"`
 }
 
 type MandateRequest struct {
@@ -31,34 +31,59 @@ type MandateRequest struct {
 	MandateType      string  `json:"mandate_type,omitempty"` // defaults to UPI_AUTOPAY
 	PayeeName        string  `json:"payee_name,omitempty"`
 	PayeeVPAOrID     string  `json:"payee_vpa_or_id,omitempty"`
+	Category         string  `json:"category,omitempty"` // SUBSCRIPTION / BILL / OTHER; defaults to OTHER
 	MandateAmount    float64 `json:"mandate_amount"`
-	MandateFrequency string  `json:"mandate_frequency"` // MONTHLY / QUARTERLY
-	MandateStartDate string  `json:"mandate_start_date"`
-	MandateEndDate   string  `json:"mandate_end_date,omitempty"`
+	MandateFrequency string  `json:"mandate_frequency"`          // MONTHLY / QUARTERLY / YEARLY
+	MandateStartDate int64   `json:"mandate_start_date"`         // epoch seconds
+	MandateEndDate   *int64  `json:"mandate_end_date,omitempty"` // epoch seconds
 }
 
 type Mandate struct {
-	MandateID     string     `json:"mandate_id"`
-	MandateType   string     `json:"mandate_type"`
-	PayeeName     *string    `json:"payee_name,omitempty"`
-	PayeeVPAOrID  *string    `json:"payee_vpa_or_id,omitempty"`
-	MaxAmount     float64    `json:"max_amount"`
-	Frequency     string     `json:"frequency"`
-	NextDebitDate *string    `json:"next_debit_date,omitempty"`
-	Status        string     `json:"status"`
-	ApprovedAt    *time.Time `json:"approved_at,omitempty"`
-	CreatedAt     string     `json:"created_at,omitempty"`
+	MandateID     string        `json:"mandate_id"`
+	MandateType   string        `json:"mandate_type"`
+	PayeeName     *string       `json:"payee_name,omitempty"`
+	PayeeVPAOrID  *string       `json:"payee_vpa_or_id,omitempty"`
+	Category      string        `json:"category"`
+	BankName      *string       `json:"bank_name,omitempty"`
+	MaxAmount     float64       `json:"max_amount"`
+	Frequency     string        `json:"frequency"`
+	NextDebitDate *apitime.Time `json:"next_debit_date,omitempty"`
+	Status        string        `json:"status"`
+	ApprovedAt    *apitime.Time `json:"approved_at,omitempty"`
+	CreatedAt     apitime.Time  `json:"created_at"`
+}
+
+// MandateExecution is one past (successful or failed) debit attempt against
+// a mandate, recorded so the Recurring screen's history view has real
+// occurrences to show instead of a live-computed projection.
+type MandateExecution struct {
+	ScheduledDate apitime.Time `json:"scheduled_date"`
+	Amount        float64      `json:"amount"`
+	Status        string       `json:"status"` // SUCCESS / FAILED
+	FailureReason *string      `json:"failure_reason,omitempty"`
+	ExecutedAt    apitime.Time `json:"executed_at"`
+}
+
+// RecurringSummary backs the Recurring screen's upcoming/overdue/paid stat
+// tiles and the Home screen's "Track your bills" teaser.
+type RecurringSummary struct {
+	UpcomingCount      int     `json:"upcoming_count"`
+	UpcomingTotal      float64 `json:"upcoming_total"`
+	OverdueCount       int     `json:"overdue_count"`
+	OverdueTotal       float64 `json:"overdue_total"`
+	PaidThisMonthCount int     `json:"paid_this_month_count"`
+	PaidThisMonthTotal float64 `json:"paid_this_month_total"`
 }
 
 type MandateActionRequest struct {
-	Action         string `json:"action"` // PAUSE / RESUME / CANCEL
-	PauseUntilDate string `json:"pause_until_date,omitempty"`
+	Action         string `json:"action"`                     // PAUSE / RESUME / CANCEL
+	PauseUntilDate *int64 `json:"pause_until_date,omitempty"` // epoch seconds
 }
 
 type MandateActionResult struct {
-	MandateID     string `json:"mandate_id"`
-	Status        string `json:"status"`
-	EffectiveFrom string `json:"effective_from"`
+	MandateID     string       `json:"mandate_id"`
+	Status        string       `json:"status"`
+	EffectiveFrom apitime.Time `json:"effective_from"`
 }
 
 const (
@@ -78,4 +103,13 @@ const (
 	ActionPause  = "PAUSE"
 	ActionResume = "RESUME"
 	ActionCancel = "CANCEL"
+
+	FrequencyMonthly   = "MONTHLY"
+	FrequencyQuarterly = "QUARTERLY"
+	FrequencyYearly    = "YEARLY"
+
+	ExecutionSuccess = "SUCCESS"
+	ExecutionFailed  = "FAILED"
+
+	DefaultCategory = "OTHER"
 )

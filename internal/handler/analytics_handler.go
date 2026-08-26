@@ -35,6 +35,10 @@ func (h *AnalyticsHandler) Routes() chi.Router {
 	r.Get("/summary", h.summary)
 	r.Get("/snapshot", h.snapshot)
 	r.Get("/compare", h.compare)
+	r.Get("/investment-consistency", h.investmentConsistency)
+	r.Get("/bnpl", h.bnpl)
+	r.Get("/subscriptions", h.subscriptions)
+	r.Get("/income", h.income)
 	return r
 }
 
@@ -208,6 +212,62 @@ func (h *AnalyticsHandler) compare(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	result, err := h.svc.Compare(r.Context(), userID, by, names)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, result)
+}
+
+func (h *AnalyticsHandler) investmentConsistency(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	result, err := h.svc.InvestmentConsistency(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, result)
+}
+
+func (h *AnalyticsHandler) bnpl(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	result, err := h.svc.BNPLExposure(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, result)
+}
+
+func (h *AnalyticsHandler) subscriptions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	result, err := h.svc.SubscriptionLoad(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, result)
+}
+
+func (h *AnalyticsHandler) income(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	result, err := h.svc.IncomeAnalysis(r.Context(), userID)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

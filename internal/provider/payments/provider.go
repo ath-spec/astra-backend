@@ -19,4 +19,6 @@ type Provider interface {
 	CreateMandate(ctx context.Context, userID uuid.UUID, req paymentsdomain.MandateRequest) (*paymentsdomain.Mandate, error)
 	ListMandates(ctx context.Context, userID uuid.UUID, statusFilter string) ([]paymentsdomain.Mandate, error)
 	MandateAction(ctx context.Context, userID uuid.UUID, mandateID string, req paymentsdomain.MandateActionRequest) (*paymentsdomain.MandateActionResult, error)
+	MandateHistory(ctx context.Context, userID uuid.UUID, mandateID string) ([]paymentsdomain.MandateExecution, error)
+	RecurringSummary(ctx context.Context, userID uuid.UUID) (paymentsdomain.RecurringSummary, error)
 }

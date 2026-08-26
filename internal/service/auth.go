@@ -1,12 +1,22 @@
 package service
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
+
+// RefreshTokenTTL is how long an issued refresh token stays valid. The
+// access token (JWT) is short-lived (24h, see GenerateToken); the refresh
+// token is what lets a client stay "logged in" across app restarts beyond
+// that without re-doing OTP verification.
+const RefreshTokenTTL = 30 * 24 * time.Hour
 
 type Claims struct {
 	UserID uuid.UUID `json:"user_id"`
@@ -43,6 +53,26 @@ func (s *AuthService) GenerateToken(userID uuid.UUID) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+// GenerateRefreshToken returns a fresh cryptographically random refresh
+// token (the plaintext value to hand back to the client) alongside its
+// SHA-256 hash (the value actually stored in the database, so a stolen DB
+// backup alone can't be replayed as a valid refresh token).
+func (s *AuthService) GenerateRefreshToken() (plaintext string, hash string, err error) {
+	buf := make([]byte, 32)
+	if _, err := rand.Read(buf); err != nil {
+		return "", "", fmt.Errorf("generate refresh token: %w", err)
+	}
+	plaintext = base64.RawURLEncoding.EncodeToString(buf)
+	return plaintext, HashRefreshToken(plaintext), nil
+}
+
+// HashRefreshToken is exported so callers verifying a client-supplied
+// refresh token hash it the same way before looking it up.
+func HashRefreshToken(plaintext string) string {
+	sum := sha256.Sum256([]byte(plaintext))
+	return hex.EncodeToString(sum[:])
 }
 
 func (s *AuthService) ValidateToken(tokenString string) (*Claims, error) {

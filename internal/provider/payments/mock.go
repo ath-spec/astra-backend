@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/apitime"
 	paymentsdomain "github.com/yourusername/astra-backend/internal/domain/payments"
 	"github.com/yourusername/astra-backend/internal/repository"
 )
@@ -79,9 +80,11 @@ func validatePaymentRequest(req paymentsdomain.PaymentRequest) error {
 
 func scanPayment(row interface{ Scan(dest ...any) error }) (paymentsdomain.Payment, error) {
 	var pay paymentsdomain.Payment
-	if err := row.Scan(&pay.PaymentID, &pay.TxnID, &pay.Status, &pay.Mode, &pay.BankRefNum, &pay.ErrorCode, &pay.ErrorMessage, &pay.ProcessedAt); err != nil {
+	var processedAt *time.Time
+	if err := row.Scan(&pay.PaymentID, &pay.TxnID, &pay.Status, &pay.Mode, &pay.BankRefNum, &pay.ErrorCode, &pay.ErrorMessage, &processedAt); err != nil {
 		return paymentsdomain.Payment{}, fmt.Errorf("scan payment: %w", err)
 	}
+	pay.ProcessedAt = apitime.NewPtr(processedAt)
 	return pay, nil
 }
 
@@ -119,7 +122,8 @@ func (p *MockProvider) InitiatePayment(ctx context.Context, userID uuid.UUID, re
 
 	paymentID := newID("PAYU")
 	now := time.Now().UTC()
-	pay := paymentsdomain.Payment{PaymentID: paymentID, TxnID: req.TxnID, Mode: req.PaymentMode, ProcessedAt: &now}
+	processedAt := apitime.New(now)
+	pay := paymentsdomain.Payment{PaymentID: paymentID, TxnID: req.TxnID, Mode: req.PaymentMode, ProcessedAt: &processedAt}
 
 	if balance < req.Amount {
 		pay.Status = paymentsdomain.PaymentStatusFailure
@@ -138,7 +142,7 @@ func (p *MockProvider) InitiatePayment(ctx context.Context, userID uuid.UUID, re
 		INSERT INTO payments (payment_id, txn_id, user_id, bank_account_id, amount, payment_mode, upi_id, purpose, status, mode, bank_ref_num, error_code, error_message, processed_at)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 	`, paymentID, req.TxnID, userID, bankAccountID, req.Amount, req.PaymentMode, nullIfEmpty(req.UPIID), req.Purpose,
-		pay.Status, pay.Mode, pay.BankRefNum, pay.ErrorCode, pay.ErrorMessage, pay.ProcessedAt); err != nil {
+		pay.Status, pay.Mode, pay.BankRefNum, pay.ErrorCode, pay.ErrorMessage, apitime.ToTimePtr(pay.ProcessedAt)); err != nil {
 		return nil, fmt.Errorf("insert payment: %w", err)
 	}
 
@@ -171,15 +175,14 @@ func validateMandateRequest(req paymentsdomain.MandateRequest) (time.Time, error
 		return time.Time{}, apiresponse.Validation("mandate_amount must be positive")
 	}
 	switch req.MandateFrequency {
-	case "MONTHLY", "QUARTERLY":
+	case paymentsdomain.FrequencyMonthly, paymentsdomain.FrequencyQuarterly, paymentsdomain.FrequencyYearly:
 	default:
-		return time.Time{}, apiresponse.Validation("mandate_frequency must be MONTHLY or QUARTERLY")
+		return time.Time{}, apiresponse.Validation("mandate_frequency must be MONTHLY, QUARTERLY or YEARLY")
 	}
-	start, err := time.Parse("2006-01-02", req.MandateStartDate)
-	if err != nil {
-		return time.Time{}, apiresponse.Validation("mandate_start_date must be an ISO date (YYYY-MM-DD)")
+	if req.MandateStartDate <= 0 {
+		return time.Time{}, apiresponse.Validation("mandate_start_date is required")
 	}
-	return start, nil
+	return apitime.FromEpoch(req.MandateStartDate), nil
 }
 
 func (p *MockProvider) CreateMandate(ctx context.Context, userID uuid.UUID, req paymentsdomain.MandateRequest) (*paymentsdomain.Mandate, error) {
@@ -196,15 +199,12 @@ func (p *MockProvider) CreateMandate(ctx context.Context, userID uuid.UUID, req 
 	if mandateType == "" {
 		mandateType = paymentsdomain.MandateTypeUPIAutopay
 	}
-
-	var endDate *time.Time
-	if req.MandateEndDate != "" {
-		d, err := time.Parse("2006-01-02", req.MandateEndDate)
-		if err != nil {
-			return nil, apiresponse.Validation("mandate_end_date must be an ISO date (YYYY-MM-DD)")
-		}
-		endDate = &d
+	category := req.Category
+	if category == "" {
+		category = paymentsdomain.DefaultCategory
 	}
+
+	endDate := apitime.FromEpochPtr(req.MandateEndDate)
 
 	mandateID := newID("MNDT")
 	now := time.Now().UTC()
@@ -215,51 +215,60 @@ func (p *MockProvider) CreateMandate(ctx context.Context, userID uuid.UUID, req 
 
 	if _, err := p.pool.Exec(ctx, `
 		INSERT INTO mandates (
-			mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id,
+			mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, category,
 			max_amount, frequency, mandate_start_date, mandate_end_date, next_debit_date, status, approved_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-	`, mandateID, userID, bankAccountID, mandateType, nullIfEmpty(req.UPIID), nullIfEmpty(req.PayeeName), nullIfEmpty(req.PayeeVPAOrID),
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+	`, mandateID, userID, bankAccountID, mandateType, nullIfEmpty(req.UPIID), nullIfEmpty(req.PayeeName), nullIfEmpty(req.PayeeVPAOrID), category,
 		req.MandateAmount, req.MandateFrequency, startDate, endDate, startDate, status, now); err != nil {
 		return nil, fmt.Errorf("insert mandate: %w", err)
 	}
 
-	nextDebit := startDate.Format("2006-01-02")
+	nextDebit := apitime.New(startDate)
+	approvedAt := apitime.New(now)
 	return &paymentsdomain.Mandate{
 		MandateID:     mandateID,
 		MandateType:   mandateType,
 		PayeeName:     nullIfEmpty(req.PayeeName),
 		PayeeVPAOrID:  nullIfEmpty(req.PayeeVPAOrID),
+		Category:      category,
 		MaxAmount:     req.MandateAmount,
 		Frequency:     req.MandateFrequency,
 		NextDebitDate: &nextDebit,
 		Status:        status,
-		ApprovedAt:    &now,
-		CreatedAt:     now.Format("2006-01-02"),
+		ApprovedAt:    &approvedAt,
+		CreatedAt:     apitime.New(now),
 	}, nil
 }
 
-const mandateColumns = `mandate_id, mandate_type, payee_name, payee_vpa_or_id, max_amount, frequency, next_debit_date, status, approved_at, created_at`
+const mandateColumns = `m.mandate_id, m.mandate_type, m.payee_name, m.payee_vpa_or_id, m.category, b.bank_name, m.max_amount, m.frequency, m.next_debit_date, m.status, m.approved_at, m.created_at`
 
 func scanMandate(row interface{ Scan(dest ...any) error }) (paymentsdomain.Mandate, error) {
 	var m paymentsdomain.Mandate
-	var nextDebit *time.Time
+	var nextDebit, approvedAt *time.Time
 	var createdAt time.Time
-	if err := row.Scan(&m.MandateID, &m.MandateType, &m.PayeeName, &m.PayeeVPAOrID, &m.MaxAmount, &m.Frequency, &nextDebit, &m.Status, &m.ApprovedAt, &createdAt); err != nil {
+	if err := row.Scan(&m.MandateID, &m.MandateType, &m.PayeeName, &m.PayeeVPAOrID, &m.Category, &m.BankName, &m.MaxAmount, &m.Frequency, &nextDebit, &m.Status, &approvedAt, &createdAt); err != nil {
 		return paymentsdomain.Mandate{}, fmt.Errorf("scan mandate: %w", err)
 	}
-	if nextDebit != nil {
-		d := nextDebit.Format("2006-01-02")
-		m.NextDebitDate = &d
-	}
-	m.CreatedAt = createdAt.Format("2006-01-02")
+	m.NextDebitDate = apitime.NewPtr(nextDebit)
+	m.ApprovedAt = apitime.NewPtr(approvedAt)
+	m.CreatedAt = apitime.New(createdAt)
 	return m, nil
 }
 
+// ListMandates first catches up any mandate whose next debit date has
+// already passed (see processDueMandates), so the list — and the
+// SUCCESS/FAILED executions behind it — always reflects "as of now", the
+// same way holdings/orders reflect the latest state on every read.
 func (p *MockProvider) ListMandates(ctx context.Context, userID uuid.UUID, statusFilter string) ([]paymentsdomain.Mandate, error) {
+	if err := p.processDueMandates(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	rows, err := p.pool.Query(ctx, `
-		SELECT `+mandateColumns+` FROM mandates
-		WHERE user_id = $1 AND ($2 = '' OR status = $2)
-		ORDER BY created_at DESC
+		SELECT `+mandateColumns+`
+		FROM mandates m JOIN bank_accounts b ON b.id = m.bank_account_id
+		WHERE m.user_id = $1 AND ($2 = '' OR m.status = $2)
+		ORDER BY m.created_at DESC
 	`, userID, statusFilter)
 	if err != nil {
 		return nil, fmt.Errorf("list mandates: %w", err)
@@ -325,6 +334,6 @@ func (p *MockProvider) MandateAction(ctx context.Context, userID uuid.UUID, mand
 	return &paymentsdomain.MandateActionResult{
 		MandateID:     mandateID,
 		Status:        newStatus,
-		EffectiveFrom: time.Now().UTC().Format("2006-01-02"),
+		EffectiveFrom: apitime.New(time.Now().UTC()),
 	}, nil
 }

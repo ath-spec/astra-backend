@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/apitime"
 	fddomain "github.com/yourusername/astra-backend/internal/domain/fd"
 	"github.com/yourusername/astra-backend/internal/repository"
 )
@@ -169,8 +170,8 @@ func (p *MockProvider) OpenFD(ctx context.Context, userID uuid.UUID, req fddomai
 		InterestPayout:  req.InterestPayout,
 		AutoRenewal:     req.AutoRenewal,
 		NomineeName:     nominee,
-		BookingDate:     bookingDate.Format("2006-01-02"),
-		MaturityDate:    maturityDate.Format("2006-01-02"),
+		BookingDate:     apitime.New(bookingDate),
+		MaturityDate:    apitime.New(maturityDate),
 		MaturityAmount:  maturity,
 		Status:          fddomain.StatusActive,
 	}, nil
@@ -192,8 +193,8 @@ func scanFD(row fdScanner) (fddomain.Account, error) {
 	); err != nil {
 		return fddomain.Account{}, fmt.Errorf("scan fd account: %w", err)
 	}
-	a.BookingDate = bookingDate.Format("2006-01-02")
-	a.MaturityDate = maturityDate.Format("2006-01-02")
+	a.BookingDate = apitime.New(bookingDate)
+	a.MaturityDate = apitime.New(maturityDate)
 	return a, nil
 }
 

@@ -14,4 +14,10 @@ type Provider interface {
 	SearchFunds(ctx context.Context, params catalogdomain.SearchParams) ([]catalogdomain.Fund, error)
 	GetFund(ctx context.Context, schemeCode string) (*catalogdomain.Fund, error)
 	ListNFOs(ctx context.Context) ([]catalogdomain.NFO, error)
+
+	// GetFundProfile returns a fund plus its allocation breakdown and a
+	// synthesized NAV chart — does not include UserHolding, which is a
+	// per-user cross-reference the service layer fills in (see
+	// internal/service.CatalogService).
+	GetFundProfile(ctx context.Context, schemeCode string) (*catalogdomain.FundProfile, error)
 }

@@ -40,6 +40,10 @@ var frequentProfiles = []merchantProfile{
 	{"Transport", "Indian Oil Petrol Pump", 500, 2000, 0.5, false},
 	{"Entertainment", "BookMyShow", 300, 1500, 0.4, true},
 	{"Health", "Apollo Pharmacy", 200, 1200, 0.5, false},
+	// Low-frequency BNPL repayments, so BNPLExposure has real (if modest)
+	// data to analyze against seeded users rather than always reporting zero.
+	{"BNPL", "Simpl", 300, 2500, 0.3, false},
+	{"BNPL", "LazyPay", 500, 3000, 0.2, false},
 }
 
 // monthlyProfiles are inserted once per month, on a per-user fixed day, with

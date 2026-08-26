@@ -21,12 +21,13 @@ const fetchWindowDays = 180
 // or above (the handler) changes when TransactionSource gets a real AA-backed
 // implementation.
 type Service struct {
-	source   analyticsprovider.TransactionSource
-	userRepo repository.UserRepository
+	source     analyticsprovider.TransactionSource
+	investment analyticsprovider.InvestmentSource
+	userRepo   repository.UserRepository
 }
 
-func NewService(source analyticsprovider.TransactionSource, userRepo repository.UserRepository) *Service {
-	return &Service{source: source, userRepo: userRepo}
+func NewService(source analyticsprovider.TransactionSource, investment analyticsprovider.InvestmentSource, userRepo repository.UserRepository) *Service {
+	return &Service{source: source, investment: investment, userRepo: userRepo}
 }
 
 func (s *Service) fetch(ctx context.Context, userID uuid.UUID, now time.Time) ([]analyticsdomain.Transaction, error) {
@@ -143,4 +144,40 @@ func (s *Service) Compare(ctx context.Context, userID uuid.UUID, by string, name
 		return analyticsdomain.ComparisonResult{}, err
 	}
 	return Compare(txns, now, by, names), nil
+}
+
+func (s *Service) InvestmentConsistency(ctx context.Context, userID uuid.UUID) (analyticsdomain.InvestmentConsistencyResult, error) {
+	now := time.Now().UTC()
+	events, err := s.investment.GetInvestmentEvents(ctx, userID, now.AddDate(0, -investmentMonthsTracked, 0), now)
+	if err != nil {
+		return analyticsdomain.InvestmentConsistencyResult{}, err
+	}
+	return InvestmentConsistency(events, now), nil
+}
+
+func (s *Service) BNPLExposure(ctx context.Context, userID uuid.UUID) (analyticsdomain.BNPLExposureResult, error) {
+	now := time.Now().UTC()
+	txns, err := s.fetch(ctx, userID, now)
+	if err != nil {
+		return analyticsdomain.BNPLExposureResult{}, err
+	}
+	return BNPLExposure(txns, now), nil
+}
+
+func (s *Service) SubscriptionLoad(ctx context.Context, userID uuid.UUID) (analyticsdomain.SubscriptionLoadResult, error) {
+	now := time.Now().UTC()
+	txns, err := s.fetch(ctx, userID, now)
+	if err != nil {
+		return analyticsdomain.SubscriptionLoadResult{}, err
+	}
+	return VerifiedSubscriptionLoad(txns, now), nil
+}
+
+func (s *Service) IncomeAnalysis(ctx context.Context, userID uuid.UUID) (analyticsdomain.IncomeResult, error) {
+	now := time.Now().UTC()
+	txns, err := s.fetch(ctx, userID, now)
+	if err != nil {
+		return analyticsdomain.IncomeResult{}, err
+	}
+	return IncomeAnalysis(txns, now), nil
 }

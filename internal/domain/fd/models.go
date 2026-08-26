@@ -2,6 +2,8 @@
 // the IDBI sandbox spec doc's field names.
 package fd
 
+import "github.com/yourusername/astra-backend/internal/apitime"
+
 type OpenRequest struct {
 	BankAccountID   string  `json:"bank_account_id,omitempty"` // optional; defaults to the user's primary account
 	PrincipalAmount float64 `json:"principal_amount"`
@@ -12,17 +14,17 @@ type OpenRequest struct {
 }
 
 type Account struct {
-	FDAccountNumber string  `json:"fd_account_number"`
-	PrincipalAmount float64 `json:"principal_amount"`
-	InterestRate    float64 `json:"interest_rate"`
-	TenureMonths    int     `json:"tenure_months"`
-	InterestPayout  string  `json:"interest_payout"`
-	AutoRenewal     bool    `json:"auto_renewal"`
-	NomineeName     *string `json:"nominee_name,omitempty"`
-	BookingDate     string  `json:"booking_date"`
-	MaturityDate    string  `json:"maturity_date"`
-	MaturityAmount  float64 `json:"maturity_amount"`
-	Status          string  `json:"status"`
+	FDAccountNumber string       `json:"fd_account_number"`
+	PrincipalAmount float64      `json:"principal_amount"`
+	InterestRate    float64      `json:"interest_rate"`
+	TenureMonths    int          `json:"tenure_months"`
+	InterestPayout  string       `json:"interest_payout"`
+	AutoRenewal     bool         `json:"auto_renewal"`
+	NomineeName     *string      `json:"nominee_name,omitempty"`
+	BookingDate     apitime.Time `json:"booking_date"`
+	MaturityDate    apitime.Time `json:"maturity_date"`
+	MaturityAmount  float64      `json:"maturity_amount"`
+	Status          string       `json:"status"`
 }
 
 // WithdrawRequest is the "premature withdrawal" request. A nil

@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/apitime"
 	"github.com/yourusername/astra-backend/internal/domain/stocks"
 )
 
@@ -106,7 +107,8 @@ func (p *MockProvider) GetHoldings(ctx context.Context, userID uuid.UUID) ([]sto
 			return nil, fmt.Errorf("scan holding: %w", err)
 		}
 		if authorizedDate != nil {
-			h.AuthorizedDate = authorizedDate.Format("2006-01-02")
+			at := apitime.New(*authorizedDate)
+			h.AuthorizedDate = &at
 		}
 		holdings = append(holdings, h)
 	}
@@ -171,7 +173,7 @@ func (p *MockProvider) GetQuote(ctx context.Context, exchange, tradingSymbol str
 		Volume:          volume,
 		LotSize:         inst.lotSize,
 		TickSize:        inst.tickSize,
-		Timestamp:       time.Now().UTC(),
+		Timestamp:       apitime.New(time.Now().UTC()),
 	}, nil
 }
 
@@ -282,7 +284,8 @@ func attemptFill(ctx context.Context, tx pgx.Tx, userID uuid.UUID, inst instrume
 	avg := fillPrice
 	order.AveragePrice = &avg
 	now := time.Now().UTC()
-	order.ExchangeTimestamp = &now
+	et := apitime.New(now)
+	order.ExchangeTimestamp = &et
 	exchOrderID := "EXC-" + order.OrderID
 	order.ExchangeOrderID = &exchOrderID
 	return nil
@@ -321,7 +324,7 @@ func (p *MockProvider) PlaceOrder(ctx context.Context, userID uuid.UUID, req sto
 		Validity:          req.Validity,
 		Status:            stocks.StatusOpen,
 		PendingQuantity:   req.Quantity,
-		OrderTimestamp:    time.Now().UTC(),
+		OrderTimestamp:    apitime.New(time.Now().UTC()),
 	}
 
 	quote := livePrice(inst.basePrice, req.TradingSymbol)
@@ -438,10 +441,11 @@ func loadOrder(ctx context.Context, q querier, userID uuid.UUID, orderID string,
 
 	var o stocks.Order
 	var isin *string
+	var exchangeTimestamp *time.Time
 	err := q.QueryRow(ctx, sql, orderID, userID).Scan(
 		&o.OrderID, &o.ExchangeOrderID, &o.Exchange, &o.TradingSymbol, &isin, &o.TransactionType, &o.Quantity,
 		&o.Product, &o.OrderType, &o.Price, &o.TriggerPrice, &o.DisclosedQuantity, &o.Validity, &o.Status, &o.StatusMessage,
-		&o.FilledQuantity, &o.PendingQuantity, &o.CancelledQuantity, &o.AveragePrice, &o.OrderTimestamp, &o.ExchangeTimestamp,
+		&o.FilledQuantity, &o.PendingQuantity, &o.CancelledQuantity, &o.AveragePrice, &o.OrderTimestamp, &exchangeTimestamp,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -452,6 +456,7 @@ func loadOrder(ctx context.Context, q querier, userID uuid.UUID, orderID string,
 	if isin != nil {
 		o.ISIN = *isin
 	}
+	o.ExchangeTimestamp = apitime.NewPtr(exchangeTimestamp)
 	return &o, nil
 }
 
@@ -472,7 +477,7 @@ func insertOrder(ctx context.Context, tx pgx.Tx, userID uuid.UUID, order *stocks
 		order.TransactionType, order.Quantity, order.Product, order.OrderType, order.Price, order.TriggerPrice,
 		order.DisclosedQuantity, order.Validity, order.Status, order.StatusMessage,
 		order.FilledQuantity, order.PendingQuantity, order.CancelledQuantity, order.AveragePrice,
-		order.OrderTimestamp, order.ExchangeTimestamp)
+		order.OrderTimestamp, apitime.ToTimePtr(order.ExchangeTimestamp))
 	if err != nil {
 		return fmt.Errorf("insert order: %w", err)
 	}
@@ -488,7 +493,7 @@ func updateOrder(ctx context.Context, tx pgx.Tx, userID uuid.UUID, order *stocks
 		WHERE order_id = $13 AND user_id = $14
 	`, order.ExchangeOrderID, order.Quantity, order.OrderType, order.Price, order.TriggerPrice,
 		order.Validity, order.Status, order.FilledQuantity, order.PendingQuantity, order.CancelledQuantity,
-		order.AveragePrice, order.ExchangeTimestamp, order.OrderID, userID)
+		order.AveragePrice, apitime.ToTimePtr(order.ExchangeTimestamp), order.OrderID, userID)
 	if err != nil {
 		return fmt.Errorf("update order: %w", err)
 	}

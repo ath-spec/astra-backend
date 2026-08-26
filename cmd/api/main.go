@@ -23,6 +23,8 @@ import (
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
 	catalogprovider "github.com/yourusername/astra-backend/internal/provider/catalog"
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
+	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
+	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	paymentsprovider "github.com/yourusername/astra-backend/internal/provider/payments"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
@@ -55,11 +57,19 @@ func main() {
 	aiService := service.NewGroqAIService(cfg.GroqAPIKey, cfg.SarvamAPIKey, chatRepo)
 	authService := service.NewAuthService(cfg.JWTSecret)
 
-	stocksService := service.NewStocksService(stocksprovider.NewMockProvider(db.Pool))
-	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool))
-	fdService := service.NewFDService(fdprovider.NewMockProvider(db.Pool, userRepo))
+	stocksProvider := stocksprovider.NewMockProvider(db.Pool)
+	fdProvider := fdprovider.NewMockProvider(db.Pool, userRepo)
+	mfProvider := mfprovider.NewMockProvider(db.Pool)
+
+	stocksService := service.NewStocksService(stocksProvider)
+	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool), mfProvider)
+	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
-	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), userRepo)
+	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
+	goalsService := service.NewGoalsService(goalsprovider.NewPostgresProvider(db.Pool))
+	mfService := service.NewMFService(mfProvider)
+	dashboardService := service.NewDashboardService(stocksProvider, mfProvider, fdProvider, userRepo, db.Pool)
+	portfolioAnalysisService := service.NewPortfolioAnalysisService(mfProvider, stocksProvider, fdProvider, db.Pool)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
@@ -69,9 +79,12 @@ func main() {
 	fdHandler := handler.NewFDHandler(fdService)
 	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
+	goalsHandler := handler.NewGoalsHandler(goalsService)
 	aaHandler := handler.NewAAHandler()
 	kycHandler := handler.NewKYCHandler()
-	mfHandler := handler.NewMFHandler()
+	mfHandler := handler.NewMFHandler(mfService)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService)
+	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
 
 	// 6. Setup Router
 	r := chi.NewRouter()
@@ -131,11 +144,14 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Post("/api/auth/otp/send", authHandler.SendOTP)
 		r.Post("/api/auth/otp/verify", authHandler.VerifyOTP)
+		r.Post("/api/auth/refresh", authHandler.Refresh)
+		r.Post("/api/auth/logout", authHandler.Logout)
 	})
 
 	// Protected Routes (Requires JWT Bearer Token)
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(authService))
+		r.Get("/api/auth/me", authHandler.Me)
 		r.Post("/api/chat", chatHandler.HandleChat)
 		r.Get("/api/chat/history", chatHandler.GetHistory)
 		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route
@@ -146,11 +162,16 @@ func main() {
 		r.Mount("/api/v1/fd", fdHandler.Routes())
 		r.Mount("/api/v1/payments", paymentsHandler.Routes())
 		r.Mount("/api/v1/analytics/spend", analyticsHandler.Routes())
+		r.Mount("/api/v1/goals", goalsHandler.Routes())
+		r.Mount("/api/v1/dashboard", dashboardHandler.Routes())
+		r.Mount("/api/v1/portfolio-analysis", portfolioAnalysisHandler.Routes())
+		// mf: holdings/purchase/redeem/transactions are a real mock provider;
+		// only GET /mf/cas (importing an external CAS) stays 501.
+		r.Mount("/api/v1/mf", mfHandler.Routes())
 
 		// Scaffolded only: routed, but return 501 until a provider is picked.
 		r.Mount("/api/v1/aa", aaHandler.Routes())
 		r.Mount("/api/v1/kyc", kycHandler.Routes())
-		r.Mount("/api/v1/mf", mfHandler.Routes())
 	})
 
 	// 7. Start Server with Graceful Shutdown

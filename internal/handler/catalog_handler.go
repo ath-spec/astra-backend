@@ -8,6 +8,7 @@ import (
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	catalogdomain "github.com/yourusername/astra-backend/internal/domain/catalog"
+	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
@@ -23,6 +24,7 @@ func (h *CatalogHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/funds", h.searchFunds)
 	r.Get("/funds/{schemeCode}", h.getFund)
+	r.Get("/funds/{schemeCode}/profile", h.getFundProfile)
 	r.Get("/nfos", h.listNFOs)
 	return r
 }
@@ -75,6 +77,21 @@ func (h *CatalogHandler) getFund(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiresponse.OK(w, fund)
+}
+
+func (h *CatalogHandler) getFundProfile(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	schemeCode := chi.URLParam(r, "schemeCode")
+	profile, err := h.svc.GetFundProfile(r.Context(), userID, schemeCode)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, profile)
 }
 
 func (h *CatalogHandler) listNFOs(w http.ResponseWriter, r *http.Request) {

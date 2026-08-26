@@ -210,6 +210,136 @@ func TestAverageStats_ComputesCorrectAverages(t *testing.T) {
 	}
 }
 
+func TestInvestmentConsistency_TracksStreakAndMissedMonths(t *testing.T) {
+	now := fixedNow
+	anchor := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	events := []analyticsdomain.InvestmentEvent{
+		{OccurredAt: anchor, Amount: 5000},                    // current month
+		{OccurredAt: anchor.AddDate(0, -1, 0), Amount: 5000},  // 1 month ago
+		{OccurredAt: anchor.AddDate(0, -2, 0), Amount: 5000},  // 2 months ago
+		{OccurredAt: anchor.AddDate(0, -4, 0), Amount: 10000}, // gap at -3, then active again at -4
+	}
+	res := InvestmentConsistency(events, now)
+
+	if res.MonthsTracked != 12 {
+		t.Fatalf("expected 12 months tracked, got %d", res.MonthsTracked)
+	}
+	if res.ActiveMonths != 4 {
+		t.Fatalf("expected 4 active months, got %d", res.ActiveMonths)
+	}
+	if res.CurrentStreakMonths != 3 {
+		t.Fatalf("expected a 3-month current streak (months 0,-1,-2), got %d", res.CurrentStreakMonths)
+	}
+	if res.MissedMonths != 8 {
+		t.Fatalf("expected 8 missed months, got %d", res.MissedMonths)
+	}
+}
+
+func TestInvestmentConsistency_EmptyIsNotAnError(t *testing.T) {
+	res := InvestmentConsistency(nil, fixedNow)
+	if res.ActiveMonths != 0 || res.CurrentStreakMonths != 0 || res.AvgMonthlyInvested != 0 {
+		t.Fatalf("expected an all-zero result for no events, got %+v", res)
+	}
+	if res.MissedMonths != 12 {
+		t.Fatalf("expected all 12 months missed, got %d", res.MissedMonths)
+	}
+}
+
+func TestBNPLExposure_FlagsDangerZoneOnHighRatio(t *testing.T) {
+	var txns []txn
+	txns = append(txns, mkTxn(5, 12, 1000, analyticsdomain.TxnCredit, "Salary", "Employer", fixedNow)) // 30d income = 1000
+	txns = append(txns, mkTxn(5, 12, 400, analyticsdomain.TxnDebit, "BNPL", "Simpl", fixedNow))        // 40% of income
+
+	res := BNPLExposure(txns, fixedNow)
+	if res.IncomeRatioPct < 39 || res.IncomeRatioPct > 41 {
+		t.Fatalf("expected ~40%% ratio, got %v", res.IncomeRatioPct)
+	}
+	if !res.IsDangerZone {
+		t.Fatal("expected danger zone flag at 40%% of income")
+	}
+}
+
+func TestBNPLExposure_NoDangerForLowUsage(t *testing.T) {
+	var txns []txn
+	txns = append(txns, mkTxn(5, 12, 10000, analyticsdomain.TxnCredit, "Salary", "Employer", fixedNow))
+	txns = append(txns, mkTxn(5, 12, 300, analyticsdomain.TxnDebit, "BNPL", "LazyPay", fixedNow)) // 3% of income
+
+	res := BNPLExposure(txns, fixedNow)
+	if res.IsDangerZone {
+		t.Fatalf("did not expect danger zone at %v%% of income", res.IncomeRatioPct)
+	}
+}
+
+func TestBNPLExposure_IgnoresNonBNPLMerchants(t *testing.T) {
+	var txns []txn
+	txns = append(txns, mkTxn(5, 12, 5000, analyticsdomain.TxnDebit, "Shopping", "Amazon", fixedNow))
+	res := BNPLExposure(txns, fixedNow)
+	if res.Last30DayTotal != 0 || len(res.Providers) != 0 {
+		t.Fatalf("expected zero BNPL total for a non-BNPL merchant, got %+v", res)
+	}
+}
+
+func TestVerifiedSubscriptionLoad_ExcludesStaleRecurring(t *testing.T) {
+	var txns []txn
+	// A merchant with a clear monthly cadence (so RecurringDetection's own
+	// 120-day window still picks it up) but whose last charge was 45 days
+	// ago — i.e. cancelled/lapsed — should be excluded by the "verified"
+	// (last-40-days) filter specifically, not just by the base window.
+	for _, daysAgo := range []int{45, 75, 105} {
+		txns = append(txns, mkTxn(daysAgo, 8, 599, analyticsdomain.TxnDebit, "Subscriptions", "OldService", fixedNow))
+	}
+	// A merchant that's still actively charging monthly, most recently 5 days ago.
+	for i := 0; i < 4; i++ {
+		txns = append(txns, mkTxn(5+i*30, 8, 199, analyticsdomain.TxnDebit, "Subscriptions", "Spotify", fixedNow))
+	}
+
+	res := VerifiedSubscriptionLoad(txns, fixedNow)
+
+	var sawOld, sawSpotify bool
+	for _, s := range res.ActiveSubscriptions {
+		if s.Merchant == "OldService" {
+			sawOld = true
+		}
+		if s.Merchant == "Spotify" {
+			sawSpotify = true
+		}
+	}
+	if sawOld {
+		t.Fatal("did not expect a subscription with no recent charge to be in the verified list")
+	}
+	if !sawSpotify {
+		t.Fatal("expected Spotify (recently charged) to be in the verified list")
+	}
+}
+
+func TestIncomeAnalysis_PredictsNextPaydayForStableSalary(t *testing.T) {
+	var txns []txn
+	for i := 0; i < 4; i++ {
+		txns = append(txns, mkTxn(i*30, 10, 60000, analyticsdomain.TxnCredit, "Salary", "Employer Payroll", fixedNow))
+	}
+	res := IncomeAnalysis(txns, fixedNow)
+
+	if res.StabilityLabel != "STABLE" {
+		t.Fatalf("expected STABLE for identical monthly credits, got %s", res.StabilityLabel)
+	}
+	if res.FrequencyLabel != "MONTHLY" {
+		t.Fatalf("expected MONTHLY frequency, got %s (interval=%v)", res.FrequencyLabel, res.TypicalIntervalDays)
+	}
+	if res.NextPredictedPayday == nil {
+		t.Fatal("expected a predicted next payday")
+	}
+	if res.PrimarySource != "Employer Payroll" {
+		t.Fatalf("expected Employer Payroll as primary source, got %s", res.PrimarySource)
+	}
+}
+
+func TestIncomeAnalysis_NoCreditsIsNotAnError(t *testing.T) {
+	res := IncomeAnalysis(nil, fixedNow)
+	if res.CreditCount != 0 || res.NextPredictedPayday != nil {
+		t.Fatalf("expected an empty-but-valid result for no credits, got %+v", res)
+	}
+}
+
 func TestSnapshot_HandlesNilBalanceGracefully(t *testing.T) {
 	var txns []txn
 	txns = append(txns, mkTxn(0, 12, 100, analyticsdomain.TxnDebit, "Groceries", "DMart", fixedNow))

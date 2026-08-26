@@ -11,6 +11,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/yourusername/astra-backend/internal/apitime"
 	analyticsdomain "github.com/yourusername/astra-backend/internal/domain/analytics"
 )
 
@@ -207,7 +208,7 @@ func TrendAnalytics(txns []txn, now time.Time, period string) analyticsdomain.Tr
 	totals := make([]float64, numBuckets)
 	for i := 0; i < numBuckets; i++ {
 		bucketStart := windowStart.AddDate(0, 0, i*bucketDays)
-		points[i] = analyticsdomain.TrendPoint{PeriodStart: dateKey(bucketStart)}
+		points[i] = analyticsdomain.TrendPoint{PeriodStart: apitime.New(bucketStart)}
 	}
 	for _, t := range current {
 		idx := int(t.OccurredAt.Sub(windowStart).Hours() / 24 / float64(bucketDays))
@@ -234,8 +235,8 @@ func TrendAnalytics(txns []txn, now time.Time, period string) analyticsdomain.Tr
 			troughIdx = i
 		}
 	}
-	res.PeakPeriod, res.PeakAmount = points[peakIdx].PeriodStart, points[peakIdx].Total
-	res.TroughPeriod, res.TroughAmount = points[troughIdx].PeriodStart, points[troughIdx].Total
+	res.PeakPeriod, res.PeakAmount = &points[peakIdx].PeriodStart, points[peakIdx].Total
+	res.TroughPeriod, res.TroughAmount = &points[troughIdx].PeriodStart, points[troughIdx].Total
 
 	first, last := totals[0], totals[len(totals)-1]
 	res.FirstVsLastPct = round2(safeDiv(last-first, math.Max(first, 1)) * 100)
@@ -558,6 +559,7 @@ func RecurringDetection(txns []txn, now time.Time) analyticsdomain.RecurringResu
 		recurring = append(recurring, analyticsdomain.RecurringExpense{
 			Merchant: merchant, AvgAmount: round2(avgAmount), Occurrences: len(occurrences),
 			AvgIntervalDays: round2(avgInterval), Frequency: frequency, Confidence: confidence,
+			LastOccurredAt: apitime.New(occurrences[len(occurrences)-1].OccurredAt),
 		})
 
 		switch frequency {
@@ -614,7 +616,7 @@ func NightAndImpulse(txns []txn, now time.Time) analyticsdomain.NightImpulseResu
 			if len(res.ImpulseTransactions) < 25 {
 				res.ImpulseTransactions = append(res.ImpulseTransactions, analyticsdomain.ImpulseTransaction{
 					ID: t.ID, Merchant: t.Merchant, Amount: t.Amount,
-					OccurredAt: t.OccurredAt.Format(time.RFC3339), Reason: reason,
+					OccurredAt: apitime.New(t.OccurredAt), Reason: reason,
 				})
 			}
 		}
@@ -654,19 +656,22 @@ func PatternSummary(txns []txn, now time.Time) analyticsdomain.PatternSummaryRes
 		res.SmallestTransaction = toTransactionRef(smallest)
 	}
 
-	dayTotals := map[string]float64{}
+	dayTotals := map[time.Time]float64{}
 	for _, t := range last30 {
 		res.PerWeekdayTotals[t.OccurredAt.Weekday().String()] = round2(res.PerWeekdayTotals[t.OccurredAt.Weekday().String()] + t.Amount)
-		dayTotals[dateKey(t.OccurredAt)] += t.Amount
+		dayTotals[t.OccurredAt.UTC().Truncate(24*time.Hour)] += t.Amount
 	}
-	var maxDay string
+	var maxDay time.Time
 	var maxTotal float64
 	for day, total := range dayTotals {
 		if total > maxTotal {
 			maxTotal, maxDay = total, day
 		}
 	}
-	res.MostExpensiveDay = maxDay
+	if !maxDay.IsZero() {
+		d := apitime.New(maxDay)
+		res.MostExpensiveDay = &d
+	}
 	res.MostExpensiveDayTotal = round2(maxTotal)
 
 	return res
@@ -674,7 +679,7 @@ func PatternSummary(txns []txn, now time.Time) analyticsdomain.PatternSummaryRes
 
 func toTransactionRef(t txn) *analyticsdomain.TransactionRef {
 	return &analyticsdomain.TransactionRef{
-		ID: t.ID, Merchant: t.Merchant, Amount: round2(t.Amount), OccurredAt: t.OccurredAt.Format(time.RFC3339),
+		ID: t.ID, Merchant: t.Merchant, Amount: round2(t.Amount), OccurredAt: apitime.New(t.OccurredAt),
 	}
 }
 
@@ -767,4 +772,235 @@ func Compare(txns []txn, now time.Time, by string, names []string) analyticsdoma
 	}
 
 	return analyticsdomain.ComparisonResult{By: by, Entries: entries, Total: round2(grandTotal)}
+}
+
+// ============================== L: Investment consistency ==============================
+
+const investmentMonthsTracked = 12
+
+// InvestmentConsistency buckets BUY-order activity into the trailing 12
+// calendar months and reports active-month %, current streak (from the most
+// recent month backward), missed months, and average monthly invested
+// amount. A user with zero events (never bought anything yet) gets a valid
+// all-zero result, not an error.
+func InvestmentConsistency(events []analyticsdomain.InvestmentEvent, now time.Time) analyticsdomain.InvestmentConsistencyResult {
+	anchor := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	monthTotals := make([]float64, investmentMonthsTracked)
+	monthActive := make([]bool, investmentMonthsTracked)
+
+	for _, e := range events {
+		diff := monthsBetween(e.OccurredAt, anchor)
+		idx := investmentMonthsTracked - 1 - diff
+		if idx < 0 || idx >= investmentMonthsTracked {
+			continue
+		}
+		monthTotals[idx] += e.Amount
+		monthActive[idx] = true
+	}
+
+	res := analyticsdomain.InvestmentConsistencyResult{MonthsTracked: investmentMonthsTracked}
+	var totalInvested float64
+	for i := 0; i < investmentMonthsTracked; i++ {
+		if monthActive[i] {
+			res.ActiveMonths++
+			totalInvested += monthTotals[i]
+		}
+	}
+	res.MissedMonths = investmentMonthsTracked - res.ActiveMonths
+	res.ActiveMonthPct = round2(safeDiv(float64(res.ActiveMonths), investmentMonthsTracked) * 100)
+	if res.ActiveMonths > 0 {
+		res.AvgMonthlyInvested = round2(totalInvested / float64(res.ActiveMonths))
+	}
+
+	for i := investmentMonthsTracked - 1; i >= 0; i-- {
+		if !monthActive[i] {
+			break
+		}
+		res.CurrentStreakMonths++
+	}
+
+	return res
+}
+
+func monthsBetween(t, anchor time.Time) int {
+	return (anchor.Year()-t.Year())*12 + int(anchor.Month()) - int(t.Month())
+}
+
+// ============================== M: BNPL exposure ==============================
+
+var bnplProviders = map[string]bool{
+	"Simpl": true, "LazyPay": true, "ZestMoney": true, "Slice": true,
+	"Amazon Pay Later": true, "Paytm Postpaid": true,
+}
+
+const (
+	bnplDangerRatioPct     = 20.0
+	bnplDangerHistoricMult = 1.5
+)
+
+// BNPLExposure sums repayments to known BNPL providers against an
+// income proxy (credits in the same window), and flags a "danger zone" if
+// the ratio is high in absolute terms or has jumped sharply vs the user's
+// own recent history — mirrors z-backend's domain_features.go §9.
+func BNPLExposure(txns []txn, now time.Time) analyticsdomain.BNPLExposureResult {
+	current := bnplRatio(txns, now.AddDate(0, 0, -30), now)
+	historical := bnplRatio(txns, now.AddDate(0, 0, -90), now.AddDate(0, 0, -30))
+
+	res := analyticsdomain.BNPLExposureResult{
+		Last30DayTotal:           current.total,
+		IncomeRatioPct:           current.ratioPct,
+		HistoricalIncomeRatioPct: historical.ratioPct,
+		Providers:                current.providers,
+	}
+	res.IsDangerZone = res.IncomeRatioPct > bnplDangerRatioPct ||
+		(historical.ratioPct > 0 && res.IncomeRatioPct > historical.ratioPct*bnplDangerHistoricMult)
+	return res
+}
+
+type bnplWindowStats struct {
+	total     float64
+	ratioPct  float64
+	providers []analyticsdomain.BNPLProviderStat
+}
+
+func bnplRatio(txns []txn, from, to time.Time) bnplWindowStats {
+	debits := debitsInRange(txns, from, to)
+	income := sumAmount(creditsInRange(txns, from, to))
+
+	type acc struct {
+		total float64
+		count int
+	}
+	byProvider := map[string]*acc{}
+	var total float64
+	for _, t := range debits {
+		if !bnplProviders[t.Merchant] {
+			continue
+		}
+		a := byProvider[t.Merchant]
+		if a == nil {
+			a = &acc{}
+			byProvider[t.Merchant] = a
+		}
+		a.total += t.Amount
+		a.count++
+		total += t.Amount
+	}
+
+	providers := make([]analyticsdomain.BNPLProviderStat, 0, len(byProvider))
+	for name, a := range byProvider {
+		providers = append(providers, analyticsdomain.BNPLProviderStat{
+			Provider: name, Total: round2(a.total), RepaymentCount: a.count,
+		})
+	}
+	sort.Slice(providers, func(i, j int) bool { return providers[i].Total > providers[j].Total })
+
+	return bnplWindowStats{
+		total: round2(total), ratioPct: round2(safeDiv(total, math.Max(income, 1)) * 100), providers: providers,
+	}
+}
+
+// ============================== N: Verified subscription load ==============================
+
+const subscriptionVerifiedWithinDays = 40
+
+// VerifiedSubscriptionLoad filters the recurring-detection output down to
+// subscriptions that are still actually being paid (most recent occurrence
+// within the last ~40 days), so a cancelled subscription that merely looked
+// recurring historically doesn't inflate the reported monthly load.
+func VerifiedSubscriptionLoad(txns []txn, now time.Time) analyticsdomain.SubscriptionLoadResult {
+	cutoff := now.AddDate(0, 0, -subscriptionVerifiedWithinDays)
+
+	var active []analyticsdomain.RecurringExpense
+	var total float64
+	for _, r := range RecurringDetection(txns, now).Recurring {
+		if r.LastOccurredAt.Time().Before(cutoff) {
+			continue
+		}
+		active = append(active, r)
+		switch r.Frequency {
+		case "MONTHLY":
+			total += r.AvgAmount
+		case "WEEKLY":
+			total += r.AvgAmount * 4.33
+		}
+	}
+
+	return analyticsdomain.SubscriptionLoadResult{ActiveSubscriptions: active, TotalVerifiedMonthly: round2(total)}
+}
+
+// ============================== O: Income analysis ==============================
+
+const incomeWindowDays = 180
+
+// IncomeAnalysis looks at CREDIT transactions to predict the next payday and
+// classify income stability/frequency, mirroring z-backend's
+// income_analyzer.go and insight_service.go payday-prediction logic.
+func IncomeAnalysis(txns []txn, now time.Time) analyticsdomain.IncomeResult {
+	credits := creditsInRange(txns, now.AddDate(0, 0, -incomeWindowDays), now)
+	sort.Slice(credits, func(i, j int) bool { return credits[i].OccurredAt.Before(credits[j].OccurredAt) })
+
+	res := analyticsdomain.IncomeResult{CreditCount: len(credits)}
+	if len(credits) == 0 {
+		res.StabilityLabel, res.FrequencyLabel = "IRREGULAR", "IRREGULAR"
+		return res
+	}
+
+	var sumAmt float64
+	bySource := map[string]float64{}
+	for _, c := range credits {
+		sumAmt += c.Amount
+		bySource[c.Merchant] += c.Amount
+	}
+	res.AvgCreditAmount = round2(sumAmt / float64(len(credits)))
+
+	var topSource string
+	var topTotal float64
+	for src, t := range bySource {
+		if t > topTotal {
+			topTotal, topSource = t, src
+		}
+	}
+	res.PrimarySource = topSource
+
+	if len(credits) < 2 {
+		res.StabilityLabel, res.FrequencyLabel = "IRREGULAR", "OCCASIONAL"
+		return res
+	}
+
+	intervals := make([]float64, 0, len(credits)-1)
+	amounts := make([]float64, len(credits))
+	for i, c := range credits {
+		amounts[i] = c.Amount
+		if i > 0 {
+			intervals = append(intervals, c.OccurredAt.Sub(credits[i-1].OccurredAt).Hours()/24)
+		}
+	}
+	avgInterval := mean(intervals)
+	intervalCoV := safeDiv(stddev(intervals), avgInterval)
+	amountCoV := safeDiv(stddev(amounts), mean(amounts))
+	res.TypicalIntervalDays = round2(avgInterval)
+
+	switch {
+	case intervalCoV < 0.15 && amountCoV < 0.15:
+		res.StabilityLabel = "STABLE"
+	case intervalCoV < 0.4:
+		res.StabilityLabel = "VARIABLE"
+	default:
+		res.StabilityLabel = "IRREGULAR"
+	}
+
+	switch {
+	case avgInterval >= 25 && avgInterval <= 35:
+		res.FrequencyLabel = "MONTHLY"
+	case avgInterval < 25:
+		res.FrequencyLabel = "OCCASIONAL"
+	default:
+		res.FrequencyLabel = "IRREGULAR"
+	}
+
+	predicted := apitime.New(credits[len(credits)-1].OccurredAt.AddDate(0, 0, int(math.Round(avgInterval))))
+	res.NextPredictedPayday = &predicted
+
+	return res
 }

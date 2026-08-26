@@ -26,7 +26,9 @@ func (h *PaymentsHandler) Routes() chi.Router {
 	r.Get("/payments/{paymentID}", h.getPayment)
 	r.Post("/mandates", h.createMandate)
 	r.Get("/mandates", h.listMandates)
+	r.Get("/mandates/summary", h.recurringSummary)
 	r.Post("/mandates/{mandateID}/action", h.mandateAction)
+	r.Get("/mandates/{mandateID}/history", h.mandateHistory)
 	return r
 }
 
@@ -117,4 +119,33 @@ func (h *PaymentsHandler) mandateAction(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	apiresponse.OK(w, result)
+}
+
+func (h *PaymentsHandler) mandateHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	mandateID := chi.URLParam(r, "mandateID")
+	history, err := h.svc.MandateHistory(r.Context(), userID, mandateID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, history)
+}
+
+func (h *PaymentsHandler) recurringSummary(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	summary, err := h.svc.RecurringSummary(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, summary)
 }
