@@ -272,13 +272,13 @@ func deriveFundInsights(category, schemeName string, equityPct, debtPct, otherPc
 	// Calculate fund's intrinsic vector from actual database asset percentages
 	fundVector := computeFundVector(category, schemeName, equityPct, debtPct, otherPct)
 
-	// Mathematical Portfolio Simulation:
-	// Blending equation: V_projected = (1 - w) * V_current + w * V_fund, with w = 0.20 (20% simulated rebalance allocation)
-	const simWeight = 0.20
+	// Mathematical Portfolio Simulation (Aladdin What-If Analysis):
+	// Blending equation: V_projected = (1 - w) * V_current + w * V_fund (w = 0.35 simulated allocation weight)
+	const simWeight = 0.35
 	projValues := make([]float64, 7)
 	for i := 0; i < 7; i++ {
 		blended := (1.0-simWeight)*currValues[i] + simWeight*fundVector[i]
-		projValues[i] = math.Round(math.Max(0.08, math.Min(0.98, blended))*100) / 100
+		projValues[i] = math.Round(math.Max(0.05, math.Min(0.98, blended))*100) / 100
 	}
 
 	return catalogdomain.FundInsights{
