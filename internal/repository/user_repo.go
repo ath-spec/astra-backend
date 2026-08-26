@@ -168,6 +168,14 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 		ON CONFLICT DO NOTHING
 	`, userID)
 
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
+		VALUES
+		('ORD-TECH-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 25, 'CNC', 'LIMIT', 2100.00, 'COMPLETE', 25, 2100.00, NOW() - INTERVAL '75 days'),
+		('ORD-TECH-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 40, 'CNC', 'LIMIT', 1380.00, 'COMPLETE', 40, 1380.00, NOW() - INTERVAL '45 days')
+		ON CONFLICT DO NOTHING
+	`, userID)
+
 	var f1, f2, f3 uuid.UUID
 	_ = r.db.Pool.QueryRow(ctx, `
 		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
@@ -245,6 +253,14 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 		VALUES
 		($1, 'INE255X01014', 'MSTCLTD', 'NSE', 'CNC', 75, 670.00, 745.00, 730.00, CURRENT_DATE - 60),
 		($1, 'INE704P01017', 'COCHINSHIP', 'NSE', 'CNC', 18, 1440.00, 1510.00, 1480.00, CURRENT_DATE - 30)
+		ON CONFLICT DO NOTHING
+	`, userID)
+
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
+		VALUES
+		('ORD-BAL-01', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 75, 'CNC', 'LIMIT', 670.00, 'COMPLETE', 75, 670.00, NOW() - INTERVAL '60 days'),
+		('ORD-BAL-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 18, 'CNC', 'LIMIT', 1440.00, 'COMPLETE', 18, 1440.00, NOW() - INTERVAL '30 days')
 		ON CONFLICT DO NOTHING
 	`, userID)
 
@@ -328,6 +344,14 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 		ON CONFLICT DO NOTHING
 	`, userID)
 
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
+		VALUES
+		('ORD-GLOB-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 12, 'CNC', 'LIMIT', 2180.00, 'COMPLETE', 12, 2180.00, NOW() - INTERVAL '100 days'),
+		('ORD-GLOB-02', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 90, 'CNC', 'LIMIT', 690.00, 'COMPLETE', 90, 690.00, NOW() - INTERVAL '40 days')
+		ON CONFLICT DO NOTHING
+	`, userID)
+
 	var f1, f2, f3, f4 uuid.UUID
 	_ = r.db.Pool.QueryRow(ctx, `
 		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
@@ -404,6 +428,13 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
 		($1, 'INE249Z01012', 'MAZDOCK', 'NSE', 'CNC', 8, 2140.00, 2340.50, 2305.00, CURRENT_DATE - 120)
+		ON CONFLICT DO NOTHING
+	`, userID)
+
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
+		VALUES
+		('ORD-CONS-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 8, 'CNC', 'LIMIT', 2140.00, 'COMPLETE', 8, 2140.00, NOW() - INTERVAL '120 days')
 		ON CONFLICT DO NOTHING
 	`, userID)
 
