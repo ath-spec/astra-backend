@@ -53,6 +53,18 @@ func RunMigrations(connString string) error {
 		return fmt.Errorf("run migrations: init migrator: %w", err)
 	}
 
+	// Auto-heal dirty migrations if a previous deployment failed midway
+	v, dirty, vErr := m.Version()
+	if vErr == nil && dirty {
+		forceTarget := int(v) - 1
+		if forceTarget < 0 {
+			forceTarget = 0
+		}
+		if fErr := m.Force(forceTarget); fErr != nil {
+			return fmt.Errorf("run migrations: auto-healing dirty version %d: %w", v, fErr)
+		}
+	}
+
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("run migrations: apply: %w", err)
 	}

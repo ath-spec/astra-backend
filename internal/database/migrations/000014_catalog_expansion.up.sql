@@ -1,3 +1,8 @@
+ALTER TABLE fund_catalog ALTER COLUMN scheme_code TYPE VARCHAR(50);
+ALTER TABLE fund_catalog ALTER COLUMN category TYPE VARCHAR(100);
+ALTER TABLE fund_catalog ALTER COLUMN risk_level TYPE VARCHAR(30);
+ALTER TABLE nfo_listings ALTER COLUMN category TYPE VARCHAR(100);
+
 -- Expands the fund catalog to cover the Explore screen's distinct sections
 -- (Global US/Europe, Silver, REITs, thematic funds, Corporate Bonds, hybrid
 -- risk buckets) which had no matching catalog data before this — same
