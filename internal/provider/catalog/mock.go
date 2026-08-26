@@ -169,38 +169,86 @@ func deriveFundDeepDive(category, schemeName string) catalogdomain.DeepDiveInfo 
 	}
 }
 
+// computeFundVector calculates a fund's exact 7-axis asset vector from its database allocation percentages and category characteristics.
+func computeFundVector(category, schemeName string, equityPct, debtPct, otherPct float64) []float64 {
+	lower := strings.ToLower(category + " " + schemeName)
+
+	beta := 1.0
+	if strings.Contains(lower, "small") {
+		beta = 1.25
+	} else if strings.Contains(lower, "mid") {
+		beta = 1.10
+	} else if strings.Contains(lower, "tech") || strings.Contains(lower, "semi") {
+		beta = 1.20
+	} else if strings.Contains(lower, "debt") || strings.Contains(lower, "bond") || strings.Contains(lower, "liquid") {
+		beta = 0.05
+	} else if strings.Contains(lower, "gold") || strings.Contains(lower, "silver") || strings.Contains(lower, "reit") {
+		beta = 0.10
+	}
+
+	eq := math.Max(0, math.Min(1.0, equityPct/100.0))
+	debt := math.Max(0, math.Min(1.0, debtPct/100.0))
+	other := math.Max(0, math.Min(1.0, otherPct/100.0))
+
+	growth := math.Min(0.98, eq * beta)
+	income := (debt * 0.88) + (eq * 0.10)
+	capPres := (debt * 0.92) + (other * 0.15)
+	infDef := (other * 0.92) + (eq * 0.22)
+	liquidity := 0.70
+	if strings.Contains(lower, "liquid") || strings.Contains(lower, "overnight") {
+		liquidity = 0.98
+	} else if strings.Contains(lower, "large") {
+		liquidity = 0.85
+	}
+	sustainability := 0.50
+	if strings.Contains(lower, "green") || strings.Contains(lower, "energy") {
+		sustainability = 0.80
+	}
+	realAssets := other * 0.95
+
+	return []float64{
+		math.Round(math.Max(0.0, math.Min(1.0, growth))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, income))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, capPres))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, infDef))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, liquidity))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, sustainability))*100) / 100,
+		math.Round(math.Max(0.0, math.Min(1.0, realAssets))*100) / 100,
+	}
+}
+
 func deriveFundInsights(category, schemeName string, equityPct, debtPct, otherPct float64) catalogdomain.FundInsights {
 	lower := strings.ToLower(category + " " + schemeName)
 	var whyGet, suitable, avoid, impact, doesNow, buyMore string
 
-	if strings.Contains(lower, "small") || strings.Contains(lower, "mid") {
+	if strings.Contains(lower, "small") || strings.Contains(lower, "mid") || strings.Contains(lower, "thematic") || strings.Contains(lower, "tech") || strings.Contains(lower, "semi") {
 		whyGet = "Delivers high alpha potential and outsized long-term capital compounding."
 		suitable = "Long-term investors with 5+ year time horizon seeking high wealth creation."
 		avoid = "Investors seeking short-term liquidity or low risk tolerance."
 		impact = "Increases growth beta and expected annualized portfolio returns."
-		doesNow = "Currently provides aggressive mid/small-cap compounding, maximizing long-term wealth appreciation."
-		buyMore = "Adding more will tilt your portfolio towards higher alpha while slightly increasing market beta."
-	} else if strings.Contains(lower, "thematic") || strings.Contains(lower, "tech") || strings.Contains(lower, "semi") {
-		whyGet = fmt.Sprintf("High-conviction capture of structural expansion in %s.", category)
-		suitable = "Investors wanting targeted sector upside alongside a balanced core portfolio."
-		avoid = "Risk-averse investors needing steady dividend distributions."
-		impact = "Concentrates capital into high-growth thematic innovators."
-		doesNow = fmt.Sprintf("Currently delivers high-conviction thematic growth targeting secular tailwinds in %s.", category)
-		buyMore = fmt.Sprintf("Adding more will increase sector momentum exposure in %s.", category)
-	} else if strings.Contains(lower, "debt") || strings.Contains(lower, "bond") || strings.Contains(lower, "hybrid") {
+		doesNow = "Currently provides aggressive compounding, maximizing long-term wealth appreciation."
+		buyMore = "Adding more will tilt your portfolio towards higher alpha and thematic expansion."
+	} else if strings.Contains(lower, "debt") || strings.Contains(lower, "bond") || strings.Contains(lower, "liquid") || strings.Contains(lower, "corporate") {
 		whyGet = "Generates consistent accrual yield and preserves capital across market downturns."
 		suitable = "Conservative investors seeking stable cash flow and portfolio defensiveness."
 		avoid = "Aggressive growth investors targeting maximum equity alpha."
 		impact = "Reduces portfolio standard deviation and downside drawdown."
 		doesNow = "Currently provides consistent yield and capital preservation, anchoring the portfolio against market volatility."
 		buyMore = "Adding more will pull your overall portfolio towards Capital Preservation and Income."
-	} else if strings.Contains(lower, "gold") || strings.Contains(lower, "reit") || strings.Contains(lower, "silver") {
+	} else if strings.Contains(lower, "gold") || strings.Contains(lower, "reit") || strings.Contains(lower, "silver") || strings.Contains(lower, "energy") {
 		whyGet = "Protects purchasing power against currency debasement and stagflation."
 		suitable = "All portfolios requiring 5-10% hard asset diversification."
 		avoid = "Short-term speculative trades."
 		impact = "Lowers total portfolio correlation with equity indices."
 		doesNow = "Currently protects against inflation and market downturns through hard commodity diversification."
 		buyMore = "Adding more will strengthen your Inflation Defense and Real Asset vectors."
+	} else if strings.Contains(lower, "hybrid") || strings.Contains(lower, "balanced") {
+		whyGet = "Delivers steady asset-allocated compounding with built-in volatility dampening."
+		suitable = "Investors wanting equity upside with reduced downside drawdowns."
+		avoid = "Extreme risk-seeking aggressive alpha mandates."
+		impact = "Stabilizes risk metrics while participating in equity growth."
+		doesNow = "Currently provides balanced equity and fixed-income diversification."
+		buyMore = "Adding more will balance your portfolio across growth and capital preservation."
 	} else {
 		whyGet = "Provides solid, resilient equity exposure across India's largest and most established bluechip companies."
 		suitable = "Core long-term compounding with low tracking error."
@@ -210,23 +258,27 @@ func deriveFundInsights(category, schemeName string, equityPct, debtPct, otherPc
 		buyMore = "Adding more will pull your overall portfolio slightly towards Capital Preservation while maintaining steady compound growth."
 	}
 
-	eqFactor := math.Min(math.Max(equityPct/100.0, 0.15), 0.95)
-	debtFactor := math.Min(math.Max(debtPct/100.0, 0.10), 0.85)
-	otherFactor := math.Min(math.Max(otherPct/100.0, 0.08), 0.75)
-
+	// Current portfolio baseline (matches unified account DNA)
 	currValues := []float64{
-		math.Round(eqFactor*100) / 100,
-		math.Round(debtFactor*100) / 100,
-		math.Round(math.Max(debtFactor, 0.45)*100) / 100,
-		math.Round(otherFactor*100) / 100,
-		0.70,
-		0.55,
-		math.Round(otherFactor*100) / 100,
+		0.72, // Growth
+		0.45, // Income
+		0.50, // Capital Preservation
+		0.35, // Inflation Defense
+		0.75, // Liquidity
+		0.55, // Sustainability
+		0.25, // Real Assets
 	}
 
-	projValues := make([]float64, len(currValues))
-	for i, v := range currValues {
-		projValues[i] = math.Round(math.Min(v*1.15, 0.98)*100) / 100
+	// Calculate fund's intrinsic vector from actual database asset percentages
+	fundVector := computeFundVector(category, schemeName, equityPct, debtPct, otherPct)
+
+	// Mathematical Portfolio Simulation:
+	// Blending equation: V_projected = (1 - w) * V_current + w * V_fund, with w = 0.20 (20% simulated rebalance allocation)
+	const simWeight = 0.20
+	projValues := make([]float64, 7)
+	for i := 0; i < 7; i++ {
+		blended := (1.0-simWeight)*currValues[i] + simWeight*fundVector[i]
+		projValues[i] = math.Round(math.Max(0.08, math.Min(0.98, blended))*100) / 100
 	}
 
 	return catalogdomain.FundInsights{

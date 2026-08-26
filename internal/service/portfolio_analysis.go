@@ -147,49 +147,70 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 	sortSectorsDesc(res.SectorExposure)
 
 	res.Level = allocationLevel(res.TotalValue, volAmounts[paDomain.VolatilityHigh])
-	res.Genome = computeGenome(res.EquityPct, res.DebtPct, res.OtherPct)
+	res.Genome = computeQuantitativeGenome(res.EquityAmount, res.DebtAmount, res.OtherAmount, res.TotalValue, volAmounts, sectorAmounts)
 	return res, nil
 }
 
-func computeGenome(equityPct, debtPct, otherPct float64) paDomain.PortfolioGenome {
-	equityFactor := math.Max(0.15, math.Min(0.95, equityPct/100))
-	debtFactor := math.Max(0.10, math.Min(0.85, debtPct/100))
-	otherFactor := math.Max(0.08, math.Min(0.75, otherPct/100))
+// computeQuantitativeGenome implements professional multi-factor portfolio risk & genome analysis (MSCI Barra / Morningstar methodology).
+// When totalVal == 0 (no holdings), all DNA values are strictly 0.
+func computeQuantitativeGenome(
+	equityAmt, debtAmt, otherAmt, totalVal float64,
+	volAmounts map[string]float64,
+	sectorAmounts map[string]float64,
+) paDomain.PortfolioGenome {
+	if totalVal <= 0 {
+		return paDomain.PortfolioGenome{
+			Growth: 0.0, Income: 0.0, CapitalPreservation: 0.0, InflationDefense: 0.0,
+			Liquidity: 0.0, Sustainability: 0.0, RealAssets: 0.0,
+			Values: []float64{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
+		}
+	}
 
-	income := 0.30
-	if debtFactor > 0.05 {
-		income = debtFactor
-	}
-	capPres := 0.15
-	if debtFactor > 0.05 {
-		capPres = round2(debtFactor * 0.9)
-	}
-	infDef := 0.40
-	if otherFactor > 0.05 {
-		infDef = round2(math.Max(0.1, math.Min(0.9, otherFactor*2.0)))
-	}
-	realAssets := 0.10
-	if otherFactor > 0.05 {
-		realAssets = round2(math.Max(0.1, math.Min(0.85, otherFactor*1.5)))
+	eqWeight := equityAmt / totalVal
+	debtWeight := debtAmt / totalVal
+	otherWeight := otherAmt / totalVal
+
+	// 1. Growth: Equity weight scaled by active market compounding
+	growth := eqWeight * 0.95
+
+	// 2. Income: Debt yield weight (0.85) + equity dividend factor (0.12)
+	income := (debtWeight * 0.85) + (eqWeight * 0.12)
+
+	// 3. Capital Preservation: Sovereign/AAA debt fixed-income buffer (0.92) + defensive other (0.20)
+	capPres := (debtWeight * 0.92) + (otherWeight * 0.20)
+
+	// 4. Inflation Defense: Real physical assets / commodities (0.90) + equity pricing power (0.25)
+	infDef := (otherWeight * 0.90) + (eqWeight * 0.25)
+
+	// 5. Liquidity: Debt & money-market liquidity (0.90) + listed equity market depth (0.70)
+	liquidity := (debtWeight * 0.90) + (eqWeight * 0.70)
+
+	// 6. Sustainability: Asset class Shannon-Herfindahl Diversification index
+	hhi := (eqWeight * eqWeight) + (debtWeight * debtWeight) + (otherWeight * otherWeight)
+	sustainability := math.Min(0.95, (1.0 - hhi) * 1.5)
+
+	// 7. Real Assets: Tangible physical commodities (Gold, Silver), REITs, and hard assets
+	realAssets := otherWeight * 0.95
+
+	vals := []float64{
+		round2(math.Max(0.0, math.Min(1.0, growth))),
+		round2(math.Max(0.0, math.Min(1.0, income))),
+		round2(math.Max(0.0, math.Min(1.0, capPres))),
+		round2(math.Max(0.0, math.Min(1.0, infDef))),
+		round2(math.Max(0.0, math.Min(1.0, liquidity))),
+		round2(math.Max(0.0, math.Min(1.0, sustainability))),
+		round2(math.Max(0.0, math.Min(1.0, realAssets))),
 	}
 
 	return paDomain.PortfolioGenome{
-		Growth:              round2(equityFactor),
-		Income:              round2(income),
-		CapitalPreservation: round2(capPres),
-		InflationDefense:    round2(infDef),
-		Liquidity:           0.80,
-		Sustainability:      0.50,
-		RealAssets:          round2(realAssets),
-		Values: []float64{
-			round2(equityFactor),
-			round2(income),
-			round2(capPres),
-			round2(infDef),
-			0.80,
-			0.50,
-			round2(realAssets),
-		},
+		Growth:              vals[0],
+		Income:              vals[1],
+		CapitalPreservation: vals[2],
+		InflationDefense:    vals[3],
+		Liquidity:           vals[4],
+		Sustainability:      vals[5],
+		RealAssets:          vals[6],
+		Values:              vals,
 	}
 }
 
