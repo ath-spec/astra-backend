@@ -50,7 +50,7 @@ func scanFund(row scanner) (catalogdomain.Fund, error) {
 	err := row.Scan(
 		&f.SchemeCode, &f.SchemeName, &f.AMCName, &f.ISIN, &f.Category, &f.RiskLevel, &f.NAV, &navDate,
 		&f.ExpenseRatio, &f.AUM, &f.MinInvestment, &f.MinSIPAmount, &f.Returns1Y, &f.Returns3Y, &f.Returns5Y,
-		&f.FundManager, &f.BenchmarkIndex, &launchDate,
+		&f.FundManager, &f.BenchmarkIndex, &launchDate, &f.ExitLoadPct, &f.ExitLoadPeriodDays,
 	)
 	if err != nil {
 		return catalogdomain.Fund{}, fmt.Errorf("scan fund: %w", err)
@@ -62,7 +62,7 @@ func scanFund(row scanner) (catalogdomain.Fund, error) {
 
 const fundColumns = `scheme_code, scheme_name, amc_name, isin, category, risk_level, nav, nav_date,
 	expense_ratio, aum, min_investment, min_sip_amount, returns_1y, returns_3y, returns_5y,
-	fund_manager, benchmark_index, launch_date`
+	fund_manager, benchmark_index, launch_date, exit_load_pct, exit_load_period_days`
 
 func (p *MockProvider) SearchFunds(ctx context.Context, params catalogdomain.SearchParams) ([]catalogdomain.Fund, error) {
 	page := params.Page

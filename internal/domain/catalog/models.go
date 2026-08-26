@@ -6,24 +6,26 @@ package catalog
 import "github.com/yourusername/astra-backend/internal/apitime"
 
 type Fund struct {
-	SchemeCode     string        `json:"scheme_code"`
-	SchemeName     string        `json:"scheme_name"`
-	AMCName        string        `json:"amc_name"`
-	ISIN           string        `json:"isin"`
-	Category       string        `json:"category"`
-	RiskLevel      string        `json:"risk_level"`
-	NAV            float64       `json:"nav"`
-	NAVDate        apitime.Time  `json:"nav_date"`
-	ExpenseRatio   float64       `json:"expense_ratio"`
-	AUM            float64       `json:"aum"`
-	MinInvestment  float64       `json:"min_investment"`
-	MinSIPAmount   float64       `json:"min_sip_amount"`
-	Returns1Y      *float64      `json:"returns_1y,omitempty"`
-	Returns3Y      *float64      `json:"returns_3y,omitempty"`
-	Returns5Y      *float64      `json:"returns_5y,omitempty"`
-	FundManager    *string       `json:"fund_manager,omitempty"`
-	BenchmarkIndex *string       `json:"benchmark_index,omitempty"`
-	LaunchDate     *apitime.Time `json:"launch_date,omitempty"`
+	SchemeCode         string        `json:"scheme_code"`
+	SchemeName         string        `json:"scheme_name"`
+	AMCName            string        `json:"amc_name"`
+	ISIN               string        `json:"isin"`
+	Category           string        `json:"category"`
+	RiskLevel          string        `json:"risk_level"`
+	NAV                float64       `json:"nav"`
+	NAVDate            apitime.Time  `json:"nav_date"`
+	ExpenseRatio       float64       `json:"expense_ratio"`
+	AUM                float64       `json:"aum"`
+	MinInvestment      float64       `json:"min_investment"`
+	MinSIPAmount       float64       `json:"min_sip_amount"`
+	Returns1Y          *float64      `json:"returns_1y,omitempty"`
+	Returns3Y          *float64      `json:"returns_3y,omitempty"`
+	Returns5Y          *float64      `json:"returns_5y,omitempty"`
+	FundManager        *string       `json:"fund_manager,omitempty"`
+	BenchmarkIndex     *string       `json:"benchmark_index,omitempty"`
+	LaunchDate         *apitime.Time `json:"launch_date,omitempty"`
+	ExitLoadPct        float64       `json:"exit_load_pct"`
+	ExitLoadPeriodDays int           `json:"exit_load_period_days"`
 }
 
 type NFO struct {
@@ -98,4 +100,5 @@ type FundProfile struct {
 	DeepDive    DeepDiveInfo        `json:"deep_dive"`
 	Insights    FundInsights        `json:"insights"`
 	UserHolding *UserHolding        `json:"user_holding,omitempty"`
+	IsWatched   bool                `json:"is_watched"`
 }

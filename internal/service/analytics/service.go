@@ -2,10 +2,13 @@ package analytics
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/yourusername/astra-backend/internal/apitime"
 	analyticsdomain "github.com/yourusername/astra-backend/internal/domain/analytics"
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
 	"github.com/yourusername/astra-backend/internal/repository"
@@ -171,6 +174,38 @@ func (s *Service) SubscriptionLoad(ctx context.Context, userID uuid.UUID) (analy
 		return analyticsdomain.SubscriptionLoadResult{}, err
 	}
 	return VerifiedSubscriptionLoad(txns, now), nil
+}
+
+// ListTransactions is the raw feed behind the Transactions screen — every
+// individual transaction in the lookback window (default fetchWindowDays,
+// capped at 3650), optionally filtered by exact category/merchant, newest
+// first. Unlike every other method on this Service, it returns individual
+// line items rather than a computed analysis.
+func (s *Service) ListTransactions(ctx context.Context, userID uuid.UUID, category, merchant string, days int) ([]analyticsdomain.TransactionListItem, error) {
+	if days <= 0 || days > 3650 {
+		days = fetchWindowDays
+	}
+	now := time.Now().UTC()
+	txns, err := s.source.GetTransactions(ctx, userID, now.AddDate(0, 0, -days), now)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]analyticsdomain.TransactionListItem, 0, len(txns))
+	for _, t := range txns {
+		if category != "" && !strings.EqualFold(t.Category, category) {
+			continue
+		}
+		if merchant != "" && !strings.EqualFold(t.Merchant, merchant) {
+			continue
+		}
+		items = append(items, analyticsdomain.TransactionListItem{
+			ID: t.ID, Amount: round2(t.Amount), Type: t.Type, Category: t.Category,
+			Merchant: t.Merchant, OccurredAt: apitime.New(t.OccurredAt),
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].OccurredAt.Time().After(items[j].OccurredAt.Time()) })
+	return items, nil
 }
 
 func (s *Service) IncomeAnalysis(ctx context.Context, userID uuid.UUID) (analyticsdomain.IncomeResult, error) {

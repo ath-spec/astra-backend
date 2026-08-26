@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -39,6 +40,7 @@ func (h *AnalyticsHandler) Routes() chi.Router {
 	r.Get("/bnpl", h.bnpl)
 	r.Get("/subscriptions", h.subscriptions)
 	r.Get("/income", h.income)
+	r.Get("/transactions", h.transactions)
 	return r
 }
 
@@ -254,6 +256,31 @@ func (h *AnalyticsHandler) subscriptions(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	result, err := h.svc.SubscriptionLoad(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, result)
+}
+
+func (h *AnalyticsHandler) transactions(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	category := r.URL.Query().Get("category")
+	merchant := r.URL.Query().Get("merchant")
+	days := 0
+	if v := r.URL.Query().Get("days"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			apiresponse.Error(w, apiresponse.Validation("days must be a positive integer"))
+			return
+		}
+		days = n
+	}
+	result, err := h.svc.ListTransactions(r.Context(), userID, category, merchant, days)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

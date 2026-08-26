@@ -29,6 +29,19 @@ type Transaction struct {
 	OccurredAt time.Time
 }
 
+// TransactionListItem is the wire format for the raw transaction feed (see
+// GET /api/v1/analytics/spend/transactions) — the Transactions screen's data
+// source. Unlike Transaction (the engine's internal, JSON-tag-free working
+// type), this has epoch-seconds timestamps for the wire.
+type TransactionListItem struct {
+	ID         string       `json:"id"`
+	Amount     float64      `json:"amount"`
+	Type       TxnType      `json:"type"` // DEBIT / CREDIT
+	Category   string       `json:"category"`
+	Merchant   string       `json:"merchant"`
+	OccurredAt apitime.Time `json:"occurred_at"`
+}
+
 // --- A: Weekday vs weekend ---
 
 type WeekdayWeekendResult struct {

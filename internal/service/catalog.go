@@ -8,15 +8,17 @@ import (
 	catalogdomain "github.com/yourusername/astra-backend/internal/domain/catalog"
 	catalogprovider "github.com/yourusername/astra-backend/internal/provider/catalog"
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
+	watchlistprovider "github.com/yourusername/astra-backend/internal/provider/watchlist"
 )
 
 type CatalogService struct {
-	provider catalogprovider.Provider
-	mf       mfprovider.Provider
+	provider  catalogprovider.Provider
+	mf        mfprovider.Provider
+	watchlist *watchlistprovider.PostgresProvider
 }
 
-func NewCatalogService(provider catalogprovider.Provider, mf mfprovider.Provider) *CatalogService {
-	return &CatalogService{provider: provider, mf: mf}
+func NewCatalogService(provider catalogprovider.Provider, mf mfprovider.Provider, watchlist *watchlistprovider.PostgresProvider) *CatalogService {
+	return &CatalogService{provider: provider, mf: mf, watchlist: watchlist}
 }
 
 func (s *CatalogService) SearchFunds(ctx context.Context, params catalogdomain.SearchParams) ([]catalogdomain.Fund, error) {
@@ -52,5 +54,12 @@ func (s *CatalogService) GetFundProfile(ctx context.Context, userID uuid.UUID, s
 			ReturnsPct:    holding.ReturnsPct,
 		}
 	}
+
+	watched, err := s.watchlist.IsWatched(ctx, userID, schemeCode)
+	if err != nil {
+		return nil, err
+	}
+	profile.IsWatched = watched
+
 	return profile, nil
 }

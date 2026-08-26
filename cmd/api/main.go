@@ -27,6 +27,7 @@ import (
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	paymentsprovider "github.com/yourusername/astra-backend/internal/provider/payments"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
+	watchlistprovider "github.com/yourusername/astra-backend/internal/provider/watchlist"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
 	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
@@ -61,8 +62,11 @@ func main() {
 	fdProvider := fdprovider.NewMockProvider(db.Pool, userRepo)
 	mfProvider := mfprovider.NewMockProvider(db.Pool)
 
+	watchlistProvider := watchlistprovider.NewPostgresProvider(db.Pool)
+
 	stocksService := service.NewStocksService(stocksProvider)
-	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool), mfProvider)
+	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool), mfProvider, watchlistProvider)
+	watchlistService := service.NewWatchlistService(watchlistProvider)
 	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
 	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
@@ -85,6 +89,7 @@ func main() {
 	mfHandler := handler.NewMFHandler(mfService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
+	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 
 	// 6. Setup Router
 	r := chi.NewRouter()
@@ -165,6 +170,7 @@ func main() {
 		r.Mount("/api/v1/goals", goalsHandler.Routes())
 		r.Mount("/api/v1/dashboard", dashboardHandler.Routes())
 		r.Mount("/api/v1/portfolio-analysis", portfolioAnalysisHandler.Routes())
+		r.Mount("/api/v1/watchlist", watchlistHandler.Routes())
 		// mf: holdings/purchase/redeem/transactions are a real mock provider;
 		// only GET /mf/cas (importing an external CAS) stays 501.
 		r.Mount("/api/v1/mf", mfHandler.Routes())
