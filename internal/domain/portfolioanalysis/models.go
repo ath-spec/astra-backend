@@ -23,10 +23,22 @@ type SectorExposure struct {
 	Percentage float64 `json:"percentage"`
 }
 
+// PortfolioGenome represents the 7-axis DNA of the user's blended portfolio.
+type PortfolioGenome struct {
+	Growth              float64   `json:"growth"`
+	Income              float64   `json:"income"`
+	CapitalPreservation float64   `json:"capital_preservation"`
+	InflationDefense    float64   `json:"inflation_defense"`
+	Liquidity           float64   `json:"liquidity"`
+	Sustainability      float64   `json:"sustainability"`
+	RealAssets          float64   `json:"real_assets"`
+	Values              []float64 `json:"values"`
+}
+
 // AllocationResult backs the Allocation tab: equity/debt/other split (value-
 // weighted across every held MF scheme's real static allocation breakdown,
 // plus stock holdings counted as 100% equity), a volatility-bucket
-// breakdown, and blended sector exposure.
+// breakdown, blended sector exposure, and the computed 7-axis Portfolio Genome.
 type AllocationResult struct {
 	Level             string             `json:"level"` // CONSERVATIVE / MODERATE_CONSERVATIVE / BALANCED / AGGRESSIVE / VERY_AGGRESSIVE
 	TotalValue        float64            `json:"total_value"`
@@ -38,6 +50,7 @@ type AllocationResult struct {
 	OtherPct          float64            `json:"other_pct"`
 	VolatilityBuckets []VolatilityBucket `json:"volatility_buckets"`
 	SectorExposure    []SectorExposure   `json:"sector_exposure"`
+	Genome            PortfolioGenome    `json:"genome"`
 }
 
 const (

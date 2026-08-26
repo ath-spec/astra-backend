@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -146,7 +147,50 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 	sortSectorsDesc(res.SectorExposure)
 
 	res.Level = allocationLevel(res.TotalValue, volAmounts[paDomain.VolatilityHigh])
+	res.Genome = computeGenome(res.EquityPct, res.DebtPct, res.OtherPct)
 	return res, nil
+}
+
+func computeGenome(equityPct, debtPct, otherPct float64) paDomain.PortfolioGenome {
+	equityFactor := math.Max(0.15, math.Min(0.95, equityPct/100))
+	debtFactor := math.Max(0.10, math.Min(0.85, debtPct/100))
+	otherFactor := math.Max(0.08, math.Min(0.75, otherPct/100))
+
+	income := 0.30
+	if debtFactor > 0.05 {
+		income = debtFactor
+	}
+	capPres := 0.15
+	if debtFactor > 0.05 {
+		capPres = round2(debtFactor * 0.9)
+	}
+	infDef := 0.40
+	if otherFactor > 0.05 {
+		infDef = round2(math.Max(0.1, math.Min(0.9, otherFactor*2.0)))
+	}
+	realAssets := 0.10
+	if otherFactor > 0.05 {
+		realAssets = round2(math.Max(0.1, math.Min(0.85, otherFactor*1.5)))
+	}
+
+	return paDomain.PortfolioGenome{
+		Growth:              round2(equityFactor),
+		Income:              round2(income),
+		CapitalPreservation: round2(capPres),
+		InflationDefense:    round2(infDef),
+		Liquidity:           0.80,
+		Sustainability:      0.50,
+		RealAssets:          round2(realAssets),
+		Values: []float64{
+			round2(equityFactor),
+			round2(income),
+			round2(capPres),
+			round2(infDef),
+			0.80,
+			0.50,
+			round2(realAssets),
+		},
+	}
 }
 
 // Discipline computes SIP regularity, streak, active-months ratio, and automation percentage

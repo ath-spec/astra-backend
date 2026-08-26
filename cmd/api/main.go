@@ -151,6 +151,7 @@ func main() {
 		r.Post("/api/auth/otp/verify", authHandler.VerifyOTP)
 		r.Post("/api/auth/refresh", authHandler.Refresh)
 		r.Post("/api/auth/logout", authHandler.Logout)
+		r.Post("/api/auth/reset", authHandler.ResetUser)
 	})
 
 	// Protected Routes (Requires JWT Bearer Token)

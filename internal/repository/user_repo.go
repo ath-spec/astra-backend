@@ -46,6 +46,7 @@ type UserRepository interface {
 	CreateRefreshToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	DeleteUserByPhone(ctx context.Context, phoneNumber string) error
 }
 
 type PostgresUserRepository struct {
@@ -123,6 +124,11 @@ func (r *PostgresUserRepository) findByPhone(ctx context.Context, phoneNumber st
 	default:
 		return nil, fmt.Errorf("lookup user by phone: %w", err)
 	}
+}
+
+func (r *PostgresUserRepository) DeleteUserByPhone(ctx context.Context, phoneNumber string) error {
+	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE phone_number = $1`, phoneNumber)
+	return err
 }
 
 // seedInitialUserData selects from 4 distinct, rich investor archetypes based on phone number hash,

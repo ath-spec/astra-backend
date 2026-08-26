@@ -229,6 +229,22 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ResetUser handles POST /api/auth/reset — resets and deletes a user by phone number
+// so they can log in fresh and trigger new archetype seeding with rich subscriptions.
+func (h *AuthHandler) ResetUser(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		PhoneNumber string `json:"phone_number"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	if req.PhoneNumber != "" {
+		_ = h.userRepo.DeleteUserByPhone(r.Context(), req.PhoneNumber)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"message": "User reset successfully. Next login will re-seed fresh data.",
+	})
+}
+
 func respondAuthError(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)

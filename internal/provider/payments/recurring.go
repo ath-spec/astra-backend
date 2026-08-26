@@ -43,15 +43,21 @@ var demoSubscriptions = []demoSubscription{
 	{"Netflix", "netflix@upi", 649, 75},
 	{"YouTube Premium", "youtube@upi", 129, 45},
 	{"Spotify", "spotify@upi", 119, 20},
+	{"Amazon Prime", "prime@upi", 299, 60},
+	{"Disney+ Hotstar", "hotstar@upi", 299, 15},
+	{"Apple One", "apple@upi", 195, 10},
+	{"Google One Storage", "googleone@upi", 130, 5},
+	{"Airtel Fiber Broadband", "airtelfiber@upi", 999, 25},
+	{"Cult.fit Pass", "cultfit@upi", 1250, 85},
 }
 
 // seedDemoSubscriptions lazily seeds a new user's starter subscription
 // mandates the first time their mandates are listed. Idempotent: only runs
-// when the user has zero mandates of any status, so it never re-seeds after
+// when the user has zero subscription mandates, so it never re-seeds after
 // the user creates/cancels their own.
 func (p *MockProvider) seedDemoSubscriptions(ctx context.Context, userID uuid.UUID) error {
 	var hasAny bool
-	if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mandates WHERE user_id = $1)`, userID).Scan(&hasAny); err != nil {
+	if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mandates WHERE user_id = $1 AND category = 'SUBSCRIPTION')`, userID).Scan(&hasAny); err != nil {
 		return fmt.Errorf("check existing mandates: %w", err)
 	}
 	if hasAny {
