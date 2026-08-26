@@ -108,6 +108,16 @@ func (p *MockProvider) GetFund(ctx context.Context, schemeCode string) (*catalog
 	f, err := scanFund(row)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			// Fallback: try case-insensitive partial match on scheme_name or scheme_code
+			fallbackRow := p.pool.QueryRow(ctx, `
+				SELECT `+fundColumns+` FROM fund_catalog 
+				WHERE scheme_code ILIKE $1 OR scheme_name ILIKE ('%' || $1 || '%') OR amc_name ILIKE ('%' || $1 || '%')
+				ORDER BY scheme_code LIMIT 1
+			`, schemeCode)
+			fallbackFund, err2 := scanFund(fallbackRow)
+			if err2 == nil {
+				return &fallbackFund, nil
+			}
 			return nil, apiresponse.NotFound("fund %s not found", schemeCode)
 		}
 		return nil, err
@@ -242,7 +252,7 @@ func (p *MockProvider) GetFundProfile(ctx context.Context, schemeCode string) (*
 	var sectorsJSON, holdingsJSON []byte
 	err = p.pool.QueryRow(ctx, `
 		SELECT equity_pct, debt_pct, other_pct, sectors, top_holdings FROM fund_allocation WHERE scheme_code = $1
-	`, schemeCode).Scan(&equityPct, &debtPct, &otherPct, &sectorsJSON, &holdingsJSON)
+	`, fund.SchemeCode).Scan(&equityPct, &debtPct, &otherPct, &sectorsJSON, &holdingsJSON)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("lookup fund allocation: %w", err)
 	}
