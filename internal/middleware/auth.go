@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
@@ -13,11 +14,20 @@ type contextKey string
 
 const UserIDKey contextKey = "user_id"
 
+// GetUserID extracts the authenticated user's ID from a request context that
+// has passed through RequireAuth. The bool is false if the context has no
+// user ID (e.g. called from an unprotected route by mistake) — callers must
+// check it rather than using the zero UUID.
+func GetUserID(ctx context.Context) (uuid.UUID, bool) {
+	id, ok := ctx.Value(UserIDKey).(uuid.UUID)
+	return id, ok
+}
+
 // RequireAuth validates the JWT token in the Authorization header
 func RequireAuth(authService *service.AuthService) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			
+
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
 				http.Error(w, `{"error": "Missing Authorization header"}`, http.StatusUnauthorized)

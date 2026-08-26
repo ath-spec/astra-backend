@@ -42,7 +42,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusUnauthorized, "Unauthorized: No user in context")
 		return
 	}
-	
+
 	userID, ok := userIDValue.(uuid.UUID)
 	if !ok {
 		respondWithError(w, http.StatusInternalServerError, "Internal Error: Invalid user ID format")
@@ -59,7 +59,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 	// 3. Context Enrichment! (Backend Patterns)
 	// Fetch user's bank accounts from DB
 	accounts, err := h.userRepo.GetBankAccounts(r.Context(), userID)
-	
+
 	contextStr := "\n\n### Linked Bank Accounts (Real-time DB Data):\n"
 	if err == nil && len(accounts) > 0 {
 		for _, acc := range accounts {
@@ -120,7 +120,7 @@ CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what
 		"role":    "system",
 		"content": promptContent,
 	}
-	
+
 	// Prepend the system prompt to the messages
 	messagesWithContext := append([]map[string]interface{}{systemPrompt}, chatReq.Messages...)
 
@@ -151,7 +151,7 @@ func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
 		return
 	}
-	
+
 	userID := userIDValue.(uuid.UUID)
 	session, err := h.chatRepo.GetSessionForUser(r.Context(), userID)
 	if err != nil {

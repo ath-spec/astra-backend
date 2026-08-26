@@ -69,7 +69,7 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 
 		bodyBytes, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		
+
 		if err != nil {
 			lastErr = fmt.Errorf("error reading response body for model %s: %w", model, err)
 			continue // Try fallback
@@ -85,10 +85,10 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 					Message map[string]interface{} `json:"message"`
 				} `json:"choices"`
 			}
-			
+
 			if err := json.Unmarshal(bodyBytes, &groqResp); err == nil && len(groqResp.Choices) > 0 {
 				updatedMessages := append(messages, groqResp.Choices[0].Message)
-				
+
 				session, err := s.chatRepo.GetSessionForUser(ctx, userID)
 				if err == nil {
 					session.Messages = updatedMessages
@@ -97,7 +97,7 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 			}
 			return bodyBytes, resp.StatusCode, nil
 		}
-		
+
 		// If status is not 200, it's an API error, continue to fallback
 	}
 
@@ -110,33 +110,33 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 
 func (s *GroqAIService) GetTextToSpeech(ctx context.Context, text string) ([]byte, int, error) {
 	url := "https://api.sarvam.ai/text-to-speech"
-	
+
 	payload := map[string]interface{}{
 		"inputs":               []string{text},
 		"target_language_code": "en-IN",
 		"speaker":              "shubh",
 		"model":                "bulbul:v3",
 	}
-	
+
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, http.StatusInternalServerError, err
 	}
-	
+
 	req.Header.Set("api-subscription-key", s.sarvamAPIKey)
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, http.StatusBadGateway, err
 	}
 	defer resp.Body.Close()
-	
+
 	bodyBytes, err := io.ReadAll(resp.Body)
 	return bodyBytes, resp.StatusCode, err
 }

@@ -24,11 +24,11 @@ func Load() *Config {
 		Port:              os.Getenv("PORT"),
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
 		MasterInternalKey: masterKey,
-		
+
 		// These might be encrypted, we will check below
-		GroqAPIKey:        os.Getenv("GROQ_API_KEY"),
-		JWTSecret:         os.Getenv("JWT_SECRET"),
-		SarvamAPIKey:      os.Getenv("SARVAM_API_KEY"),
+		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
+		SarvamAPIKey: os.Getenv("SARVAM_API_KEY"),
 	}
 
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
@@ -70,7 +70,7 @@ func decryptOrFatal(ciphertext, key, varName string) string {
 	if ciphertext == "" {
 		return ""
 	}
-	
+
 	// If it doesn't look like base64, warn the user (maybe they forgot to encrypt it in the env)
 	if !strings.HasSuffix(ciphertext, "=") && !strings.ContainsAny(ciphertext, "+/") && len(ciphertext) < 20 {
 		log.Printf("WARNING: %s does not look like a base64 encrypted string. Decryption may fail.", varName)

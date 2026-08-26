@@ -37,7 +37,7 @@ func (s *AuthService) GenerateToken(userID uuid.UUID) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(s.jwtSecret))
-	
+
 	if err != nil {
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
