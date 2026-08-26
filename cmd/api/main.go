@@ -80,7 +80,7 @@ func main() {
 	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
-	aaHandler := handler.NewAAHandler()
+	aaHandler := handler.NewAAHandler(db.Pool)
 	kycHandler := handler.NewKYCHandler()
 	mfHandler := handler.NewMFHandler(mfService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)

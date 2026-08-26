@@ -580,3 +580,85 @@ func sortSectorsDesc(entries []paDomain.SectorExposure) {
 		}
 	}
 }
+
+type SimulationResult struct {
+	CurrentAllocation   *paDomain.AllocationResult `json:"current_allocation"`
+	ProjectedAllocation *paDomain.AllocationResult `json:"projected_allocation"`
+	SimulatedSchemeCode string                     `json:"simulated_scheme_code"`
+	SimulatedAmount     float64                    `json:"simulated_amount"`
+}
+
+// SimulatePurchase computes what the portfolio's DNA and asset allocation would become
+// after purchasing a new fund or increasing an existing allocation by `amount`.
+func (s *PortfolioAnalysisService) SimulatePurchase(ctx context.Context, userID uuid.UUID, schemeCode string, amount float64) (*SimulationResult, error) {
+	current, err := s.Allocation(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("simulate: load current allocation: %w", err)
+	}
+
+	meta, err := s.loadFundMeta(ctx, []string{schemeCode})
+	if err != nil {
+		return nil, fmt.Errorf("simulate: load fund metadata: %w", err)
+	}
+
+	fund, exists := meta[schemeCode]
+	if !exists {
+		fund = fundMeta_{
+			riskLevel: "High",
+			equityPct: 100.0,
+			debtPct:   0.0,
+			otherPct:  0.0,
+		}
+	}
+
+	addEquity := amount * (fund.equityPct / 100.0)
+	addDebt := amount * (fund.debtPct / 100.0)
+	addOther := amount * (fund.otherPct / 100.0)
+
+	newTotal := current.TotalValue + amount
+	newEquityAmt := current.EquityAmount + addEquity
+	newDebtAmt := current.DebtAmount + addDebt
+	newOtherAmt := current.OtherAmount + addOther
+
+	projected := &paDomain.AllocationResult{
+		TotalValue:        round2(newTotal),
+		EquityAmount:      round2(newEquityAmt),
+		DebtAmount:        round2(newDebtAmt),
+		OtherAmount:       round2(newOtherAmt),
+		EquityPct:         round2(newEquityAmt / newTotal * 100),
+		DebtPct:           round2(newDebtAmt / newTotal * 100),
+		OtherPct:          round2(newOtherAmt / newTotal * 100),
+		VolatilityBuckets: make([]paDomain.VolatilityBucket, len(current.VolatilityBuckets)),
+		SectorExposure:    current.SectorExposure,
+	}
+
+	vol := volatilityForRiskLevel(fund.riskLevel)
+	highVolAmt := 0.0
+	for i, b := range current.VolatilityBuckets {
+		amt := b.Amount
+		if b.Label == vol {
+			amt += amount
+		}
+		if b.Label == paDomain.VolatilityHigh {
+			highVolAmt = amt
+		}
+		shPct := 0.0
+		if newTotal > 0 {
+			shPct = round2(amt / newTotal * 100)
+		}
+		projected.VolatilityBuckets[i] = paDomain.VolatilityBucket{
+			Label:    b.Label,
+			Amount:   round2(amt),
+			SharePct: shPct,
+		}
+	}
+
+	projected.Level = allocationLevel(newTotal, highVolAmt)
+
+	return &SimulationResult{
+		CurrentAllocation:   current,
+		ProjectedAllocation: projected,
+		SimulatedSchemeCode: schemeCode,
+		SimulatedAmount:     amount,
+	}, nil
+}

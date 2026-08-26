@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"strings"
 	"context"
 	"encoding/json"
 	"errors"
@@ -114,6 +115,123 @@ func (p *MockProvider) GetFund(ctx context.Context, schemeCode string) (*catalog
 	return &f, nil
 }
 
+func deriveFundDeepDive(category, schemeName string) catalogdomain.DeepDiveInfo {
+	lower := strings.ToLower(category + " " + schemeName)
+	if strings.Contains(lower, "small") || strings.Contains(lower, "mid") {
+		return catalogdomain.DeepDiveInfo{
+			PrimaryRole:   "High Alpha Growth",
+			SecondaryRole: "Capital Compounding",
+			Strengths:     "High compounding runway and market-beating alpha during expansion cycles.",
+			TradeOffs:     "Elevated near-term volatility and sharper market corrections.",
+			Contribution:  "Targets fast-growing emerging companies to accelerate long-term capital compounding.",
+		}
+	} else if strings.Contains(lower, "tech") || strings.Contains(lower, "semi") || strings.Contains(lower, "energy") || strings.Contains(lower, "thematic") || strings.Contains(lower, "auto") {
+		return catalogdomain.DeepDiveInfo{
+			PrimaryRole:   "Thematic Growth",
+			SecondaryRole: "Sector Alpha",
+			Strengths:     "Concentrated capital efficiency in high-conviction secular mega-trends.",
+			TradeOffs:     "Cyclical sector dependence and higher tracking risk.",
+			Contribution:  fmt.Sprintf("Provides high-conviction exposure to industry tailwinds in %s.", category),
+		}
+	} else if strings.Contains(lower, "debt") || strings.Contains(lower, "liquid") || strings.Contains(lower, "hybrid") || strings.Contains(lower, "bond") || strings.Contains(lower, "conservative") {
+		return catalogdomain.DeepDiveInfo{
+			PrimaryRole:   "Income & Stability",
+			SecondaryRole: "Downside Protection",
+			Strengths:     "Predictable yields, low drawdown risk, and high capital security.",
+			TradeOffs:     "Lower long-term compounding rate compared to pure equity.",
+			Contribution:  "Provides steady yield generation and cushions overall equity portfolio drawdowns.",
+		}
+	} else if strings.Contains(lower, "gold") || strings.Contains(lower, "reit") || strings.Contains(lower, "silver") {
+		return catalogdomain.DeepDiveInfo{
+			PrimaryRole:   "Inflation Defense",
+			SecondaryRole: "Real Asset Hedge",
+			Strengths:     "Uncorrelated returns with fiat currency and equity market volatility.",
+			TradeOffs:     "No regular corporate cash flows or dividend yields.",
+			Contribution:  "Acts as an inflation hedge and provides uncorrelated asset protection during volatile markets.",
+		}
+	}
+	return catalogdomain.DeepDiveInfo{
+		PrimaryRole:   "Core Growth",
+		SecondaryRole: "Capital Preservation",
+		Strengths:     "High return on capital, dominant moat, and resilient free cash flows.",
+		TradeOffs:     "Tracks broader benchmark returns with moderate upside beta.",
+		Contribution:  "Provides stability and consistent growth by investing in established market leaders.",
+	}
+}
+
+func deriveFundInsights(category, schemeName string, equityPct, debtPct, otherPct float64) catalogdomain.FundInsights {
+	lower := strings.ToLower(category + " " + schemeName)
+	var whyGet, suitable, avoid, impact, doesNow, buyMore string
+
+	if strings.Contains(lower, "small") || strings.Contains(lower, "mid") {
+		whyGet = "Delivers high alpha potential and outsized long-term capital compounding."
+		suitable = "Long-term investors with 5+ year time horizon seeking high wealth creation."
+		avoid = "Investors seeking short-term liquidity or low risk tolerance."
+		impact = "Increases growth beta and expected annualized portfolio returns."
+		doesNow = "Currently provides aggressive mid/small-cap compounding, maximizing long-term wealth appreciation."
+		buyMore = "Adding more will tilt your portfolio towards higher alpha while slightly increasing market beta."
+	} else if strings.Contains(lower, "thematic") || strings.Contains(lower, "tech") || strings.Contains(lower, "semi") {
+		whyGet = fmt.Sprintf("High-conviction capture of structural expansion in %s.", category)
+		suitable = "Investors wanting targeted sector upside alongside a balanced core portfolio."
+		avoid = "Risk-averse investors needing steady dividend distributions."
+		impact = "Concentrates capital into high-growth thematic innovators."
+		doesNow = fmt.Sprintf("Currently delivers high-conviction thematic growth targeting secular tailwinds in %s.", category)
+		buyMore = fmt.Sprintf("Adding more will increase sector momentum exposure in %s.", category)
+	} else if strings.Contains(lower, "debt") || strings.Contains(lower, "bond") || strings.Contains(lower, "hybrid") {
+		whyGet = "Generates consistent accrual yield and preserves capital across market downturns."
+		suitable = "Conservative investors seeking stable cash flow and portfolio defensiveness."
+		avoid = "Aggressive growth investors targeting maximum equity alpha."
+		impact = "Reduces portfolio standard deviation and downside drawdown."
+		doesNow = "Currently provides consistent yield and capital preservation, anchoring the portfolio against market volatility."
+		buyMore = "Adding more will pull your overall portfolio towards Capital Preservation and Income."
+	} else if strings.Contains(lower, "gold") || strings.Contains(lower, "reit") || strings.Contains(lower, "silver") {
+		whyGet = "Protects purchasing power against currency debasement and stagflation."
+		suitable = "All portfolios requiring 5-10% hard asset diversification."
+		avoid = "Short-term speculative trades."
+		impact = "Lowers total portfolio correlation with equity indices."
+		doesNow = "Currently protects against inflation and market downturns through hard commodity diversification."
+		buyMore = "Adding more will strengthen your Inflation Defense and Real Asset vectors."
+	} else {
+		whyGet = "Provides solid, resilient equity exposure across India's largest and most established bluechip companies."
+		suitable = "Core long-term compounding with low tracking error."
+		avoid = "Investors expecting triple-digit short-term returns."
+		impact = "Anchors the core portfolio and maintains balanced risk exposure."
+		doesNow = "Currently provides large-cap equity exposure, balancing out the volatility of higher growth holdings."
+		buyMore = "Adding more will pull your overall portfolio slightly towards Capital Preservation while maintaining steady compound growth."
+	}
+
+	eqFactor := math.Min(math.Max(equityPct/100.0, 0.15), 0.95)
+	debtFactor := math.Min(math.Max(debtPct/100.0, 0.10), 0.85)
+	otherFactor := math.Min(math.Max(otherPct/100.0, 0.08), 0.75)
+
+	currValues := []float64{
+		math.Round(eqFactor*100) / 100,
+		math.Round(debtFactor*100) / 100,
+		math.Round(math.Max(debtFactor, 0.45)*100) / 100,
+		math.Round(otherFactor*100) / 100,
+		0.70,
+		0.55,
+		math.Round(otherFactor*100) / 100,
+	}
+
+	projValues := make([]float64, len(currValues))
+	for i, v := range currValues {
+		projValues[i] = math.Round(math.Min(v*1.15, 0.98)*100) / 100
+	}
+
+	return catalogdomain.FundInsights{
+		IsPositiveImpact:     true,
+		WhyGetFund:           whyGet,
+		SuitableFor:          suitable,
+		AvoidIf:              avoid,
+		ImpactText:           impact,
+		WhatItDoesRightNow:   doesNow,
+		WhatBuyingMoreWillDo: buyMore,
+		CurrentValues:        currValues,
+		ProjectedValues:      projValues,
+	}
+}
+
 func (p *MockProvider) GetFundProfile(ctx context.Context, schemeCode string) (*catalogdomain.FundProfile, error) {
 	fund, err := p.GetFund(ctx, schemeCode)
 	if err != nil {
@@ -128,9 +246,6 @@ func (p *MockProvider) GetFundProfile(ctx context.Context, schemeCode string) (*
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return nil, fmt.Errorf("lookup fund allocation: %w", err)
 	}
-	// A fund with no allocation row yet (e.g. a newly added catalog entry
-	// with migration 000012 not re-run for it) still returns a valid
-	// profile — just with an empty breakdown rather than an error.
 	var sectors, holdings []catalogdomain.DistributionItem
 	if len(sectorsJSON) > 0 {
 		if err := json.Unmarshal(sectorsJSON, &sectors); err != nil {
@@ -148,57 +263,21 @@ func (p *MockProvider) GetFundProfile(ctx context.Context, schemeCode string) (*
 		returns1Y = *fund.Returns1Y
 	}
 
+	deepDive := deriveFundDeepDive(fund.Category, fund.SchemeName)
+	insights := deriveFundInsights(fund.Category, fund.SchemeName, equityPct, debtPct, otherPct)
+
 	return &catalogdomain.FundProfile{
 		Fund: *fund,
 		Allocation: catalogdomain.AllocationBreakdown{
 			EquityPct: equityPct, DebtPct: debtPct, OtherPct: otherPct,
 			Sectors: sectors, TopHoldings: holdings,
 		},
-		ChartPoints: chartPoints(schemeCode, fund.NAV, returns1Y),
+		ChartPoints: chartPoints(schemeCode, fund.NAV, returns1Y, 180),
+		DeepDive:    deepDive,
+		Insights:    insights,
 	}, nil
 }
 
-// chartPoints synthesizes a 12-month NAV history trending from the fund's
-// disclosed 1-year return to its current catalog NAV, with a small
-// deterministic day-to-day jitter layered on top for a non-linear look.
-// There is no real historical NAV feed behind this mock catalog — this is
-// documented reference data, not a recorded price series.
-func chartPoints(schemeCode string, currentNAV, returns1YPct float64) []catalogdomain.ChartPoint {
-	const months = 12
-	startNAV := currentNAV
-	if returns1YPct > -100 {
-		startNAV = currentNAV / (1 + returns1YPct/100)
-	}
-
-	now := time.Now().UTC()
-	points := make([]catalogdomain.ChartPoint, 0, months+1)
-	for i := 0; i <= months; i++ {
-		t := float64(i) / float64(months)
-		trendNAV := startNAV + (currentNAV-startNAV)*t
-		date := now.AddDate(0, -(months - i), 0)
-		nav := dayJitter(schemeCode, trendNAV, date)
-		if i == months {
-			nav = currentNAV // last point always matches the fund's live NAV
-		}
-		points = append(points, catalogdomain.ChartPoint{Date: apitime.New(date), NAV: round4(nav)})
-	}
-	return points
-}
-
-// dayJitter applies the same deterministic +/-1% day-bucketed NAV move the
-// MF investment domain uses (internal/provider/mf.navOnDate) — duplicated
-// here rather than imported to keep the Catalog and MF packages independent
-// (catalog reference data doesn't depend on a user ever holding anything).
-func dayJitter(schemeCode string, baseNAV float64, date time.Time) float64 {
-	h := fnv.New64a()
-	_, _ = h.Write([]byte(schemeCode))
-	bucket := date.UTC().Truncate(24*time.Hour).Unix() / 86400
-	r := rand.New(rand.NewSource(int64(h.Sum64()) + bucket)) //nolint:gosec // mock market data, not security-sensitive
-	pctMove := (r.Float64() - 0.5) * 0.02
-	return baseNAV * (1 + pctMove)
-}
-
-func round4(v float64) float64 { return math.Round(v*10000) / 10000 }
 
 func (p *MockProvider) ListNFOs(ctx context.Context) ([]catalogdomain.NFO, error) {
 	rows, err := p.pool.Query(ctx, `
@@ -228,4 +307,42 @@ func (p *MockProvider) ListNFOs(ctx context.Context) ([]catalogdomain.NFO, error
 		return nil, fmt.Errorf("iterate nfos: %w", err)
 	}
 	return nfos, nil
+}
+
+
+func dayJitter(schemeCode string, base float64, date time.Time) float64 {
+	h := fnv.New64a()
+	h.Write([]byte(fmt.Sprintf("%s:%s", schemeCode, date.Format("2006-01-02"))))
+	rng := rand.New(rand.NewSource(int64(h.Sum64())))
+	jitter := (rng.Float64() - 0.5) * 0.02 * base
+	return math.Round((base+jitter)*100) / 100
+}
+
+func chartPoints(schemeCode string, currentNAV, returns1Y float64, daysOpt ...int) []catalogdomain.ChartPoint {
+	days := 13
+	if len(daysOpt) > 0 && daysOpt[0] > 0 {
+		days = daysOpt[0]
+	}
+	startNAV := currentNAV / (1.0 + (returns1Y / 100.0))
+	if startNAV <= 0 {
+		startNAV = currentNAV * 0.8
+	}
+
+	points := make([]catalogdomain.ChartPoint, days)
+	now := time.Now().UTC().Truncate(24 * time.Hour)
+
+	for i := 0; i < days; i++ {
+		t := float64(i) / float64(days-1)
+		base := startNAV + (currentNAV-startNAV)*t
+		date := now.AddDate(0, 0, -(days - 1 - i))
+		nav := dayJitter(schemeCode, base, date)
+		if i == days-1 {
+			nav = currentNAV
+		}
+		points[i] = catalogdomain.ChartPoint{
+			Date: apitime.New(date),
+			NAV:  nav,
+		}
+	}
+	return points
 }

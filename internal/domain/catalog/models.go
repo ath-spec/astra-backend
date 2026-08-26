@@ -1,5 +1,5 @@
 // Package catalog defines the wire types for the Fund & Scheme Catalog / NFO
-// domain — shared reference data (not per-user), matching the IDBI sandbox
+// domain – shared reference data (not per-user), matching the IDBI sandbox
 // spec doc's field names.
 package catalog
 
@@ -38,7 +38,6 @@ type NFO struct {
 	AllotmentDate  *apitime.Time `json:"allotment_date,omitempty"`
 }
 
-// SearchParams mirrors the spec doc's "Request — catalog search" fields.
 type SearchParams struct {
 	Category         string
 	RiskLevel        string
@@ -47,16 +46,11 @@ type SearchParams struct {
 	Limit            int
 }
 
-// DistributionItem is one slice of a breakdown (a sector, a top holding, an
-// asset-class bucket) shown on the Explore fund-profile page.
 type DistributionItem struct {
 	Title      string  `json:"title"`
 	Percentage float64 `json:"percentage"`
 }
 
-// AllocationBreakdown is static reference data (see migration
-// 000012_fund_allocation) — not derived from a live AMC holdings-disclosure
-// feed, since none is wired in yet.
 type AllocationBreakdown struct {
 	EquityPct   float64            `json:"equity_pct"`
 	DebtPct     float64            `json:"debt_pct"`
@@ -65,20 +59,11 @@ type AllocationBreakdown struct {
 	TopHoldings []DistributionItem `json:"top_holdings"`
 }
 
-// ChartPoint is one point of a fund's NAV history chart. This history is
-// synthesized (trending from the fund's disclosed 1-year return to its
-// current NAV, with deterministic day-to-day jitter) rather than a real
-// recorded NAV series — there's no historical price feed behind this mock
-// catalog. See provider/catalog's chartPoints for the exact method.
 type ChartPoint struct {
 	Date apitime.Time `json:"date"`
 	NAV  float64      `json:"nav"`
 }
 
-// UserHolding is present on a FundProfile only when the requesting user
-// currently holds this fund (see internal/service.CatalogService, which
-// cross-references the MF domain to populate this — the catalog provider
-// itself has no notion of per-user holdings).
 type UserHolding struct {
 	UnitsHeld     float64 `json:"units_held"`
 	InvestedValue float64 `json:"invested_value"`
@@ -86,9 +71,31 @@ type UserHolding struct {
 	ReturnsPct    float64 `json:"returns_pct"`
 }
 
+type DeepDiveInfo struct {
+	PrimaryRole   string `json:"primary_role"`
+	SecondaryRole string `json:"secondary_role"`
+	Strengths     string `json:"strengths"`
+	TradeOffs     string `json:"trade_offs"`
+	Contribution  string `json:"contribution"`
+}
+
+type FundInsights struct {
+	IsPositiveImpact     bool      `json:"is_positive_impact"`
+	WhyGetFund           string    `json:"why_get_fund"`
+	SuitableFor          string    `json:"suitable_for"`
+	AvoidIf              string    `json:"avoid_if"`
+	ImpactText           string    `json:"impact_text"`
+	WhatItDoesRightNow   string    `json:"what_it_does_right_now"`
+	WhatBuyingMoreWillDo string    `json:"what_buying_more_will_do"`
+	CurrentValues        []float64 `json:"current_values"`
+	ProjectedValues      []float64 `json:"projected_values"`
+}
+
 type FundProfile struct {
 	Fund
 	Allocation  AllocationBreakdown `json:"allocation"`
 	ChartPoints []ChartPoint        `json:"chart_points"`
+	DeepDive    DeepDiveInfo        `json:"deep_dive"`
+	Insights    FundInsights        `json:"insights"`
 	UserHolding *UserHolding        `json:"user_holding,omitempty"`
 }
