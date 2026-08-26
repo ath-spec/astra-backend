@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -156,7 +157,7 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Zerodha Demat Pro', 'TRADING', 185000.00)
+		VALUES ($1, 'HDFC Bank - Savings', 'SAVINGS', 185000.00)
 		ON CONFLICT DO NOTHING
 	`, userID)
 
@@ -227,7 +228,8 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 		ON CONFLICT DO NOTHING
 	`, userID)
 
-	return nil
+	// Seed 365 days of portfolio history so the growth chart has data from day 1.
+	return r.seedPortfolioSnapshots(ctx, userID, 365, 2850000.0, 3950000.0)
 }
 
 // Archetype 1: Balanced Bluechip & Flexicap Wealth Builder
@@ -244,7 +246,7 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Groww Investment Account', 'TRADING', 95000.00)
+		VALUES ($1, 'State Bank of India - Savings', 'SAVINGS', 95000.00)
 		ON CONFLICT DO NOTHING
 	`, userID)
 
@@ -315,7 +317,8 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 		ON CONFLICT DO NOTHING
 	`, userID)
 
-	return nil
+	// Seed 180 days of portfolio history.
+	return r.seedPortfolioSnapshots(ctx, userID, 180, 1650000.0, 2480000.0)
 }
 
 // Archetype 2: Global Markets, Gold & REITs Diversifier
@@ -332,7 +335,7 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'AngelOne Trading Demat', 'TRADING', 140000.00)
+		VALUES ($1, 'Bank of Baroda - Savings', 'SAVINGS', 140000.00)
 		ON CONFLICT DO NOTHING
 	`, userID)
 
@@ -409,7 +412,8 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 		ON CONFLICT DO NOTHING
 	`, userID)
 
-	return nil
+	// Seed 90 days of portfolio history.
+	return r.seedPortfolioSnapshots(ctx, userID, 90, 2100000.0, 2650000.0)
 }
 
 // Archetype 3: Conservative Hybrid & Capital Preservation Planner
@@ -487,6 +491,35 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 		ON CONFLICT DO NOTHING
 	`, userID)
 
+	// Seed 30 days of portfolio history.
+	return r.seedPortfolioSnapshots(ctx, userID, 30, 3400000.0, 3720000.0)
+}
+
+// seedPortfolioSnapshots backfills `days` daily rows in portfolio_snapshots,
+// linearly growing from `startValue` to `endValue` with slight daily noise.
+// This gives every freshly-seeded user a realistic growth chart on first login.
+func (r *PostgresUserRepository) seedPortfolioSnapshots(
+	ctx context.Context,
+	userID uuid.UUID,
+	days int,
+	startValue, endValue float64,
+) error {
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	for i := days - 1; i >= 0; i-- {
+		day := today.AddDate(0, 0, -i)
+		// Linear interpolation between startValue and endValue.
+		t := float64(days-1-i) / math.Max(float64(days-1), 1)
+		value := math.Round((startValue+t*(endValue-startValue))*100) / 100
+		_, err := r.db.Pool.Exec(ctx, `
+			INSERT INTO portfolio_snapshots
+				(user_id, snapshot_date, total_wealth, mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value)
+			VALUES ($1, $2, $3, $3 * 0.65, $3 * 0.20, $3 * 0.10, $3 * 0.05)
+			ON CONFLICT (user_id, snapshot_date) DO NOTHING
+		`, userID, day, value)
+		if err != nil {
+			return fmt.Errorf("seed portfolio snapshot day %d: %w", i, err)
+		}
+	}
 	return nil
 }
 

@@ -27,6 +27,7 @@ func (h *StocksHandler) Routes() chi.Router {
 	r.Get("/holdings", h.getHoldings)
 	r.Get("/quote", h.getQuote)
 	r.Post("/orders", h.placeOrder)
+	r.Get("/orders", h.listOrders)
 	r.Get("/orders/{orderID}", h.getOrder)
 	r.Put("/orders/{orderID}", h.modifyOrder)
 	r.Delete("/orders/{orderID}", h.cancelOrder)
@@ -117,6 +118,21 @@ func (h *StocksHandler) cancelOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiresponse.OK(w, order)
+}
+
+func (h *StocksHandler) listOrders(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	statusFilter := r.URL.Query().Get("status_filter")
+	orders, err := h.svc.ListOrders(r.Context(), userID, statusFilter)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, orders)
 }
 
 func (h *StocksHandler) getOrder(w http.ResponseWriter, r *http.Request) {

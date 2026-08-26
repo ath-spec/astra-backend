@@ -44,3 +44,7 @@ func (s *StocksService) CancelOrder(ctx context.Context, userID uuid.UUID, order
 func (s *StocksService) GetOrder(ctx context.Context, userID uuid.UUID, orderID string) (*stocksdomain.Order, error) {
 	return s.provider.GetOrder(ctx, userID, orderID)
 }
+
+func (s *StocksService) ListOrders(ctx context.Context, userID uuid.UUID, statusFilter string) ([]stocksdomain.Order, error) {
+	return s.provider.ListOrders(ctx, userID, statusFilter)
+}

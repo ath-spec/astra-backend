@@ -33,4 +33,8 @@ type Provider interface {
 
 	// GetOrder returns the current state of a single order.
 	GetOrder(ctx context.Context, userID uuid.UUID, orderID string) (*stocks.Order, error)
+
+	// ListOrders returns every order the user has ever placed, most recent
+	// first, optionally filtered by status.
+	ListOrders(ctx context.Context, userID uuid.UUID, statusFilter string) ([]stocks.Order, error)
 }

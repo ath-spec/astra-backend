@@ -260,6 +260,9 @@ func scanMandate(row interface{ Scan(dest ...any) error }) (paymentsdomain.Manda
 // SUCCESS/FAILED executions behind it — always reflects "as of now", the
 // same way holdings/orders reflect the latest state on every read.
 func (p *MockProvider) ListMandates(ctx context.Context, userID uuid.UUID, statusFilter string) ([]paymentsdomain.Mandate, error) {
+	if err := p.seedDemoSubscriptions(ctx, userID); err != nil {
+		return nil, err
+	}
 	if err := p.processDueMandates(ctx, userID); err != nil {
 		return nil, err
 	}

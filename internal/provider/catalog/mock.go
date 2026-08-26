@@ -1,7 +1,6 @@
 package catalog
 
 import (
-	"strings"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +8,7 @@ import (
 	"hash/fnv"
 	"math"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -278,7 +278,6 @@ func (p *MockProvider) GetFundProfile(ctx context.Context, schemeCode string) (*
 	}, nil
 }
 
-
 func (p *MockProvider) ListNFOs(ctx context.Context) ([]catalogdomain.NFO, error) {
 	rows, err := p.pool.Query(ctx, `
 		SELECT nfo_id, scheme_name, amc_name, category, offer_open_date, offer_close_date, offer_price, min_investment, allotment_date
@@ -308,7 +307,6 @@ func (p *MockProvider) ListNFOs(ctx context.Context) ([]catalogdomain.NFO, error
 	}
 	return nfos, nil
 }
-
 
 func dayJitter(schemeCode string, base float64, date time.Time) float64 {
 	h := fnv.New64a()

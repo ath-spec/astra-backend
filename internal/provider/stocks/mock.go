@@ -429,34 +429,67 @@ func (p *MockProvider) GetOrder(ctx context.Context, userID uuid.UUID, orderID s
 	return loadOrder(ctx, p.pool, userID, orderID, false)
 }
 
-func loadOrder(ctx context.Context, q querier, userID uuid.UUID, orderID string, forUpdate bool) (*stocks.Order, error) {
-	sql := `
-		SELECT order_id, exchange_order_id, exchange, trading_symbol, isin, transaction_type, quantity,
-			product, order_type, price, trigger_price, disclosed_quantity, validity, status, status_message,
-			filled_quantity, pending_quantity, cancelled_quantity, average_price, order_timestamp, exchange_timestamp
-		FROM stock_orders WHERE order_id = $1 AND user_id = $2`
-	if forUpdate {
-		sql += " FOR UPDATE"
-	}
+const orderColumns = `order_id, exchange_order_id, exchange, trading_symbol, isin, transaction_type, quantity,
+	product, order_type, price, trigger_price, disclosed_quantity, validity, status, status_message,
+	filled_quantity, pending_quantity, cancelled_quantity, average_price, order_timestamp, exchange_timestamp`
 
+func scanOrder(row interface{ Scan(dest ...any) error }) (stocks.Order, error) {
 	var o stocks.Order
 	var isin *string
 	var exchangeTimestamp *time.Time
-	err := q.QueryRow(ctx, sql, orderID, userID).Scan(
+	err := row.Scan(
 		&o.OrderID, &o.ExchangeOrderID, &o.Exchange, &o.TradingSymbol, &isin, &o.TransactionType, &o.Quantity,
 		&o.Product, &o.OrderType, &o.Price, &o.TriggerPrice, &o.DisclosedQuantity, &o.Validity, &o.Status, &o.StatusMessage,
 		&o.FilledQuantity, &o.PendingQuantity, &o.CancelledQuantity, &o.AveragePrice, &o.OrderTimestamp, &exchangeTimestamp,
 	)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, fmt.Errorf("order %s not found: %w", orderID, apiresponse.ErrNotFound)
-		}
-		return nil, fmt.Errorf("query order: %w", err)
+		return stocks.Order{}, fmt.Errorf("scan order: %w", err)
 	}
 	if isin != nil {
 		o.ISIN = *isin
 	}
 	o.ExchangeTimestamp = apitime.NewPtr(exchangeTimestamp)
+	return o, nil
+}
+
+func (p *MockProvider) ListOrders(ctx context.Context, userID uuid.UUID, statusFilter string) ([]stocks.Order, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT `+orderColumns+`
+		FROM stock_orders WHERE user_id = $1 AND ($2 = '' OR status = $2)
+		ORDER BY order_timestamp DESC
+	`, userID, statusFilter)
+	if err != nil {
+		return nil, fmt.Errorf("list orders: %w", err)
+	}
+	defer rows.Close()
+
+	orders := make([]stocks.Order, 0)
+	for rows.Next() {
+		o, err := scanOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate orders: %w", err)
+	}
+	return orders, nil
+}
+
+func loadOrder(ctx context.Context, q querier, userID uuid.UUID, orderID string, forUpdate bool) (*stocks.Order, error) {
+	sql := `SELECT ` + orderColumns + ` FROM stock_orders WHERE order_id = $1 AND user_id = $2`
+	if forUpdate {
+		sql += " FOR UPDATE"
+	}
+
+	o, err := scanOrder(q.QueryRow(ctx, sql, orderID, userID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("order %s not found: %w", orderID, apiresponse.ErrNotFound)
+		}
+		return nil, err
+	}
 	return &o, nil
 }
 

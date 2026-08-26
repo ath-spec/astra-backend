@@ -27,6 +27,59 @@ func nextDebitDate(from time.Time, frequency string) time.Time {
 	}
 }
 
+// demoSubscription describes one starter subscription mandate seeded for a
+// new user, mirroring the Stocks/MF domains' lazy-seed-on-first-read
+// pattern so the Recurring screen ("Track your bills") isn't empty on first
+// login. daysAgo backdates the mandate's start so processDueMandates (run
+// right after seeding) immediately produces real execution history for some
+// of them, while the most recent one stays upcoming rather than overdue.
+type demoSubscription struct {
+	payeeName, payeeVPA string
+	amount              float64
+	daysAgo             int
+}
+
+var demoSubscriptions = []demoSubscription{
+	{"Netflix", "netflix@upi", 649, 75},
+	{"YouTube Premium", "youtube@upi", 129, 45},
+	{"Spotify", "spotify@upi", 119, 20},
+}
+
+// seedDemoSubscriptions lazily seeds a new user's starter subscription
+// mandates the first time their mandates are listed. Idempotent: only runs
+// when the user has zero mandates of any status, so it never re-seeds after
+// the user creates/cancels their own.
+func (p *MockProvider) seedDemoSubscriptions(ctx context.Context, userID uuid.UUID) error {
+	var hasAny bool
+	if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mandates WHERE user_id = $1)`, userID).Scan(&hasAny); err != nil {
+		return fmt.Errorf("check existing mandates: %w", err)
+	}
+	if hasAny {
+		return nil
+	}
+
+	bankAccount, err := p.userRepo.GetPrimaryBankAccount(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("resolve bank account for demo subscriptions: %w", err)
+	}
+
+	now := time.Now().UTC()
+	for _, ds := range demoSubscriptions {
+		startDate := now.AddDate(0, 0, -ds.daysAgo)
+		mandateID := newID("MNDT")
+		if _, err := p.pool.Exec(ctx, `
+			INSERT INTO mandates (
+				mandate_id, user_id, bank_account_id, mandate_type, payee_name, payee_vpa_or_id, category,
+				max_amount, frequency, mandate_start_date, next_debit_date, status, approved_at
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12)
+		`, mandateID, userID, bankAccount.ID, paymentsdomain.MandateTypeUPIAutopay, ds.payeeName, ds.payeeVPA, "SUBSCRIPTION",
+			ds.amount, paymentsdomain.FrequencyMonthly, startDate, paymentsdomain.MandateStatusActive, startDate); err != nil {
+			return fmt.Errorf("seed demo subscription %s: %w", ds.payeeName, err)
+		}
+	}
+	return nil
+}
+
 // maxCatchUpCycles bounds how many missed billing cycles processDueMandates
 // will back-fill in one call, so a mandate nobody has touched in years can't
 // turn a single request into an unbounded loop.
