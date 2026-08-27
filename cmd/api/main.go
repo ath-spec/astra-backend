@@ -114,7 +114,7 @@ func main() {
 	rmChatRepo := repository.NewPostgresRMChatRepository(db.Pool)
 	userRepo.SetAssigner(assignmentRepo) // auto-assign new signups to an RM
 	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, cfg.RMOTPDevCode, rmUserRepo)
-	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, db.Pool)
+	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, cfg.GroqAPIKey, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
 

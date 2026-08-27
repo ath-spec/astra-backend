@@ -29,3 +29,16 @@ CREATE TABLE IF NOT EXISTS rm_chat_sessions (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (rm_id, scope)
 );
+
+-- Cached AI-written "report paragraph" per client per analytic topic. `fingerprint`
+-- is a cheap 1-query digest of the client's material state; while it is unchanged
+-- the cached `topics` are served with no recompute and no model call. It only
+-- regenerates when the fingerprint moves, after `max_age` (see service), or on an
+-- explicit ?refresh=1.
+CREATE TABLE IF NOT EXISTS rm_client_narratives (
+    user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    fingerprint VARCHAR(80) NOT NULL,
+    topics      JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id)
+);

@@ -348,6 +348,168 @@ type PendingFollowUp struct {
 	Overdue    bool         `json:"overdue"`
 }
 
+// --- Research-grade client analytics ---
+
+// MethodNote documents one analytic: how it is computed, how to read it, and
+// why it matters — so each card carries its own appendix.
+type MethodNote struct {
+	Method string `json:"method"`
+	Read   string `json:"read"`
+	Why    string `json:"why"`
+}
+
+// MonthReturn is one calendar month's portfolio return.
+type MonthReturn struct {
+	Label string  `json:"label"`
+	Pct   float64 `json:"pct"`
+}
+
+// RiskStats is drawdown / volatility analysis from the daily wealth series.
+type RiskStats struct {
+	Days           int           `json:"days"`
+	Points         int           `json:"points"`
+	MaxDrawdownPct float64       `json:"max_drawdown_pct"`
+	DrawdownCurve  []float64     `json:"drawdown_curve"` // % underwater per snapshot
+	DrawdownDates  []int64       `json:"drawdown_dates"` // epoch seconds
+	VolatilityPct  float64       `json:"volatility_pct"` // annualised
+	WorstMonthPct  float64       `json:"worst_month_pct"`
+	BestMonthPct   float64       `json:"best_month_pct"`
+	RecoveryDays   int           `json:"recovery_days"` // trough → prior peak; -1 if unrecovered
+	MonthlyReturns []MonthReturn `json:"monthly_returns"`
+}
+
+// CostSummary is the fee-drag / gross-vs-net view.
+type CostSummary struct {
+	MFValue              float64 `json:"mf_value"`
+	WeightedExpenseRatio float64 `json:"weighted_expense_ratio"`
+	AnnualFee            float64 `json:"annual_fee"`
+	FeeAsPctOfWealth     float64 `json:"fee_as_pct_of_wealth"`
+	NetReturnPct         float64 `json:"net_return_pct"`
+	GrossReturnPct       float64 `json:"gross_return_pct"`
+	HighCostCount        int     `json:"high_cost_count"`
+	AvoidableAnnualFee   float64 `json:"avoidable_annual_fee"`
+}
+
+// ConcentrationItem is one named exposure with its share of the portfolio.
+type ConcentrationItem struct {
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
+	Pct   float64 `json:"pct"`
+}
+
+// FundOverlapPair flags two funds in the same category (likely redundant).
+type FundOverlapPair struct {
+	A        string `json:"a"`
+	B        string `json:"b"`
+	Category string `json:"category"`
+}
+
+// Concentration measures single-name / AMC / sector concentration.
+type Concentration struct {
+	TopStock       *ConcentrationItem  `json:"top_stock,omitempty"`
+	TopAMC         *ConcentrationItem  `json:"top_amc,omitempty"`
+	TopFund        *ConcentrationItem  `json:"top_fund,omitempty"`
+	SectorHHI      float64             `json:"sector_hhi"` // 0..10000
+	SectorHHILabel string              `json:"sector_hhi_label"`
+	HoldingsCount  int                 `json:"holdings_count"`
+	ByAMC          []ConcentrationItem `json:"by_amc"`
+	Overlaps       []FundOverlapPair   `json:"overlaps"`
+}
+
+// CohortPercentile ranks this client against the RM's other clients.
+type CohortPercentile struct {
+	Metric     string  `json:"metric"`
+	Value      float64 `json:"value"`
+	Percentile int     `json:"percentile"` // 0..100
+	PeerMedian float64 `json:"peer_median"`
+	SampleSize int     `json:"sample_size"`
+	HigherIsBetter bool `json:"higher_is_better"`
+}
+
+// PortfolioChange is one plain-language "what moved" sentence.
+type PortfolioChange struct {
+	Text      string `json:"text"`
+	Direction string `json:"direction"` // up | down | neutral
+}
+
+// WhatChanged diffs the current DNA against the snapshot ~N days ago.
+type WhatChanged struct {
+	SinceDays      int               `json:"since_days"`
+	SinceDate      *apitime.Time     `json:"since_date,omitempty"`
+	LevelBefore    string            `json:"level_before,omitempty"`
+	LevelAfter     string            `json:"level_after,omitempty"`
+	EquityPctDelta float64           `json:"equity_pct_delta"`
+	WealthPctDelta float64           `json:"wealth_pct_delta"`
+	Changes        []PortfolioChange `json:"changes"`
+}
+
+// TaxLot is one holding's realisable-gain tax picture.
+type TaxLot struct {
+	Name          string  `json:"name"`
+	Type          string  `json:"type"` // MF | STOCK
+	CurrentValue  float64 `json:"current_value"`
+	UnrealisedGain float64 `json:"unrealised_gain"`
+	LTCGGain      float64 `json:"ltcg_gain"`
+	STCGGain      float64 `json:"stcg_gain"`
+	NearingLTCG   float64 `json:"nearing_ltcg"` // value crossing 1yr within 90d
+}
+
+// TaxLens is the aggregate unrealised-gain / lock-in view.
+type TaxLens struct {
+	TotalUnrealisedGain float64  `json:"total_unrealised_gain"`
+	LTCGGain            float64  `json:"ltcg_gain"`
+	STCGGain            float64  `json:"stcg_gain"`
+	EstLTCGTax          float64  `json:"est_ltcg_tax"`
+	EstSTCGTax          float64  `json:"est_stcg_tax"`
+	NearingLTCGValue    float64  `json:"nearing_ltcg_value"`
+	ELSSLockedValue     float64  `json:"elss_locked_value"`
+	Lots               []TaxLot `json:"lots"`
+}
+
+// ClientAnalytics bundles the deeper, research-grade views for Client 360.
+type ClientAnalytics struct {
+	Risk          *RiskStats            `json:"risk"`
+	Cost          *CostSummary          `json:"cost"`
+	Concentration *Concentration        `json:"concentration"`
+	Cohort        []CohortPercentile    `json:"cohort"`
+	WhatChanged   *WhatChanged          `json:"what_changed"`
+	Tax           *TaxLens              `json:"tax"`
+	Methodology   map[string]MethodNote `json:"methodology"`
+}
+
+// --- Book composition (RM dashboard) ---
+
+type CompositionSlice struct {
+	Label string  `json:"label"`
+	Value float64 `json:"value"`
+	Pct   float64 `json:"pct"`
+	Count int     `json:"count"`
+}
+
+type FlowPoint struct {
+	Label   string  `json:"label"`
+	Inflow  float64 `json:"inflow"`
+	Outflow float64 `json:"outflow"`
+	Net     float64 `json:"net"`
+}
+
+type SegmentCount struct {
+	Segment string  `json:"segment"`
+	Count   int     `json:"count"`
+	AUM     float64 `json:"aum"`
+}
+
+type BookComposition struct {
+	TotalAUM     float64            `json:"total_aum"`
+	ByAssetClass []CompositionSlice `json:"by_asset_class"`
+	ByRiskLevel  []CompositionSlice `json:"by_risk_level"`
+	ByWealthBand []CompositionSlice `json:"by_wealth_band"`
+	Top5SharePct float64            `json:"top5_share_pct"`
+	TopClients   []CompositionSlice `json:"top_clients"`
+	Flows        []FlowPoint        `json:"flows"`
+	Segments     []SegmentCount     `json:"segments"`
+}
+
 // --- RM book summary ---
 
 type BookAlert struct {

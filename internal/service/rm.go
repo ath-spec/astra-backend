@@ -41,6 +41,7 @@ type RMService struct {
 	assign       repository.AssignmentRepository
 	rmRepo       repository.RMUserRepository
 	interactions repository.RMInteractionRepository
+	groqKey      string
 	pool         *pgxpool.Pool
 }
 
@@ -55,11 +56,13 @@ func NewRMService(
 	assign repository.AssignmentRepository,
 	rmRepo repository.RMUserRepository,
 	interactions repository.RMInteractionRepository,
+	groqKey string,
 	pool *pgxpool.Pool,
 ) *RMService {
 	return &RMService{
 		dashboard: dashboard, analysis: analysis, stocks: stocks, mf: mf, fd: fd, goals: goals,
-		userRepo: userRepo, assign: assign, rmRepo: rmRepo, interactions: interactions, pool: pool,
+		userRepo: userRepo, assign: assign, rmRepo: rmRepo, interactions: interactions,
+		groqKey: groqKey, pool: pool,
 	}
 }
 

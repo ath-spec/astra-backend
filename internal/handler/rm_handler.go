@@ -31,6 +31,7 @@ func NewRMHandler(svc *service.RMService) *RMHandler {
 func (h *RMHandler) Register(r chi.Router) {
 	r.Get("/dashboard/summary", h.bookSummary)
 	r.Get("/dashboard/insights", h.bookInsights)
+	r.Get("/dashboard/composition", h.bookComposition)
 	r.Get("/dashboard/followups", h.pendingFollowUps)
 	r.Get("/clients", h.listClients)
 	r.Get("/clients/{userID}", h.getClient)
@@ -38,6 +39,8 @@ func (h *RMHandler) Register(r chi.Router) {
 	r.Get("/clients/{userID}/portfolio-history", h.portfolioHistory)
 	r.Get("/clients/{userID}/portfolio-analysis", h.portfolioAnalysis)
 	r.Get("/clients/{userID}/advisory", h.clientAdvisory)
+	r.Get("/clients/{userID}/analytics", h.clientAnalytics)
+	r.Get("/clients/{userID}/analytics/narrative", h.clientNarrative)
 	r.Get("/clients/{userID}/interactions", h.listInteractions)
 	r.Post("/clients/{userID}/interactions", h.addInteraction)
 	r.Post("/clients/{userID}/interactions/{id}/complete", h.completeInteraction)
@@ -126,6 +129,59 @@ func (h *RMHandler) portfolioHistory(w http.ResponseWriter, r *http.Request) {
 		days = v
 	}
 	res, err := h.svc.PortfolioHistory(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID, days)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, res)
+}
+
+func (h *RMHandler) clientNarrative(w http.ResponseWriter, r *http.Request) {
+	rmID, ok := middleware.GetRMID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		apiresponse.Error(w, apiresponse.Validation("invalid user id"))
+		return
+	}
+	force := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("refresh") == "true"
+	res, err := h.svc.ClientNarrative(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID, force)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, map[string]interface{}{"narratives": res})
+}
+
+func (h *RMHandler) bookComposition(w http.ResponseWriter, r *http.Request) {
+	rmID, ok := middleware.GetRMID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	res, err := h.svc.BookComposition(r.Context(), rmID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, res)
+}
+
+func (h *RMHandler) clientAnalytics(w http.ResponseWriter, r *http.Request) {
+	rmID, ok := middleware.GetRMID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		apiresponse.Error(w, apiresponse.Validation("invalid user id"))
+		return
+	}
+	res, err := h.svc.ClientAnalytics(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
