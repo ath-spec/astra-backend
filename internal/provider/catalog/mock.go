@@ -190,7 +190,7 @@ func computeFundVector(category, schemeName string, equityPct, debtPct, otherPct
 	debt := math.Max(0, math.Min(1.0, debtPct/100.0))
 	other := math.Max(0, math.Min(1.0, otherPct/100.0))
 
-	growth := math.Min(0.98, eq * beta)
+	growth := math.Min(0.98, eq*beta)
 	income := (debt * 0.88) + (eq * 0.10)
 	capPres := (debt * 0.92) + (other * 0.15)
 	infDef := (other * 0.92) + (eq * 0.22)

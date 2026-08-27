@@ -31,12 +31,12 @@ const (
 	ActionRemove     = "remove"
 )
 
-// StaffUser is the internal representation of a row in rm_users, including
-// the password hash. It never crosses the wire — handlers return Public.
+// StaffUser is the internal representation of a row in rm_users. It never
+// crosses the wire — handlers return Public.
 type StaffUser struct {
 	ID            uuid.UUID
+	EmployeeCode  string
 	Email         string
-	PasswordHash  string
 	Name          string
 	PhoneNumber   *string
 	Role          string
@@ -49,6 +49,7 @@ type StaffUser struct {
 // Public is the client-safe projection of a staff user.
 type Public struct {
 	ID            uuid.UUID    `json:"id"`
+	EmployeeCode  string       `json:"employee_code"`
 	Email         string       `json:"email"`
 	Name          string       `json:"name"`
 	PhoneNumber   *string      `json:"phone_number,omitempty"`
@@ -61,6 +62,7 @@ type Public struct {
 func (s StaffUser) Public() Public {
 	return Public{
 		ID:            s.ID,
+		EmployeeCode:  s.EmployeeCode,
 		Email:         s.Email,
 		Name:          s.Name,
 		PhoneNumber:   s.PhoneNumber,
@@ -73,9 +75,24 @@ func (s StaffUser) Public() Public {
 
 // --- Auth DTOs ---
 
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+// OTPSendRequest starts a login: identifier is the staff member's employee
+// code or their email.
+type OTPSendRequest struct {
+	Identifier string `json:"identifier"`
+}
+
+// OTPVerifyRequest completes a login with the code delivered to the staff
+// member's registered phone.
+type OTPVerifyRequest struct {
+	Identifier string `json:"identifier"`
+	OTP        string `json:"otp"`
+}
+
+// OTPSendResponse tells the client where the code went (masked) so it can
+// render "code sent to •••••1234".
+type OTPSendResponse struct {
+	Sent        bool   `json:"sent"`
+	MaskedPhone string `json:"masked_phone,omitempty"`
 }
 
 type RefreshRequest struct {
@@ -209,18 +226,27 @@ type RosterItem struct {
 
 type CreateRMRequest struct {
 	Name          string `json:"name"`
+	EmployeeCode  string `json:"employee_code"`
 	Email         string `json:"email"`
-	Phone         string `json:"phone,omitempty"`
-	Password      string `json:"password"`
+	Phone         string `json:"phone"`          // required — OTP is delivered here
 	Role          string `json:"role,omitempty"` // defaults to "rm"
 	MaxPortfolios int    `json:"max_portfolios,omitempty"`
 }
 
 type UpdateRMRequest struct {
 	Name          *string `json:"name,omitempty"`
+	Email         *string `json:"email,omitempty"`
 	Phone         *string `json:"phone,omitempty"`
 	Status        *string `json:"status,omitempty"`
 	MaxPortfolios *int    `json:"max_portfolios,omitempty"`
+}
+
+// UpdateProfileRequest is the self-service PATCH /api/rm/auth/me payload —
+// a staff member editing their own name / login email / OTP phone.
+type UpdateProfileRequest struct {
+	Name  *string `json:"name,omitempty"`
+	Email *string `json:"email,omitempty"`
+	Phone *string `json:"phone,omitempty"`
 }
 
 type AssignRequest struct {

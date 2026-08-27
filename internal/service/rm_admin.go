@@ -27,14 +27,19 @@ func NewRMAdminService(rmRepo repository.RMUserRepository, assign repository.Ass
 func (s *RMAdminService) CreateRM(ctx context.Context, req rmdomain.CreateRMRequest) (*rmdomain.Public, error) {
 	name := strings.TrimSpace(req.Name)
 	email := strings.ToLower(strings.TrimSpace(req.Email))
+	empCode := strings.ToUpper(strings.TrimSpace(req.EmployeeCode))
+	phone := strings.TrimSpace(req.Phone)
 	if name == "" {
 		return nil, apiresponse.Validation("name is required")
+	}
+	if empCode == "" {
+		return nil, apiresponse.Validation("employee_code is required")
 	}
 	if !strings.Contains(email, "@") {
 		return nil, apiresponse.Validation("a valid email is required")
 	}
-	if len(req.Password) < 8 {
-		return nil, apiresponse.Validation("password must be at least 8 characters")
+	if phone == "" {
+		return nil, apiresponse.Validation("phone is required — login codes are sent there")
 	}
 	role := req.Role
 	if role == "" {
@@ -49,12 +54,13 @@ func (s *RMAdminService) CreateRM(ctx context.Context, req rmdomain.CreateRMRequ
 	} else if existing != nil {
 		return nil, fmt.Errorf("an account with that email already exists: %w", apiresponse.ErrConflict)
 	}
-
-	hash, err := HashPassword(req.Password)
-	if err != nil {
+	if existing, err := s.rmRepo.GetByIdentifier(ctx, empCode); err != nil {
 		return nil, err
+	} else if existing != nil {
+		return nil, fmt.Errorf("an account with that employee code already exists: %w", apiresponse.ErrConflict)
 	}
-	staff, err := s.rmRepo.Create(ctx, email, hash, name, strings.TrimSpace(req.Phone), role, req.MaxPortfolios)
+
+	staff, err := s.rmRepo.Create(ctx, empCode, email, name, phone, role, req.MaxPortfolios)
 	if err != nil {
 		return nil, err
 	}

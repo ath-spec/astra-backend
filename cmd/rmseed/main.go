@@ -6,8 +6,11 @@
 // Idempotent: re-running it never duplicates staff (ON CONFLICT (email)) and
 // only assigns users that still have no RM.
 //
-//	go run ./cmd/rmseed                 # uses defaults / env
-//	RM_SEED_PASSWORD=... go run ./cmd/rmseed
+// Staff log in with their employee code (or email) + an OTP sent to their
+// phone, so set real numbers via env for a deployment:
+//
+//	RM_SEED_ADMIN_PHONE=+9199... RM_SEED_RM1_PHONE=+9199... RM_SEED_RM2_PHONE=+9199... \
+//	  go run ./cmd/rmseed
 package main
 
 import (
@@ -22,24 +25,26 @@ import (
 
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
-	"github.com/yourusername/astra-backend/internal/service"
 )
 
 type seedStaff struct {
-	Email string
-	Name  string
-	Role  string
+	EmployeeCode string
+	Email        string
+	Name         string
+	Role         string
+	Phone        string
+}
+
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func main() {
 	ctx := context.Background()
 	cfg := config.Load()
-
-	password := os.Getenv("RM_SEED_PASSWORD")
-	if password == "" {
-		password = "Astra@123"
-		log.Println("RM_SEED_PASSWORD not set — using dev default 'Astra@123'")
-	}
 
 	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("migrations: %v", err)
@@ -50,31 +55,30 @@ func main() {
 	}
 	defer pool.Close()
 
-	hash, err := service.HashPassword(password)
-	if err != nil {
-		log.Fatalf("hash password: %v", err)
-	}
-
 	staff := []seedStaff{
-		{Email: "admin@astra.in", Name: "Astra Admin", Role: "admin"},
-		{Email: "rm1@astra.in", Name: "Priya Nair", Role: "rm"},
-		{Email: "rm2@astra.in", Name: "Arjun Mehta", Role: "rm"},
+		{EmployeeCode: "EMP001", Email: "admin@astra.in", Name: "Astra Admin", Role: "admin", Phone: envOr("RM_SEED_ADMIN_PHONE", "+919000000001")},
+		{EmployeeCode: "EMP002", Email: "rm1@astra.in", Name: "Priya Nair", Role: "rm", Phone: envOr("RM_SEED_RM1_PHONE", "+919000000002")},
+		{EmployeeCode: "EMP003", Email: "rm2@astra.in", Name: "Arjun Mehta", Role: "rm", Phone: envOr("RM_SEED_RM2_PHONE", "+919000000003")},
 	}
 
 	ids := make(map[string]uuid.UUID)
 	for _, s := range staff {
 		var id uuid.UUID
 		err := pool.QueryRow(ctx, `
-			INSERT INTO rm_users (email, password_hash, name, role)
-			VALUES ($1, $2, $3, $4)
-			ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+			INSERT INTO rm_users (employee_code, email, name, role, phone_number)
+			VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (email) DO UPDATE SET
+				employee_code = EXCLUDED.employee_code,
+				phone_number  = EXCLUDED.phone_number,
+				name          = EXCLUDED.name,
+				role          = EXCLUDED.role
 			RETURNING id
-		`, s.Email, hash, s.Name, s.Role).Scan(&id)
+		`, s.EmployeeCode, s.Email, s.Name, s.Role, s.Phone).Scan(&id)
 		if err != nil {
 			log.Fatalf("seed %s: %v", s.Email, err)
 		}
 		ids[s.Email] = id
-		fmt.Printf("  %-16s %-12s %s\n", s.Email, s.Role, id)
+		fmt.Printf("  %-8s %-16s %-6s %-14s %s\n", s.EmployeeCode, s.Email, s.Role, s.Phone, id)
 	}
 
 	rmRing := []uuid.UUID{ids["rm1@astra.in"], ids["rm2@astra.in"]}
@@ -123,5 +127,7 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\nBackfilled %d user(s). Login password for all seeded staff: %s\n", assigned, password)
+	fmt.Printf("\nBackfilled %d user(s).\n", assigned)
+	fmt.Println("Login: POST /api/rm/auth/otp/send {\"identifier\":\"EMP001\"}  then  /api/rm/auth/otp/verify {\"identifier\":\"EMP001\",\"otp\":\"<code from server log>\"}")
+	fmt.Println("Set RM_OTP_DEV_CODE on the server for a fixed testable code.")
 }

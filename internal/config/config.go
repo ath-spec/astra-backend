@@ -14,6 +14,7 @@ type Config struct {
 	DatabaseURL       string
 	JWTSecret         string
 	RMJWTSecret       string
+	RMOTPDevCode      string
 	MasterInternalKey string
 	SarvamAPIKey      string
 }
@@ -75,6 +76,14 @@ func Load() *Config {
 	if cfg.RMJWTSecret == "" {
 		log.Println("WARNING: RM_JWT_SECRET is not set. Falling back to JWT_SECRET for the RM/Admin console.")
 		cfg.RMJWTSecret = cfg.JWTSecret
+	}
+
+	// RM_OTP_DEV_CODE, when set, makes the RM/Admin console accept that
+	// fixed code for every OTP verification — for testing without SMS
+	// delivery wired in. Never set this in production.
+	cfg.RMOTPDevCode = os.Getenv("RM_OTP_DEV_CODE")
+	if cfg.RMOTPDevCode != "" {
+		log.Printf("WARNING: RM_OTP_DEV_CODE is set — RM/Admin OTP login will accept the fixed code %q.", cfg.RMOTPDevCode)
 	}
 
 	return cfg

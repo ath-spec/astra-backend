@@ -24,8 +24,11 @@ var ErrNoActiveRM = errors.New("no active RM available for assignment")
 // --- Staff (RM/Admin) user repository ---
 
 type RMUserRepository interface {
-	Create(ctx context.Context, email, passwordHash, name, phone, role string, maxPortfolios int) (*rmdomain.StaffUser, error)
+	Create(ctx context.Context, employeeCode, email, name, phone, role string, maxPortfolios int) (*rmdomain.StaffUser, error)
 	GetByEmail(ctx context.Context, email string) (*rmdomain.StaffUser, error)
+	// GetByIdentifier resolves a staff member by employee code (case-
+	// insensitive) or email. Returns nil if neither matches.
+	GetByIdentifier(ctx context.Context, identifier string) (*rmdomain.StaffUser, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*rmdomain.StaffUser, error)
 	List(ctx context.Context) ([]rmdomain.StaffUser, error)
 	Update(ctx context.Context, id uuid.UUID, req rmdomain.UpdateRMRequest) (*rmdomain.StaffUser, error)
@@ -33,6 +36,13 @@ type RMUserRepository interface {
 	CreateRefreshToken(ctx context.Context, rmID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RMRefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+
+	// OTP login codes.
+	CreateOTP(ctx context.Context, rmID uuid.UUID, codeHash string, expiresAt time.Time) error
+	LatestActiveOTP(ctx context.Context, rmID uuid.UUID) (*RMOTPCode, error)
+	IncrementOTPAttempts(ctx context.Context, id uuid.UUID) error
+	ConsumeOTP(ctx context.Context, id uuid.UUID) error
+	InvalidateOTPs(ctx context.Context, rmID uuid.UUID) error
 }
 
 type RMRefreshToken struct {
@@ -40,6 +50,14 @@ type RMRefreshToken struct {
 	RMID      uuid.UUID
 	ExpiresAt time.Time
 	RevokedAt *time.Time
+}
+
+type RMOTPCode struct {
+	ID        uuid.UUID
+	RMID      uuid.UUID
+	CodeHash  string
+	ExpiresAt time.Time
+	Attempts  int
 }
 
 type PostgresRMUserRepository struct {
@@ -50,13 +68,13 @@ func NewPostgresRMUserRepository(pool *pgxpool.Pool) *PostgresRMUserRepository {
 	return &PostgresRMUserRepository{pool: pool}
 }
 
-const rmUserColumns = `id, email, password_hash, name, phone_number, role, status, max_portfolios, created_at, updated_at`
+const rmUserColumns = `id, employee_code, email, name, phone_number, role, status, max_portfolios, created_at, updated_at`
 
 func scanRMUser(row pgx.Row) (*rmdomain.StaffUser, error) {
 	var s rmdomain.StaffUser
 	var phone *string
 	var createdAt, updatedAt time.Time
-	if err := row.Scan(&s.ID, &s.Email, &s.PasswordHash, &s.Name, &phone, &s.Role, &s.Status, &s.MaxPortfolios, &createdAt, &updatedAt); err != nil {
+	if err := row.Scan(&s.ID, &s.EmployeeCode, &s.Email, &s.Name, &phone, &s.Role, &s.Status, &s.MaxPortfolios, &createdAt, &updatedAt); err != nil {
 		return nil, err
 	}
 	s.PhoneNumber = phone
@@ -65,7 +83,7 @@ func scanRMUser(row pgx.Row) (*rmdomain.StaffUser, error) {
 	return &s, nil
 }
 
-func (r *PostgresRMUserRepository) Create(ctx context.Context, email, passwordHash, name, phone, role string, maxPortfolios int) (*rmdomain.StaffUser, error) {
+func (r *PostgresRMUserRepository) Create(ctx context.Context, employeeCode, email, name, phone, role string, maxPortfolios int) (*rmdomain.StaffUser, error) {
 	var phonePtr *string
 	if phone != "" {
 		phonePtr = &phone
@@ -74,9 +92,11 @@ func (r *PostgresRMUserRepository) Create(ctx context.Context, email, passwordHa
 		maxPortfolios = 150
 	}
 	row := r.pool.QueryRow(ctx, `
-		INSERT INTO rm_users (email, password_hash, name, phone_number, role, max_portfolios)
+		INSERT INTO rm_users (employee_code, email, name, phone_number, role, max_portfolios)
 		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING `+rmUserColumns, strings.ToLower(strings.TrimSpace(email)), passwordHash, name, phonePtr, role, maxPortfolios)
+		RETURNING `+rmUserColumns,
+		strings.ToUpper(strings.TrimSpace(employeeCode)),
+		strings.ToLower(strings.TrimSpace(email)), name, phonePtr, role, maxPortfolios)
 	s, err := scanRMUser(row)
 	if err != nil {
 		return nil, fmt.Errorf("create rm user: %w", err)
@@ -94,6 +114,71 @@ func (r *PostgresRMUserRepository) GetByEmail(ctx context.Context, email string)
 		return nil, fmt.Errorf("get rm user by email: %w", err)
 	}
 	return s, nil
+}
+
+func (r *PostgresRMUserRepository) GetByIdentifier(ctx context.Context, identifier string) (*rmdomain.StaffUser, error) {
+	id := strings.TrimSpace(identifier)
+	row := r.pool.QueryRow(ctx, `
+		SELECT `+rmUserColumns+` FROM rm_users
+		WHERE email = lower($1) OR employee_code = upper($1)
+		LIMIT 1
+	`, id)
+	s, err := scanRMUser(row)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("get rm user by identifier: %w", err)
+	}
+	return s, nil
+}
+
+func (r *PostgresRMUserRepository) CreateOTP(ctx context.Context, rmID uuid.UUID, codeHash string, expiresAt time.Time) error {
+	if _, err := r.pool.Exec(ctx, `
+		INSERT INTO rm_otp_codes (rm_id, code_hash, expires_at) VALUES ($1, $2, $3)
+	`, rmID, codeHash, expiresAt); err != nil {
+		return fmt.Errorf("create rm otp: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRMUserRepository) LatestActiveOTP(ctx context.Context, rmID uuid.UUID) (*RMOTPCode, error) {
+	var c RMOTPCode
+	err := r.pool.QueryRow(ctx, `
+		SELECT id, rm_id, code_hash, expires_at, attempts
+		FROM rm_otp_codes
+		WHERE rm_id = $1 AND consumed_at IS NULL AND expires_at > now()
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, rmID).Scan(&c.ID, &c.RMID, &c.CodeHash, &c.ExpiresAt, &c.Attempts)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("latest active rm otp: %w", err)
+	}
+	return &c, nil
+}
+
+func (r *PostgresRMUserRepository) IncrementOTPAttempts(ctx context.Context, id uuid.UUID) error {
+	if _, err := r.pool.Exec(ctx, `UPDATE rm_otp_codes SET attempts = attempts + 1 WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("increment rm otp attempts: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRMUserRepository) ConsumeOTP(ctx context.Context, id uuid.UUID) error {
+	if _, err := r.pool.Exec(ctx, `UPDATE rm_otp_codes SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`, id); err != nil {
+		return fmt.Errorf("consume rm otp: %w", err)
+	}
+	return nil
+}
+
+func (r *PostgresRMUserRepository) InvalidateOTPs(ctx context.Context, rmID uuid.UUID) error {
+	if _, err := r.pool.Exec(ctx, `UPDATE rm_otp_codes SET consumed_at = now() WHERE rm_id = $1 AND consumed_at IS NULL`, rmID); err != nil {
+		return fmt.Errorf("invalidate rm otps: %w", err)
+	}
+	return nil
 }
 
 func (r *PostgresRMUserRepository) GetByID(ctx context.Context, id uuid.UUID) (*rmdomain.StaffUser, error) {
@@ -133,6 +218,11 @@ func (r *PostgresRMUserRepository) Update(ctx context.Context, id uuid.UUID, req
 	if req.Name != nil {
 		sets = append(sets, fmt.Sprintf("name = $%d", i))
 		args = append(args, *req.Name)
+		i++
+	}
+	if req.Email != nil {
+		sets = append(sets, fmt.Sprintf("email = $%d", i))
+		args = append(args, strings.ToLower(strings.TrimSpace(*req.Email)))
 		i++
 	}
 	if req.Phone != nil {

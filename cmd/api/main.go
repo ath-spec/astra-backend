@@ -81,7 +81,7 @@ func main() {
 	rmUserRepo := repository.NewPostgresRMUserRepository(db.Pool)
 	assignmentRepo := repository.NewPostgresAssignmentRepository(db.Pool)
 	userRepo.SetAssigner(assignmentRepo) // auto-assign new signups to an RM
-	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, rmUserRepo)
+	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, cfg.RMOTPDevCode, rmUserRepo)
 	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 
@@ -198,14 +198,16 @@ func main() {
 	// its own auth (email+password → RM_JWT_SECRET), its own middleware,
 	// its own tables. A user JWT is never valid here.
 	r.Route("/api/rm", func(r chi.Router) {
-		// Unprotected staff auth.
-		r.Post("/auth/login", rmAuthHandler.Login)
+		// Unprotected staff auth (employee code / email -> OTP -> tokens).
+		r.Post("/auth/otp/send", rmAuthHandler.SendOTP)
+		r.Post("/auth/otp/verify", rmAuthHandler.VerifyOTP)
 		r.Post("/auth/refresh", rmAuthHandler.Refresh)
 		r.Post("/auth/logout", rmAuthHandler.Logout)
 
 		r.Group(func(r chi.Router) {
 			r.Use(authmw.RequireRMAuth(rmAuthService))
 			r.Get("/auth/me", rmAuthHandler.Me)
+			r.Patch("/auth/me", rmAuthHandler.UpdateMe)
 			rmHandler.Register(r) // /clients, /dashboard/summary, ...
 
 			r.Route("/admin", func(r chi.Router) {

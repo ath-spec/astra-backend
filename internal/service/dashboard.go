@@ -1,11 +1,11 @@
 package service
 
 import (
-	"hash/fnv"
-	"math/rand"
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math"
+	"math/rand"
 	"time"
 
 	"github.com/google/uuid"

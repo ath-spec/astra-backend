@@ -187,7 +187,7 @@ func computeQuantitativeGenome(
 
 	// 6. Sustainability: Asset class Shannon-Herfindahl Diversification index
 	hhi := (eqWeight * eqWeight) + (debtWeight * debtWeight) + (otherWeight * otherWeight)
-	sustainability := math.Min(0.95, (1.0 - hhi) * 1.5)
+	sustainability := math.Min(0.95, (1.0-hhi)*1.5)
 
 	// 7. Real Assets: Tangible physical commodities (Gold, Silver), REITs, and hard assets
 	realAssets := otherWeight * 0.95
