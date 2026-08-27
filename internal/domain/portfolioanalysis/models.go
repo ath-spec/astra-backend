@@ -51,6 +51,39 @@ type AllocationResult struct {
 	VolatilityBuckets []VolatilityBucket `json:"volatility_buckets"`
 	SectorExposure    []SectorExposure   `json:"sector_exposure"`
 	Genome            PortfolioGenome    `json:"genome"`
+	// Holdings is the flat per-instrument breakdown (bank, FD, MF, stock) with
+	// each holding's value, share of the total, and volatility bucket — backs
+	// the "allocation factors" drill-down.
+	Holdings []HoldingBreakdown `json:"holdings"`
+	// EquityExposure backs the index-fund / market-cap-split section.
+	EquityExposure *EquityExposure `json:"equity_exposure"`
+}
+
+// HoldingBreakdown is one instrument in the portfolio.
+type HoldingBreakdown struct {
+	Name       string  `json:"name"`
+	Subtitle   string  `json:"subtitle"`
+	Type       string  `json:"type"`       // BANK / FD / MF / STOCK
+	Value      float64 `json:"value"`
+	Pct        float64 `json:"pct"`        // of total holdings value
+	Volatility string  `json:"volatility"` // STABLE / LOW / MEDIUM / HIGH
+}
+
+// MarketCapSlice is one company-size band of the equity book.
+type MarketCapSlice struct {
+	Label string  `json:"label"` // Large Cap / Mid Cap / Small Cap / Micro Cap
+	Value float64 `json:"value"`
+	Pct   float64 `json:"pct"` // of total equity exposure
+}
+
+// EquityExposure summarises passive (index-fund) exposure vs. peers and the
+// company-size split of the equity book.
+type EquityExposure struct {
+	TotalEquityValue float64          `json:"total_equity_value"`
+	IndexFundValue   float64          `json:"index_fund_value"`
+	IndexFundPct     float64          `json:"index_fund_pct"`      // of equity book
+	PeerIndexFundPct float64          `json:"peer_index_fund_pct"` // avg across other users
+	MarketCap        []MarketCapSlice `json:"market_cap"`
 }
 
 // DNAHistoryPoint is one dated snapshot of a user's portfolio DNA, backing
@@ -96,9 +129,20 @@ const (
 type MonthlyInvestmentPoint struct {
 	MonthName     string  `json:"month_name"` // e.g. "Jan", "Feb"
 	YearMonth     string  `json:"year_month"` // e.g. "2026-01"
-	Amount        float64 `json:"amount"`
+	Amount        float64 `json:"amount"`     // gross invested (== BuyAmount), kept for compatibility
+	BuyAmount     float64 `json:"buy_amount"`
+	SellAmount    float64 `json:"sell_amount"` // MF redemptions + stock sells
+	NetAmount     float64 `json:"net_amount"`  // BuyAmount - SellAmount
 	OrderCount    int     `json:"order_count"`
 	HasInvestment bool    `json:"has_investment"`
+}
+
+// YearlyInvestmentPoint aggregates a calendar year's buy / sell / net flow.
+type YearlyInvestmentPoint struct {
+	Year       int     `json:"year"`
+	BuyAmount  float64 `json:"buy_amount"`
+	SellAmount float64 `json:"sell_amount"`
+	NetAmount  float64 `json:"net_amount"`
 }
 
 // DisciplineResult backs the Discipline tab: calculates SIP regularity, streak,
@@ -114,6 +158,7 @@ type DisciplineResult struct {
 	SIPAutomationPct    float64                  `json:"sip_automation_pct"`
 	ActiveMandatesCount int                      `json:"active_mandates_count"`
 	MonthlyHistory      []MonthlyInvestmentPoint `json:"monthly_history"`
+	YearlyHistory       []YearlyInvestmentPoint  `json:"yearly_history"`
 }
 
 // BenchmarkComparison compares the user's blended portfolio returns against standard benchmarks.

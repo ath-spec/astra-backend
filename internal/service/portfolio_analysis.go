@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,18 +19,71 @@ import (
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 )
 
-// stockSectorBySymbol is a static GICS-style sector classification for the
-// handful of instruments the Stocks mock trades (see
-// internal/provider/stocks.instruments) — genuine sector metadata, not a
-// fabricated performance figure, standing in for a real instrument-master
-// feed until one is wired in.
-var stockSectorBySymbol = map[string]string{
-	"RELIANCE":   "Energy",
-	"TCS":        "Technology",
-	"INFY":       "Technology",
-	"HDFCBANK":   "Financial Services",
-	"ICICIBANK":  "Financial Services",
-	"TATAMOTORS": "Automobiles",
+// secRef is one row of the DB-backed instrument master (security_reference):
+// per-symbol sector + company-size band. Seeded now, refreshed by a real
+// instrument feed later — the service only ever reads it, never hardcodes it.
+type secRef struct {
+	sector string
+	band   string
+}
+
+// loadSecurityRef batch-loads the instrument master into a map. Best-effort:
+// an empty map just means every direct equity falls back to code defaults
+// ("Other Equity" sector, "Large Cap" band).
+func (s *PortfolioAnalysisService) loadSecurityRef(ctx context.Context) map[string]secRef {
+	out := map[string]secRef{}
+	rows, err := s.pool.Query(ctx, `SELECT symbol, sector, market_cap_band FROM security_reference`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var sym, sec, band string
+		if err := rows.Scan(&sym, &sec, &band); err == nil {
+			out[sym] = secRef{sector: sec, band: band}
+		}
+	}
+	return out
+}
+
+// marketCapForFund maps a fund's catalog category to a company-size band.
+// Returns ("", true) for diversified equity funds (flexi/multi/large&mid) that
+// should be split across bands, and ("", false) for non-equity funds.
+func marketCapForFund(category string) (band string, split bool) {
+	c := strings.ToLower(category)
+	if !strings.Contains(c, "equity") {
+		return "", false
+	}
+	switch {
+	case strings.Contains(c, "micro cap"):
+		return "Micro Cap", false
+	case strings.Contains(c, "small cap"):
+		return "Small Cap", false
+	case strings.Contains(c, "large & mid"), strings.Contains(c, "large and mid"),
+		strings.Contains(c, "flexi cap"), strings.Contains(c, "multi cap"),
+		strings.Contains(c, "large-mid"):
+		return "", true
+	case strings.Contains(c, "mid cap"):
+		return "Mid Cap", false
+	case strings.Contains(c, "large cap"), strings.Contains(c, "bluechip"):
+		return "Large Cap", false
+	default:
+		// Thematic / sectoral / global equity — treat as large-cap tilt.
+		return "Large Cap", false
+	}
+}
+
+// diversifiedEquitySplit is the assumed large/mid/small mix for flexi- and
+// multi-cap style funds (SEBI multi-cap floors + typical flexi-cap tilt).
+var diversifiedEquitySplit = map[string]float64{
+	"Large Cap": 0.60, "Mid Cap": 0.25, "Small Cap": 0.15,
+}
+
+func isIndexFund(category, schemeName string) bool {
+	s := strings.ToLower(category + " " + schemeName)
+	return strings.Contains(s, "index") ||
+		strings.Contains(s, "nifty") ||
+		strings.Contains(s, "sensex")
 }
 
 // PortfolioAnalysisService computes the Allocation tab live from the user's
@@ -70,6 +124,8 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 		return nil, err
 	}
 
+	secRefs := s.loadSecurityRef(ctx)
+
 	res := &paDomain.AllocationResult{}
 	sectorAmounts := map[string]float64{}
 	volAmounts := map[string]float64{
@@ -99,9 +155,9 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 		value := float64(h.Quantity) * h.LastPrice
 		res.EquityAmount += value
 		volAmounts[paDomain.VolatilityHigh] += value
-		sector, ok := stockSectorBySymbol[h.TradingSymbol]
-		if !ok {
-			sector = "Other Equity"
+		sector := "Other Equity"
+		if ref, ok := secRefs[h.TradingSymbol]; ok && ref.sector != "" {
+			sector = ref.sector
 		}
 		sectorAmounts[sector] += value
 	}
@@ -148,7 +204,150 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 
 	res.Level = allocationLevel(res.TotalValue, volAmounts[paDomain.VolatilityHigh])
 	res.Genome = computeQuantitativeGenome(res.EquityAmount, res.DebtAmount, res.OtherAmount, res.TotalValue, volAmounts, sectorAmounts)
+
+	// ---- Per-holding breakdown + equity exposure (index funds, market cap) ----
+	var holdings []paDomain.HoldingBreakdown
+
+	if bankRows, berr := s.pool.Query(ctx,
+		`SELECT bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1`, userID); berr == nil {
+		for bankRows.Next() {
+			var name, acctType string
+			var bal float64
+			if bankRows.Scan(&name, &acctType, &bal) == nil && bal > 0 {
+				holdings = append(holdings, paDomain.HoldingBreakdown{
+					Name: name, Subtitle: acctType, Type: "BANK",
+					Value: round2(bal), Volatility: paDomain.VolatilityStable,
+				})
+			}
+		}
+		bankRows.Close()
+	}
+
+	for _, acc := range fdAccounts {
+		if acc.Status != fddomain.StatusActive {
+			continue
+		}
+		sub := acc.FDAccountNumber
+		if len(sub) > 4 {
+			sub = "•• " + sub[len(sub)-4:]
+		}
+		holdings = append(holdings, paDomain.HoldingBreakdown{
+			Name: "Fixed Deposit", Subtitle: sub, Type: "FD",
+			Value: round2(acc.PrincipalAmount), Volatility: paDomain.VolatilityStable,
+		})
+	}
+
+	var equityTotal, indexValue float64
+	capAmounts := map[string]float64{"Large Cap": 0, "Mid Cap": 0, "Small Cap": 0, "Micro Cap": 0}
+
+	for _, f := range mfResult.Folios {
+		meta, ok := fundMeta[f.SchemeCode]
+		if !ok {
+			meta = fundMeta_{riskLevel: "Medium", equityPct: 100}
+		}
+		holdings = append(holdings, paDomain.HoldingBreakdown{
+			Name: f.SchemeName, Subtitle: f.SchemeCode, Type: "MF",
+			Value: round2(f.CurrentValue), Volatility: volatilityForRiskLevel(meta.riskLevel),
+		})
+		eqVal := f.CurrentValue * meta.equityPct / 100
+		if eqVal <= 0 {
+			continue
+		}
+		equityTotal += eqVal
+		if isIndexFund(f.Category, f.SchemeName) {
+			indexValue += eqVal
+		}
+		// Prefer the DB band (fund_catalog.market_cap_band); fall back to the
+		// category heuristic only when it's unset.
+		band, split := meta.mktCapBand, meta.mktCapBand == "Diversified"
+		if band == "" {
+			band, split = marketCapForFund(f.Category)
+		}
+		switch {
+		case split:
+			for b, w := range diversifiedEquitySplit {
+				capAmounts[b] += eqVal * w
+			}
+		case band != "" && band != "Diversified":
+			capAmounts[band] += eqVal
+		default:
+			capAmounts["Large Cap"] += eqVal
+		}
+	}
+
+	for _, h := range stockHoldings {
+		v := float64(h.Quantity) * h.LastPrice
+		if v <= 0 {
+			continue
+		}
+		holdings = append(holdings, paDomain.HoldingBreakdown{
+			Name: h.TradingSymbol, Subtitle: h.Exchange, Type: "STOCK",
+			Value: round2(v), Volatility: paDomain.VolatilityHigh,
+		})
+		equityTotal += v
+		band := "Large Cap"
+		if ref, ok := secRefs[h.TradingSymbol]; ok && ref.band != "" {
+			band = ref.band
+		}
+		capAmounts[band] += v
+	}
+
+	var holdingsTotal float64
+	for _, x := range holdings {
+		holdingsTotal += x.Value
+	}
+	for i := range holdings {
+		if holdingsTotal > 0 {
+			holdings[i].Pct = round2(holdings[i].Value / holdingsTotal * 100)
+		}
+	}
+	res.Holdings = holdings
+
+	ee := &paDomain.EquityExposure{
+		TotalEquityValue: round2(equityTotal),
+		IndexFundValue:   round2(indexValue),
+	}
+	if equityTotal > 0 {
+		ee.IndexFundPct = round2(indexValue / equityTotal * 100)
+	}
+	for _, label := range []string{"Large Cap", "Mid Cap", "Small Cap", "Micro Cap"} {
+		amt := round2(capAmounts[label])
+		slice := paDomain.MarketCapSlice{Label: label, Value: amt}
+		if equityTotal > 0 {
+			slice.Pct = round2(amt / equityTotal * 100)
+		}
+		ee.MarketCap = append(ee.MarketCap, slice)
+	}
+	ee.PeerIndexFundPct = s.peerIndexFundPct(ctx, userID)
+	res.EquityExposure = ee
+
 	return res, nil
+}
+
+// peerIndexFundPct is the asset-weighted share of index (passive) funds within
+// the equity mutual-fund holdings of every *other* user — the "investors like
+// you" benchmark. Best-effort: returns 0 on any error or when there is no peer
+// data yet.
+func (s *PortfolioAnalysisService) peerIndexFundPct(ctx context.Context, userID uuid.UUID) float64 {
+	var idx, total float64
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+		  COALESCE(SUM(CASE WHEN (lower(c.category) LIKE '%index%'
+		                       OR lower(f.scheme_name) LIKE '%index%'
+		                       OR lower(f.scheme_name) LIKE '%nifty%'
+		                       OR lower(f.scheme_name) LIKE '%sensex%')
+		                 THEN f.units_held * c.nav ELSE 0 END), 0),
+		  COALESCE(SUM(CASE WHEN COALESCE(a.equity_pct, 100) >= 50
+		                 THEN f.units_held * c.nav ELSE 0 END), 0)
+		FROM mf_folios f
+		JOIN fund_catalog c ON c.scheme_code = f.scheme_code
+		LEFT JOIN fund_allocation a ON a.scheme_code = f.scheme_code
+		WHERE f.user_id <> $1
+	`, userID).Scan(&idx, &total)
+	if err != nil || total <= 0 {
+		return 0
+	}
+	return round2(idx / total * 100)
 }
 
 // computeQuantitativeGenome implements professional multi-factor portfolio risk & genome analysis (MSCI Barra / Morningstar methodology).
@@ -225,6 +424,7 @@ func (s *PortfolioAnalysisService) Discipline(ctx context.Context, userID uuid.U
 		date   time.Time
 		amount float64
 		isSIP  bool
+		isSell bool
 	}
 	var txns []txnPoint
 
@@ -262,6 +462,41 @@ func (s *PortfolioAnalysisService) Discipline(ctx context.Context, userID uuid.U
 		}
 	}
 
+	// Sell-side flow (MF redemptions + completed stock sells) for the same
+	// window — feeds the monthly net / buy / sell breakdown.
+	mfSellRows, err := s.pool.Query(ctx, `
+		SELECT t.transaction_date, t.amount
+		FROM mf_transactions t
+		JOIN mf_folios f ON f.id = t.folio_id
+		WHERE f.user_id = $1 AND t.transaction_type = 'REDEEM' AND t.transaction_date >= $2
+	`, userID, startWindowMonth)
+	if err == nil {
+		defer mfSellRows.Close()
+		for mfSellRows.Next() {
+			var d time.Time
+			var amt float64
+			if err := mfSellRows.Scan(&d, &amt); err == nil {
+				txns = append(txns, txnPoint{date: d, amount: amt, isSell: true})
+			}
+		}
+	}
+
+	stockSellRows, err := s.pool.Query(ctx, `
+		SELECT order_timestamp, (average_price * filled_quantity) AS amount
+		FROM stock_orders
+		WHERE user_id = $1 AND transaction_type = 'SELL' AND status = 'COMPLETE' AND order_timestamp >= $2
+	`, userID, startWindowMonth)
+	if err == nil {
+		defer stockSellRows.Close()
+		for stockSellRows.Next() {
+			var ts time.Time
+			var amt float64
+			if err := stockSellRows.Scan(&ts, &amt); err == nil {
+				txns = append(txns, txnPoint{date: ts, amount: amt, isSell: true})
+			}
+		}
+	}
+
 	var activeMandates int
 	_ = s.pool.QueryRow(ctx, `
 		SELECT COUNT(*) FROM mandates WHERE user_id = $1 AND status = 'ACTIVE'
@@ -286,8 +521,16 @@ func (s *PortfolioAnalysisService) Discipline(ctx context.Context, userID uuid.U
 	sipInvested := 0.0
 	for _, t := range txns {
 		ym := t.date.Format("2006-01")
-		if idx, ok := monthKeyIndex[ym]; ok {
+		idx, ok := monthKeyIndex[ym]
+		if t.isSell {
+			if ok {
+				monthSlots[idx].SellAmount = round2(monthSlots[idx].SellAmount + t.amount)
+			}
+			continue
+		}
+		if ok {
 			monthSlots[idx].Amount = round2(monthSlots[idx].Amount + t.amount)
+			monthSlots[idx].BuyAmount = monthSlots[idx].Amount
 			monthSlots[idx].OrderCount++
 			monthSlots[idx].HasInvestment = true
 		}
@@ -296,6 +539,11 @@ func (s *PortfolioAnalysisService) Discipline(ctx context.Context, userID uuid.U
 			sipInvested += t.amount
 		}
 	}
+	for i := range monthSlots {
+		monthSlots[i].NetAmount = round2(monthSlots[i].BuyAmount - monthSlots[i].SellAmount)
+	}
+
+	yearlyHistory := s.yearlyInvestmentHistory(ctx, userID, now.Year())
 
 	activeMonths := 0
 	for _, m := range monthSlots {
@@ -348,8 +596,69 @@ func (s *PortfolioAnalysisService) Discipline(ctx context.Context, userID uuid.U
 		AvgMonthlyInvested:  avgMonthly,
 		SIPAutomationPct:    automationPct,
 		ActiveMandatesCount: activeMandates,
+		YearlyHistory:       yearlyHistory,
 		MonthlyHistory:      monthSlots,
 	}, nil
+}
+
+// yearlyInvestmentHistory aggregates buy / sell / net investment flow per
+// calendar year for the last 7 years (currentYear-6 .. currentYear), across
+// MF (PURCHASE/SIP vs REDEEM) and stocks (BUY vs SELL). Best-effort: any query
+// that fails simply contributes zero.
+func (s *PortfolioAnalysisService) yearlyInvestmentHistory(ctx context.Context, userID uuid.UUID, currentYear int) []paDomain.YearlyInvestmentPoint {
+	start := time.Date(currentYear-6, 1, 1, 0, 0, 0, 0, time.UTC)
+	buyByYear := make(map[int]float64, 7)
+	sellByYear := make(map[int]float64, 7)
+
+	sumByYear := func(dst map[int]float64, sql string) {
+		rows, err := s.pool.Query(ctx, sql, userID, start)
+		if err != nil {
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var y int
+			var amt float64
+			if err := rows.Scan(&y, &amt); err == nil {
+				dst[y] += amt
+			}
+		}
+	}
+
+	sumByYear(buyByYear, `
+		SELECT EXTRACT(YEAR FROM t.transaction_date)::int, COALESCE(SUM(t.amount), 0)
+		FROM mf_transactions t JOIN mf_folios f ON f.id = t.folio_id
+		WHERE f.user_id = $1 AND t.transaction_type IN ('PURCHASE','SIP') AND t.transaction_date >= $2
+		GROUP BY 1`)
+	sumByYear(buyByYear, `
+		SELECT EXTRACT(YEAR FROM order_timestamp)::int, COALESCE(SUM(average_price * filled_quantity), 0)
+		FROM stock_orders
+		WHERE user_id = $1 AND transaction_type = 'BUY' AND status = 'COMPLETE' AND order_timestamp >= $2
+		GROUP BY 1`)
+	sumByYear(sellByYear, `
+		SELECT EXTRACT(YEAR FROM t.transaction_date)::int, COALESCE(SUM(t.amount), 0)
+		FROM mf_transactions t JOIN mf_folios f ON f.id = t.folio_id
+		WHERE f.user_id = $1 AND t.transaction_type = 'REDEEM' AND t.transaction_date >= $2
+		GROUP BY 1`)
+	sumByYear(sellByYear, `
+		SELECT EXTRACT(YEAR FROM order_timestamp)::int, COALESCE(SUM(average_price * filled_quantity), 0)
+		FROM stock_orders
+		WHERE user_id = $1 AND transaction_type = 'SELL' AND status = 'COMPLETE' AND order_timestamp >= $2
+		GROUP BY 1`)
+
+	out := make([]paDomain.YearlyInvestmentPoint, 7)
+	for i := 0; i < 7; i++ {
+		y := currentYear - 6 + i
+		b := round2(buyByYear[y])
+		sell := round2(sellByYear[y])
+		out[i] = paDomain.YearlyInvestmentPoint{
+			Year:       y,
+			BuyAmount:  b,
+			SellAmount: sell,
+			NetAmount:  round2(b - sell),
+		}
+	}
+	return out
 }
 
 // Performance calculates total gain, alpha vs market benchmarks, and scans for high-cost funds.
@@ -595,6 +904,10 @@ type fundMeta_ struct {
 	riskLevel                    string
 	equityPct, debtPct, otherPct float64
 	sectors                      []catalogdomain.DistributionItem
+	// mktCapBand is fund_catalog.market_cap_band: "Large Cap" / "Mid Cap" /
+	// "Small Cap" / "Micro Cap" / "Diversified", or "" to fall back to the
+	// category heuristic.
+	mktCapBand string
 }
 
 // loadFundMeta batch-loads risk level + allocation breakdown for every
@@ -607,7 +920,8 @@ func (s *PortfolioAnalysisService) loadFundMeta(ctx context.Context, schemeCodes
 
 	rows, err := s.pool.Query(ctx, `
 		SELECT c.scheme_code, c.risk_level,
-			COALESCE(a.equity_pct, 100), COALESCE(a.debt_pct, 0), COALESCE(a.other_pct, 0), COALESCE(a.sectors, '[]')
+			COALESCE(a.equity_pct, 100), COALESCE(a.debt_pct, 0), COALESCE(a.other_pct, 0), COALESCE(a.sectors, '[]'),
+			COALESCE(c.market_cap_band, '')
 		FROM fund_catalog c
 		LEFT JOIN fund_allocation a ON a.scheme_code = c.scheme_code
 		WHERE c.scheme_code = ANY($1)
@@ -618,10 +932,10 @@ func (s *PortfolioAnalysisService) loadFundMeta(ctx context.Context, schemeCodes
 	defer rows.Close()
 
 	for rows.Next() {
-		var schemeCode, riskLevel string
+		var schemeCode, riskLevel, mktCapBand string
 		var equityPct, debtPct, otherPct float64
 		var sectorsJSON []byte
-		if err := rows.Scan(&schemeCode, &riskLevel, &equityPct, &debtPct, &otherPct, &sectorsJSON); err != nil {
+		if err := rows.Scan(&schemeCode, &riskLevel, &equityPct, &debtPct, &otherPct, &sectorsJSON, &mktCapBand); err != nil {
 			return nil, fmt.Errorf("scan fund allocation metadata: %w", err)
 		}
 		var sectors []catalogdomain.DistributionItem
@@ -630,7 +944,7 @@ func (s *PortfolioAnalysisService) loadFundMeta(ctx context.Context, schemeCodes
 				return nil, fmt.Errorf("decode fund sectors: %w", err)
 			}
 		}
-		result[schemeCode] = fundMeta_{riskLevel: riskLevel, equityPct: equityPct, debtPct: debtPct, otherPct: otherPct, sectors: sectors}
+		result[schemeCode] = fundMeta_{riskLevel: riskLevel, equityPct: equityPct, debtPct: debtPct, otherPct: otherPct, sectors: sectors, mktCapBand: mktCapBand}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate fund allocation metadata: %w", err)
