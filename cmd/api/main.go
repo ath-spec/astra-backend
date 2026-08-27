@@ -29,6 +29,7 @@ import (
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	watchlistprovider "github.com/yourusername/astra-backend/internal/provider/watchlist"
 	"github.com/yourusername/astra-backend/internal/repository"
+	"github.com/yourusername/astra-backend/internal/rmseed"
 	"github.com/yourusername/astra-backend/internal/service"
 	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
 )
@@ -49,6 +50,18 @@ func main() {
 		log.Fatalf("Could not initialize database: %v", err)
 	}
 	defer db.Close()
+
+	// Optional: seed the RM/Admin starter desk (1 admin + 2 RMs) and
+	// backfill unassigned users on boot. Idempotent; opt in with
+	// RM_SEED_ON_BOOT=true. Non-fatal — a seeding failure must not stop the
+	// API from serving.
+	if os.Getenv("RM_SEED_ON_BOOT") == "true" {
+		if res, serr := rmseed.Run(ctx, db.Pool, rmseed.ConfigFromEnv()); serr != nil {
+			log.Printf("RM_SEED_ON_BOOT: seeding failed (continuing): %v", serr)
+		} else {
+			log.Printf("RM_SEED_ON_BOOT: staff seeded, %d user(s) backfilled", res.UsersAssigned)
+		}
+	}
 
 	// 3. Initialize Repositories
 	userRepo := repository.NewPostgresUserRepository(db)
