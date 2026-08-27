@@ -81,7 +81,9 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg Config) (Result, error) {
 
 	ring := []uuid.UUID{res.StaffIDs["rm1@astra.in"], res.StaffIDs["rm2@astra.in"]}
 
-	rows, err := pool.Query(ctx, `SELECT id FROM users WHERE assigned_rm_id IS NULL ORDER BY created_at`)
+	// Only users who opted into advisory (wants_rm) are routed to an RM.
+	// Users who declined stay unassigned and never enter an RM's book.
+	rows, err := pool.Query(ctx, `SELECT id FROM users WHERE assigned_rm_id IS NULL AND wants_rm = true ORDER BY created_at`)
 	if err != nil {
 		return res, fmt.Errorf("list unassigned users: %w", err)
 	}

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,7 +21,10 @@ type User struct {
 	Name        *string
 	PhoneNumber string
 	PanNumber   *string
-	CreatedAt   time.Time
+	// WantsRM is the user's advisory opt-in, captured on the signup form.
+	// A Relationship Manager is auto-assigned only when this is true.
+	WantsRM   bool
+	CreatedAt time.Time
 }
 
 type BankAccount struct {
@@ -38,7 +42,7 @@ type RefreshToken struct {
 }
 
 type UserRepository interface {
-	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (user *User, isNew bool, err error)
+	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (user *User, isNew bool, err error)
 	GetByID(ctx context.Context, userID uuid.UUID) (*User, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 	GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error)
@@ -70,25 +74,49 @@ func (r *PostgresUserRepository) SetAssigner(a AssignmentRepository) {
 	r.assigner = a
 }
 
-func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (*User, bool, error) {
+func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (*User, bool, error) {
 	if existing, err := r.findByPhone(ctx, phoneNumber); err != nil {
 		return nil, false, err
 	} else if existing != nil {
+		// Keep the stored name in sync with what the client sends on verify.
+		// The account row is created on the first OTP verify (often with a
+		// placeholder name), but the user sets / corrects their real name
+		// during onboarding, which happens after the row already exists and
+		// hits verify again. Only a non-empty, changed name is written — a
+		// blank never overwrites a good one.
+		if trimmed := strings.TrimSpace(name); trimmed != "" && (existing.Name == nil || *existing.Name != trimmed) {
+			if _, err := r.db.Pool.Exec(ctx,
+				`UPDATE users SET name = $1 WHERE id = $2`, trimmed, existing.ID); err != nil {
+				return nil, false, fmt.Errorf("update user name: %w", err)
+			}
+			existing.Name = &trimmed
+		}
+		// Honour a change to the advisory opt-in: turning it on assigns an RM
+		// if the user has none; turning it off releases their current RM.
+		if wantsRM != existing.WantsRM {
+			if _, err := r.db.Pool.Exec(ctx,
+				`UPDATE users SET wants_rm = $1 WHERE id = $2`, wantsRM, existing.ID); err != nil {
+				return nil, false, fmt.Errorf("update user wants_rm: %w", err)
+			}
+			existing.WantsRM = wantsRM
+			r.syncRMAssignment(ctx, existing.ID, wantsRM)
+		}
 		return existing, false, nil
 	}
 
 	var user User
 	var isNew bool
 	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO users (id, astra_user_id, phone_number, name)
-		VALUES (gen_random_uuid(), $1, $2, $3)
+		INSERT INTO users (id, astra_user_id, phone_number, name, wants_rm)
+		VALUES (gen_random_uuid(), $1, $2, $3, $4)
 		ON CONFLICT (phone_number) DO UPDATE SET phone_number = EXCLUDED.phone_number
-		RETURNING id, astra_user_id, phone_number, name, created_at, (xmax = 0) AS is_new
-	`, astraUserID, phoneNumber, name).Scan(
+		RETURNING id, astra_user_id, phone_number, name, wants_rm, created_at, (xmax = 0) AS is_new
+	`, astraUserID, phoneNumber, name, wantsRM).Scan(
 		&user.ID,
 		&user.AstraUserID,
 		&user.PhoneNumber,
 		&user.Name,
+		&user.WantsRM,
 		&user.CreatedAt,
 		&isNew,
 	)
@@ -105,10 +133,11 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	}
 
 	// Route the new user to a Relationship Manager via the round-robin
-	// active queue. Best-effort: a failure here (no active RMs, transient
-	// DB error) must never block signup — the user is created either way
-	// and shows up in the admin console's unassigned pool.
-	if r.assigner != nil {
+	// active queue — only when they opted in on the signup form. Best-effort:
+	// a failure here (no active RMs, transient DB error) must never block
+	// signup — the user is created either way and, if they wanted an RM,
+	// shows up in the admin console's unassigned pool.
+	if wantsRM && r.assigner != nil {
 		if _, err := r.assigner.AssignNextRM(ctx, user.ID); err != nil && !errors.Is(err, ErrNoActiveRM) {
 			fmt.Printf("user_repo: auto-assign RM for user %s failed: %v\n", user.ID, err)
 		}
@@ -117,12 +146,31 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	return &user, true, nil
 }
 
+// syncRMAssignment reconciles a user's RM assignment with their advisory
+// opt-in after it flips. Best-effort: assignment is a convenience, never a
+// blocker for the auth flow, so failures are logged and swallowed.
+func (r *PostgresUserRepository) syncRMAssignment(ctx context.Context, userID uuid.UUID, wantsRM bool) {
+	if r.assigner == nil {
+		return
+	}
+	if wantsRM {
+		if _, err := r.assigner.AssignNextRM(ctx, userID); err != nil && !errors.Is(err, ErrNoActiveRM) {
+			fmt.Printf("user_repo: opt-in RM assign for user %s failed: %v\n", userID, err)
+		}
+		return
+	}
+	// Opted out: release the current RM if they have one.
+	if err := r.assigner.Unassign(ctx, userID, uuid.Nil, "user opted out of relationship manager"); err != nil {
+		fmt.Printf("user_repo: opt-out RM unassign for user %s failed: %v\n", userID, err)
+	}
+}
+
 func (r *PostgresUserRepository) GetByID(ctx context.Context, userID uuid.UUID) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, `
-		SELECT id, astra_user_id, phone_number, name, created_at
+		SELECT id, astra_user_id, phone_number, name, wants_rm, created_at
 		FROM users WHERE id = $1
-	`, userID).Scan(&user.ID, &user.AstraUserID, &user.PhoneNumber, &user.Name, &user.CreatedAt)
+	`, userID).Scan(&user.ID, &user.AstraUserID, &user.PhoneNumber, &user.Name, &user.WantsRM, &user.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("user %s not found: %w", userID, pgx.ErrNoRows)
@@ -135,9 +183,9 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, userID uuid.UUID) 
 func (r *PostgresUserRepository) findByPhone(ctx context.Context, phoneNumber string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, `
-		SELECT id, astra_user_id, phone_number, name, created_at
+		SELECT id, astra_user_id, phone_number, name, wants_rm, created_at
 		FROM users WHERE phone_number = $1
-	`, phoneNumber).Scan(&user.ID, &user.AstraUserID, &user.PhoneNumber, &user.Name, &user.CreatedAt)
+	`, phoneNumber).Scan(&user.ID, &user.AstraUserID, &user.PhoneNumber, &user.Name, &user.WantsRM, &user.CreatedAt)
 
 	switch {
 	case err == nil:

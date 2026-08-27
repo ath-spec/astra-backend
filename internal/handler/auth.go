@@ -20,7 +20,8 @@ type VerifyRequest struct {
 	PhoneNumber string                   `json:"phone_number"`
 	OTP         string                   `json:"otp"`
 	Name        string                   `json:"name"`
-	Banks       []repository.BankAccount `json:"banks"` // Dynamic UI accounts
+	WantsRM     bool                     `json:"wants_rm"` // advisory opt-in from the signup form
+	Banks       []repository.BankAccount `json:"banks"`    // Dynamic UI accounts
 }
 
 type AuthHandler struct {
@@ -81,7 +82,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. Find or Create User
-	user, isNewUser, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber, req.Name, req.Banks)
+	user, isNewUser, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber, req.Name, req.WantsRM, req.Banks)
 	if err != nil {
 		log.Printf("User DB Error: %v", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")
@@ -225,6 +226,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"astra_user_id": user.AstraUserID,
 		"phone_number":  user.PhoneNumber,
 		"name":          user.Name,
+		"wants_rm":      user.WantsRM,
 		"created_at":    user.CreatedAt,
 	})
 }
