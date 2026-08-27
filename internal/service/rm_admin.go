@@ -101,6 +101,11 @@ func (s *RMAdminService) roster(ctx context.Context) ([]rmdomain.RosterItem, err
 	}
 	out := make([]rmdomain.RosterItem, 0, len(staff))
 	for _, st := range staff {
+		// The roster is the RM book-of-business view. Admins manage RMs and
+		// never hold clients, so they are not listed here.
+		if st.Role != rmdomain.RoleRM {
+			continue
+		}
 		item := rmdomain.RosterItem{
 			Public:      st.Public(),
 			ClientCount: counts[st.ID],
@@ -160,6 +165,9 @@ func (s *RMAdminService) Assign(ctx context.Context, actorRMID uuid.UUID, req rm
 	if err != nil {
 		return err
 	}
+	if target.Role != rmdomain.RoleRM {
+		return fmt.Errorf("clients can only be assigned to an RM, not an admin: %w", apiresponse.ErrValidation)
+	}
 	if target.Status != rmdomain.StatusActive {
 		return fmt.Errorf("target RM is inactive: %w", apiresponse.ErrValidation)
 	}
@@ -184,6 +192,9 @@ func (s *RMAdminService) Transfer(ctx context.Context, actorRMID uuid.UUID, req 
 	target, err := s.requireStaff(ctx, req.ToRMID)
 	if err != nil {
 		return err
+	}
+	if target.Role != rmdomain.RoleRM {
+		return fmt.Errorf("clients can only be assigned to an RM, not an admin: %w", apiresponse.ErrValidation)
 	}
 	if target.Status != rmdomain.StatusActive {
 		return fmt.Errorf("target RM is inactive: %w", apiresponse.ErrValidation)

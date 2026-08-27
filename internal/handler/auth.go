@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/yourusername/astra-backend/internal/middleware"
@@ -220,6 +221,51 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"user_id":       user.ID,
+		"astra_user_id": user.AstraUserID,
+		"phone_number":  user.PhoneNumber,
+		"name":          user.Name,
+		"wants_rm":      user.WantsRM,
+		"created_at":    user.CreatedAt,
+	})
+}
+
+// UpdateMe handles PATCH /api/auth/me — lets the authenticated user update
+// their profile. Currently just the display name, which the app collects
+// during onboarding (after the account row is already created on OTP verify).
+func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		respondAuthError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondAuthError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if len(name) < 2 {
+		respondAuthError(w, http.StatusBadRequest, "Name must be at least 2 characters")
+		return
+	}
+
+	if err := h.userRepo.UpdateUserName(r.Context(), userID, name); err != nil {
+		log.Printf("User DB Error: %v", err)
+		respondAuthError(w, http.StatusInternalServerError, "Error updating profile")
+		return
+	}
+
+	user, err := h.userRepo.GetByID(r.Context(), userID)
+	if err != nil {
+		respondAuthError(w, http.StatusInternalServerError, "Error reloading profile")
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
 		"user_id":       user.ID,

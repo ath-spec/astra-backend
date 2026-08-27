@@ -184,6 +184,7 @@ func main() {
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(authService))
 		r.Get("/api/auth/me", authHandler.Me)
+		r.Patch("/api/auth/me", authHandler.UpdateMe)
 		r.Post("/api/chat", chatHandler.HandleChat)
 		r.Get("/api/chat/history", chatHandler.GetHistory)
 		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route

@@ -43,6 +43,7 @@ type RefreshToken struct {
 
 type UserRepository interface {
 	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (user *User, isNew bool, err error)
+	UpdateUserName(ctx context.Context, userID uuid.UUID, name string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*User, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 	GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error)
@@ -163,6 +164,24 @@ func (r *PostgresUserRepository) syncRMAssignment(ctx context.Context, userID uu
 	if err := r.assigner.Unassign(ctx, userID, uuid.Nil, "user opted out of relationship manager"); err != nil {
 		fmt.Printf("user_repo: opt-out RM unassign for user %s failed: %v\n", userID, err)
 	}
+}
+
+// UpdateUserName sets the user's display name. Used by the app's onboarding
+// name step, which runs after the account row already exists (it is created
+// on the first OTP verify, before the name is collected).
+func (r *PostgresUserRepository) UpdateUserName(ctx context.Context, userID uuid.UUID, name string) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return fmt.Errorf("name is required")
+	}
+	ct, err := r.db.Pool.Exec(ctx, `UPDATE users SET name = $1 WHERE id = $2`, trimmed, userID)
+	if err != nil {
+		return fmt.Errorf("update user name: %w", err)
+	}
+	if ct.RowsAffected() == 0 {
+		return fmt.Errorf("user %s not found: %w", userID, pgx.ErrNoRows)
+	}
+	return nil
 }
 
 func (r *PostgresUserRepository) GetByID(ctx context.Context, userID uuid.UUID) (*User, error) {

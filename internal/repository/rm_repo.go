@@ -342,7 +342,7 @@ func activeRingTx(ctx context.Context, tx pgx.Tx) ([]rmdomain.Slot, error) {
 		SELECT r.id, r.max_portfolios, COUNT(u.id)
 		FROM rm_users r
 		LEFT JOIN users u ON u.assigned_rm_id = r.id
-		WHERE r.status = 'active'
+		WHERE r.status = 'active' AND r.role = 'rm'
 		GROUP BY r.id, r.max_portfolios, r.created_at
 		ORDER BY r.created_at
 	`)
