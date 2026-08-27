@@ -41,6 +41,6 @@ func main() {
 		fmt.Printf("  %-16s %s\n", email, id)
 	}
 	fmt.Printf("\nBackfilled %d user(s).\n", res.UsersAssigned)
-	fmt.Println("Login: POST /api/rm/auth/otp/send {\"identifier\":\"EMP001\"}  then  /api/rm/auth/otp/verify {\"identifier\":\"EMP001\",\"otp\":\"<code from server log>\"}")
+	fmt.Println("Login: POST /api/rm/auth/otp/send {\"identifier\":\"AD001\"}  then  /api/rm/auth/otp/verify {\"identifier\":\"AD001\",\"otp\":\"<code from server log>\"}")
 	fmt.Println("Set RM_OTP_DEV_CODE on the server for a fixed testable code.")
 }

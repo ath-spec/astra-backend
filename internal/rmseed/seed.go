@@ -56,7 +56,7 @@ func Run(ctx context.Context, pool *pgxpool.Pool, cfg Config) (Result, error) {
 	res := Result{StaffIDs: make(map[string]uuid.UUID)}
 
 	staff := []staffRow{
-		{EmployeeCode: "EMP001", Email: "admin@astra.in", Name: "Astra Admin", Role: "admin", Phone: cfg.AdminPhone},
+		{EmployeeCode: "AD001", Email: "admin@astra.in", Name: "Astra Admin", Role: "admin", Phone: cfg.AdminPhone},
 		{EmployeeCode: "EMP002", Email: "rm1@astra.in", Name: "Priya Nair", Role: "rm", Phone: cfg.RM1Phone},
 		{EmployeeCode: "EMP003", Email: "rm2@astra.in", Name: "Arjun Mehta", Role: "rm", Phone: cfg.RM2Phone},
 	}

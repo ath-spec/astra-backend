@@ -5,7 +5,7 @@
 #
 # Prereqs on the target:
 #   * migrations applied (automatic on boot)
-#   * `go run ./cmd/rmseed` run once -> creates EMP001 admin@astra.in,
+#   * `go run ./cmd/rmseed` run once -> creates AD001 admin@astra.in,
 #     EMP002 rm1@astra.in, EMP003 rm2@astra.in
 #   * RM_OTP_DEV_CODE set on the server to a fixed code, and passed here as
 #     OTP=... (otherwise the real code is only in the server logs and this
@@ -60,12 +60,12 @@ check "otp/send missing identifier -> 400" 400 -X POST "$BASE/api/rm/auth/otp/se
 check "otp/send unknown identifier -> 200 (no enumeration)" 200 -X POST "$BASE/api/rm/auth/otp/send" \
   -H 'Content-Type: application/json' -d '{"identifier":"EMP999"}'
 check "otp/verify wrong code -> 401" 401 -X POST "$BASE/api/rm/auth/otp/verify" \
-  -H 'Content-Type: application/json' -d '{"identifier":"EMP001","otp":"000000x"}'
+  -H 'Content-Type: application/json' -d '{"identifier":"AD001","otp":"000000x"}'
 
 [ -z "$OTP" ] && { printf '\n\033[1mRESULT: %d passed, %d failed (auth-gated checks skipped)\033[0m\n' "$pass" "$fail"; exit $((fail>0)); }
 
-hr "admin login (EMP001)"
-login "EMP001"
+hr "admin login (AD001)"
+login "AD001"
 ADMIN_TOKEN="$TOKEN"; ADMIN_REFRESH="$REFRESH"
 AUTH_ADMIN=(-H "Authorization: Bearer $ADMIN_TOKEN")
 check "GET /api/rm/auth/me" 200 "${AUTH_ADMIN[@]}" "$BASE/api/rm/auth/me"
@@ -146,7 +146,7 @@ if [ "${TEST_SIGNUP:-0}" = "1" ]; then
   check "user OTP verify (new user) -> 200" 200 -X POST "$BASE/api/auth/otp/verify" -H 'Content-Type: application/json' \
     -d "{\"astra_user_id\":\"smoke-$STAMP\",\"phone_number\":\"$PHONE\",\"otp\":\"123456\",\"name\":\"Smoke User\"}"
   sleep 1
-  login "EMP001"; AUTH_ADMIN=(-H "Authorization: Bearer $TOKEN")
+  login "AD001"; AUTH_ADMIN=(-H "Authorization: Bearer $TOKEN")
   curl -sS -m 20 "${AUTH_ADMIN[@]}" "$BASE/api/rm/admin/assignments/history?limit=1" \
     | jq -r '.data.items[0] | "     newest history: \(.action) -> \(.to_rm_name)  (expect auto_assign)"'
 else
