@@ -70,10 +70,20 @@ func main() {
 	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
 	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
-	goalsService := service.NewGoalsService(goalsprovider.NewPostgresProvider(db.Pool))
+	goalsProvider := goalsprovider.NewPostgresProvider(db.Pool)
+	goalsService := service.NewGoalsService(goalsProvider)
 	mfService := service.NewMFService(mfProvider)
 	dashboardService := service.NewDashboardService(stocksProvider, mfProvider, fdProvider, userRepo, db.Pool)
 	portfolioAnalysisService := service.NewPortfolioAnalysisService(mfProvider, stocksProvider, fdProvider, db.Pool)
+
+	// RM/Admin console: separate identity, separate auth (RM_JWT_SECRET),
+	// separate schema. Composes the user-domain providers read-only.
+	rmUserRepo := repository.NewPostgresRMUserRepository(db.Pool)
+	assignmentRepo := repository.NewPostgresAssignmentRepository(db.Pool)
+	userRepo.SetAssigner(assignmentRepo) // auto-assign new signups to an RM
+	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, rmUserRepo)
+	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, db.Pool)
+	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
@@ -90,6 +100,9 @@ func main() {
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
+	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
+	rmHandler := handler.NewRMHandler(rmService)
+	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService)
 
 	// 6. Setup Router
 	r := chi.NewRouter()
@@ -179,6 +192,27 @@ func main() {
 		// Scaffolded only: routed, but return 501 until a provider is picked.
 		r.Mount("/api/v1/aa", aaHandler.Routes())
 		r.Mount("/api/v1/kyc", kycHandler.Routes())
+	})
+
+	// RM/Admin console API. Entirely separate from the user app above:
+	// its own auth (email+password → RM_JWT_SECRET), its own middleware,
+	// its own tables. A user JWT is never valid here.
+	r.Route("/api/rm", func(r chi.Router) {
+		// Unprotected staff auth.
+		r.Post("/auth/login", rmAuthHandler.Login)
+		r.Post("/auth/refresh", rmAuthHandler.Refresh)
+		r.Post("/auth/logout", rmAuthHandler.Logout)
+
+		r.Group(func(r chi.Router) {
+			r.Use(authmw.RequireRMAuth(rmAuthService))
+			r.Get("/auth/me", rmAuthHandler.Me)
+			rmHandler.Register(r) // /clients, /dashboard/summary, ...
+
+			r.Route("/admin", func(r chi.Router) {
+				r.Use(authmw.RequireAdmin)
+				rmAdminHandler.Register(r)
+			})
+		})
 	})
 
 	// 7. Start Server with Graceful Shutdown

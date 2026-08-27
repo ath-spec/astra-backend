@@ -51,10 +51,23 @@ type UserRepository interface {
 
 type PostgresUserRepository struct {
 	db *database.Database
+
+	// assigner, when set, auto-assigns every newly created user to a
+	// Relationship Manager via the round-robin "active queue" (see
+	// AssignmentRepository). Optional: if nil, or if it reports no active
+	// RMs, the user is still created and simply lands in the admin
+	// console's unassigned pool.
+	assigner AssignmentRepository
 }
 
 func NewPostgresUserRepository(db *database.Database) *PostgresUserRepository {
 	return &PostgresUserRepository{db: db}
+}
+
+// SetAssigner wires the RM auto-assignment engine into the signup path.
+// Called once at startup after the assignment repository is constructed.
+func (r *PostgresUserRepository) SetAssigner(a AssignmentRepository) {
+	r.assigner = a
 }
 
 func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, uiBanks interface{}) (*User, bool, error) {
@@ -89,6 +102,16 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 
 	if err := r.seedInitialUserData(ctx, user.ID, phoneNumber); err != nil {
 		return nil, false, err
+	}
+
+	// Route the new user to a Relationship Manager via the round-robin
+	// active queue. Best-effort: a failure here (no active RMs, transient
+	// DB error) must never block signup — the user is created either way
+	// and shows up in the admin console's unassigned pool.
+	if r.assigner != nil {
+		if _, err := r.assigner.AssignNextRM(ctx, user.ID); err != nil && !errors.Is(err, ErrNoActiveRM) {
+			fmt.Printf("user_repo: auto-assign RM for user %s failed: %v\n", user.ID, err)
+		}
 	}
 
 	return &user, true, nil

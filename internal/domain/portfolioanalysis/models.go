@@ -53,6 +53,21 @@ type AllocationResult struct {
 	Genome            PortfolioGenome    `json:"genome"`
 }
 
+// DNAHistoryPoint is one dated snapshot of a user's portfolio DNA, backing
+// the RM console's "how has this client's allocation & DNA changed over
+// time" view. Persisted in portfolio_dna_snapshots (migration 000018).
+type DNAHistoryPoint struct {
+	Date              int64              `json:"date"` // epoch seconds
+	Level             string             `json:"level"`
+	TotalValue        float64            `json:"total_value"`
+	EquityPct         float64            `json:"equity_pct"`
+	DebtPct           float64            `json:"debt_pct"`
+	OtherPct          float64            `json:"other_pct"`
+	Genome            PortfolioGenome    `json:"genome"`
+	SectorExposure    []SectorExposure   `json:"sector_exposure"`
+	VolatilityBuckets []VolatilityBucket `json:"volatility_buckets"`
+}
+
 const (
 	LevelConservative         = "CONSERVATIVE"
 	LevelModerateConservative = "MODERATE_CONSERVATIVE"

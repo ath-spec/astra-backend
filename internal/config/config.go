@@ -13,6 +13,7 @@ type Config struct {
 	GroqAPIKey        string
 	DatabaseURL       string
 	JWTSecret         string
+	RMJWTSecret       string
 	MasterInternalKey string
 	SarvamAPIKey      string
 }
@@ -28,6 +29,7 @@ func Load() *Config {
 		// These might be encrypted, we will check below
 		GroqAPIKey:   os.Getenv("GROQ_API_KEY"),
 		JWTSecret:    os.Getenv("JWT_SECRET"),
+		RMJWTSecret:  os.Getenv("RM_JWT_SECRET"),
 		SarvamAPIKey: os.Getenv("SARVAM_API_KEY"),
 	}
 
@@ -37,6 +39,9 @@ func Load() *Config {
 		cfg.GroqAPIKey = decryptOrFatal(cfg.GroqAPIKey, masterKey, "GROQ_API_KEY")
 		cfg.JWTSecret = decryptOrFatal(cfg.JWTSecret, masterKey, "JWT_SECRET")
 		cfg.SarvamAPIKey = decryptOrFatal(cfg.SarvamAPIKey, masterKey, "SARVAM_API_KEY")
+		if cfg.RMJWTSecret != "" {
+			cfg.RMJWTSecret = decryptOrFatal(cfg.RMJWTSecret, masterKey, "RM_JWT_SECRET")
+		}
 	} else if masterKey != "" {
 		log.Fatalf("FATAL: MASTER_INTERNAL_KEY is set but is %d characters long (must be 32).", len(masterKey))
 	} else {
@@ -61,6 +66,15 @@ func Load() *Config {
 
 	if cfg.JWTSecret == "" {
 		log.Println("WARNING: JWT_SECRET is not set. Authentication will fail.")
+	}
+
+	// RM/Admin console auth uses its own signing key so a leaked user token
+	// can never be replayed against staff endpoints and vice versa. Falling
+	// back to JWT_SECRET keeps local dev working, but the two must be
+	// distinct in any deployed environment.
+	if cfg.RMJWTSecret == "" {
+		log.Println("WARNING: RM_JWT_SECRET is not set. Falling back to JWT_SECRET for the RM/Admin console.")
+		cfg.RMJWTSecret = cfg.JWTSecret
 	}
 
 	return cfg
