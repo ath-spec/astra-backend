@@ -176,19 +176,28 @@ func (s *Service) SubscriptionLoad(ctx context.Context, userID uuid.UUID) (analy
 	return VerifiedSubscriptionLoad(txns, now), nil
 }
 
-// ListTransactions is the raw feed behind the Transactions screen — every
-// individual transaction in the lookback window (default fetchWindowDays,
-// capped at 3650), optionally filtered by exact category/merchant, newest
-// first. Unlike every other method on this Service, it returns individual
-// line items rather than a computed analysis.
-func (s *Service) ListTransactions(ctx context.Context, userID uuid.UUID, category, merchant string, days int) ([]analyticsdomain.TransactionListItem, error) {
+// ListTransactions is the paginated raw feed behind the Transactions screen.
+// limit/offset drive infinite-scroll: default 25, max 100. Total is the
+// count of all matching items so the client knows when to stop.
+func (s *Service) ListTransactions(ctx context.Context, userID uuid.UUID, category, merchant string, days, limit, offset int) (analyticsdomain.TransactionPage, error) {
 	if days <= 0 || days > 3650 {
 		days = fetchWindowDays
 	}
+	const defaultLimit = 25
+	const maxLimit = 100
+	if limit <= 0 {
+		limit = defaultLimit
+	} else if limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
 	now := time.Now().UTC()
 	txns, err := s.source.GetTransactions(ctx, userID, now.AddDate(0, 0, -days), now)
 	if err != nil {
-		return nil, err
+		return analyticsdomain.TransactionPage{}, err
 	}
 
 	items := make([]analyticsdomain.TransactionListItem, 0, len(txns))
@@ -205,7 +214,16 @@ func (s *Service) ListTransactions(ctx context.Context, userID uuid.UUID, catego
 		})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].OccurredAt.Time().After(items[j].OccurredAt.Time()) })
-	return items, nil
+
+	total := len(items)
+	if offset >= total {
+		return analyticsdomain.TransactionPage{Items: []analyticsdomain.TransactionListItem{}, Total: total, Limit: limit, Offset: offset}, nil
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return analyticsdomain.TransactionPage{Items: items[offset:end], Total: total, Limit: limit, Offset: offset}, nil
 }
 
 func (s *Service) IncomeAnalysis(ctx context.Context, userID uuid.UUID) (analyticsdomain.IncomeResult, error) {

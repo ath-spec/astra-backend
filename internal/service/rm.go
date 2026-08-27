@@ -37,10 +37,11 @@ type RMService struct {
 	mf        mfprovider.Provider
 	fd        fdprovider.Provider
 	goals     goalsprovider.Provider
-	userRepo  repository.UserRepository
-	assign    repository.AssignmentRepository
-	rmRepo    repository.RMUserRepository
-	pool      *pgxpool.Pool
+	userRepo     repository.UserRepository
+	assign       repository.AssignmentRepository
+	rmRepo       repository.RMUserRepository
+	interactions repository.RMInteractionRepository
+	pool         *pgxpool.Pool
 }
 
 func NewRMService(
@@ -53,11 +54,12 @@ func NewRMService(
 	userRepo repository.UserRepository,
 	assign repository.AssignmentRepository,
 	rmRepo repository.RMUserRepository,
+	interactions repository.RMInteractionRepository,
 	pool *pgxpool.Pool,
 ) *RMService {
 	return &RMService{
 		dashboard: dashboard, analysis: analysis, stocks: stocks, mf: mf, fd: fd, goals: goals,
-		userRepo: userRepo, assign: assign, rmRepo: rmRepo, pool: pool,
+		userRepo: userRepo, assign: assign, rmRepo: rmRepo, interactions: interactions, pool: pool,
 	}
 }
 
@@ -235,6 +237,58 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 		Goals:        goalsList,
 		SpendSummary: spend,
 		Growth:       growth,
+	}, nil
+}
+
+// PortfolioAnalysis assembles the full Allocation / Discipline / Performance
+// analysis for one client — the same three engines that back the user app's
+// Portfolio Analysis screen — subject to the same book-ownership check as
+// GetClient. Each section is fetched concurrently; a section that errors is
+// returned as nil rather than failing the whole call, so the RM still sees
+// whatever analysis is available.
+func (s *RMService) PortfolioAnalysis(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID) (*rmdomain.ClientPortfolioAnalysis, error) {
+	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
+		return nil, err
+	}
+
+	var (
+		alloc *paDomain.AllocationResult
+		disc  *paDomain.DisciplineResult
+		perf  *paDomain.PerformanceResult
+	)
+	g, gCtx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		v, err := s.analysis.Allocation(gCtx, userID)
+		if err != nil {
+			return fmt.Errorf("client allocation: %w", err)
+		}
+		alloc = v
+		return nil
+	})
+	g.Go(func() error {
+		v, err := s.analysis.Discipline(gCtx, userID)
+		if err != nil {
+			return fmt.Errorf("client discipline: %w", err)
+		}
+		disc = v
+		return nil
+	})
+	g.Go(func() error {
+		v, err := s.analysis.Performance(gCtx, userID)
+		if err != nil {
+			return fmt.Errorf("client performance: %w", err)
+		}
+		perf = v
+		return nil
+	})
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	return &rmdomain.ClientPortfolioAnalysis{
+		Allocation:  alloc,
+		Discipline:  disc,
+		Performance: perf,
 	}, nil
 }
 

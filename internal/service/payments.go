@@ -37,8 +37,8 @@ func (s *PaymentsService) MandateAction(ctx context.Context, userID uuid.UUID, m
 	return s.provider.MandateAction(ctx, userID, mandateID, req)
 }
 
-func (s *PaymentsService) MandateHistory(ctx context.Context, userID uuid.UUID, mandateID string) ([]paymentsdomain.MandateExecution, error) {
-	return s.provider.MandateHistory(ctx, userID, mandateID)
+func (s *PaymentsService) MandateHistory(ctx context.Context, userID uuid.UUID, mandateID string, limit, offset int) (paymentsdomain.ExecutionPage, error) {
+	return s.provider.MandateHistory(ctx, userID, mandateID, limit, offset)
 }
 
 func (s *PaymentsService) RecurringSummary(ctx context.Context, userID uuid.UUID) (paymentsdomain.RecurringSummary, error) {

@@ -269,10 +269,11 @@ func (h *AnalyticsHandler) transactions(w http.ResponseWriter, r *http.Request) 
 		apiresponse.Error(w, apiresponse.ErrUnauthorized)
 		return
 	}
-	category := r.URL.Query().Get("category")
-	merchant := r.URL.Query().Get("merchant")
+	q := r.URL.Query()
+	category := q.Get("category")
+	merchant := q.Get("merchant")
 	days := 0
-	if v := r.URL.Query().Get("days"); v != "" {
+	if v := q.Get("days"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 {
 			apiresponse.Error(w, apiresponse.Validation("days must be a positive integer"))
@@ -280,7 +281,9 @@ func (h *AnalyticsHandler) transactions(w http.ResponseWriter, r *http.Request) 
 		}
 		days = n
 	}
-	result, err := h.svc.ListTransactions(r.Context(), userID, category, merchant, days)
+	limit, _ := strconv.Atoi(q.Get("limit"))
+	offset, _ := strconv.Atoi(q.Get("offset"))
+	result, err := h.svc.ListTransactions(r.Context(), userID, category, merchant, days, limit, offset)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

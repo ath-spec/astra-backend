@@ -42,6 +42,16 @@ type TransactionListItem struct {
 	OccurredAt apitime.Time `json:"occurred_at"`
 }
 
+// TransactionPage is the paginated envelope for GET /transactions.
+// Total is the unfiltered count for the same window/filters so the client
+// knows how many pages remain and when to stop infinite-scrolling.
+type TransactionPage struct {
+	Items  []TransactionListItem `json:"items"`
+	Total  int                   `json:"total"`
+	Limit  int                   `json:"limit"`
+	Offset int                   `json:"offset"`
+}
+
 // --- A: Weekday vs weekend ---
 
 type WeekdayWeekendResult struct {

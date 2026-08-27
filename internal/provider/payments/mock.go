@@ -263,9 +263,10 @@ func (p *MockProvider) ListMandates(ctx context.Context, userID uuid.UUID, statu
 	if err := p.seedDemoSubscriptions(ctx, userID); err != nil {
 		return nil, err
 	}
-	if err := p.processDueMandates(ctx, userID); err != nil {
+	if err := p.processDueMandates(ctx, userID, maxCatchUpPerRead); err != nil {
 		return nil, err
 	}
+
 
 	rows, err := p.pool.Query(ctx, `
 		SELECT `+mandateColumns+`

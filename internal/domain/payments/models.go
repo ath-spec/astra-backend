@@ -64,6 +64,14 @@ type MandateExecution struct {
 	ExecutedAt    apitime.Time `json:"executed_at"`
 }
 
+// ExecutionPage is the paginated envelope for GET /mandates/{id}/history.
+type ExecutionPage struct {
+	Items  []MandateExecution `json:"items"`
+	Total  int                `json:"total"`
+	Limit  int                `json:"limit"`
+	Offset int                `json:"offset"`
+}
+
 // RecurringSummary backs the Recurring screen's upcoming/overdue/paid stat
 // tiles and the Home screen's "Track your bills" teaser.
 type RecurringSummary struct {

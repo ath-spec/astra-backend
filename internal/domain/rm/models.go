@@ -197,6 +197,157 @@ type PortfolioHistory struct {
 	DNASeries        []paDomain.DNAHistoryPoint `json:"dna_series"`
 }
 
+// ClientPortfolioAnalysis is the full portfolio-analysis payload for the RM
+// console: the same Allocation / Discipline / Performance analysis the client
+// sees in-app, exposed read-only to the client's RM. Each section may be nil
+// if that engine returned an error or the client has no relevant holdings.
+type ClientPortfolioAnalysis struct {
+	Allocation  *paDomain.AllocationResult  `json:"allocation"`
+	Discipline  *paDomain.DisciplineResult  `json:"discipline"`
+	Performance *paDomain.PerformanceResult `json:"performance"`
+}
+
+// --- Advisory: actionable, calculated insights for the RM ---
+
+// AdvisoryAction is one concrete thing the RM could do for a client, ranked by
+// Priority (1 = most urgent). All values are computed from live data.
+type AdvisoryAction struct {
+	Kind     string  `json:"kind"`   // deploy_cash | goal_gap | sip_lapsed | fd_maturing | retention_call | drawdown_call
+	Priority int     `json:"priority"`
+	Title    string  `json:"title"`
+	Detail   string  `json:"detail"`
+	Amount   float64 `json:"amount,omitempty"`
+}
+
+// ClientActionItem attaches an action to the client it concerns — used for the
+// book-wide "who to call" queue.
+type ClientActionItem struct {
+	UserID uuid.UUID      `json:"user_id"`
+	Name   string         `json:"name"`
+	Phone  string         `json:"phone"`
+	Action AdvisoryAction `json:"action"`
+}
+
+// IdleCashResult sizes the cash a client is holding beyond a sensible
+// emergency buffer (~6 months of their own spend) — i.e. deployable.
+type IdleCashResult struct {
+	BankTotal         float64 `json:"bank_total"`
+	AvgMonthlySpend   float64 `json:"avg_monthly_spend"`
+	EmergencyBuffer   float64 `json:"emergency_buffer"`
+	IdleAmount        float64 `json:"idle_amount"`
+	MonthsOfSpendHeld float64 `json:"months_of_spend_held"`
+}
+
+// HoldingXIRR is the money-weighted return of a single holding.
+type HoldingXIRR struct {
+	Name     string  `json:"name"`
+	Type     string  `json:"type"` // MF | STOCK
+	XIRRPct  float64 `json:"xirr_pct"`
+	Computed bool    `json:"computed"`
+}
+
+// XIRRResult is the client's true cash-flow-weighted return, overall and per
+// holding, from dated transaction history + current value.
+type XIRRResult struct {
+	OverallXIRRPct float64       `json:"overall_xirr_pct"`
+	Computed       bool          `json:"computed"`
+	Holdings       []HoldingXIRR `json:"holdings"`
+}
+
+// GoalProjection forward-projects a goal at the client's current savings
+// run-rate and flags the funding gap.
+type GoalProjection struct {
+	GoalID                    string        `json:"goal_id"`
+	Name                      string        `json:"name"`
+	TargetAmount              float64       `json:"target_amount"`
+	CurrentAmount             float64       `json:"current_amount"`
+	TargetDate                *apitime.Time `json:"target_date,omitempty"`
+	MonthsLeft                int           `json:"months_left"`
+	AssumedReturnPct          float64       `json:"assumed_return_pct"`
+	EstimatedMonthlyToGoal    float64       `json:"estimated_monthly_to_goal"`
+	ProjectedAmount           float64       `json:"projected_amount"`
+	ProjectedShortfall        float64       `json:"projected_shortfall"`
+	RequiredMonthly           float64       `json:"required_monthly"`
+	AdditionalMonthlyRequired float64       `json:"additional_monthly_required"`
+	OnTrack                   bool          `json:"on_track"`
+}
+
+// MaturingFD is an FD coming due within the look-ahead window.
+type MaturingFD struct {
+	FDAccountNumber string       `json:"fd_account_number"`
+	BankName        string       `json:"bank_name,omitempty"`
+	PrincipalAmount float64      `json:"principal_amount"`
+	MaturityAmount  float64      `json:"maturity_amount"`
+	MaturityDate    apitime.Time `json:"maturity_date"`
+	DaysToMaturity  int          `json:"days_to_maturity"`
+	InterestRate    float64      `json:"interest_rate"`
+}
+
+// ClientMaturingFD attaches a maturing FD to its owner for the book view.
+type ClientMaturingFD struct {
+	UserID uuid.UUID  `json:"user_id"`
+	Name   string     `json:"name"`
+	FD     MaturingFD `json:"fd"`
+}
+
+// ClientAdvisory is the per-client advisory bundle for Client 360.
+type ClientAdvisory struct {
+	NextBestAction  *AdvisoryAction  `json:"next_best_action"`
+	Actions         []AdvisoryAction `json:"actions"`
+	XIRR            *XIRRResult      `json:"xirr"`
+	IdleCash        *IdleCashResult  `json:"idle_cash"`
+	GoalProjections []GoalProjection `json:"goal_projections"`
+	MaturingFDs     []MaturingFD     `json:"maturing_fds"`
+}
+
+// BookIdleCash aggregates deployable cash across the RM's whole book.
+type BookIdleCash struct {
+	TotalIdle   float64 `json:"total_idle"`
+	ClientCount int     `json:"client_count"`
+}
+
+// BookInsights is the book-wide intelligence panel on the RM dashboard.
+type BookInsights struct {
+	NextBestActions []ClientActionItem `json:"next_best_actions"`
+	IdleCash        BookIdleCash       `json:"idle_cash"`
+	MaturingFDs     []ClientMaturingFD `json:"maturing_fds"`
+	RetentionAlerts []ClientActionItem `json:"retention_alerts"`
+}
+
+// --- Client interaction log (call notes / follow-ups) ---
+
+// Interaction is one entry in a client's shared, server-persisted RM log.
+// EventType is "interaction" for RM-entered rows or "assignment" for rows
+// synthesised from rm_assignment_history so the timeline reads as one story.
+type Interaction struct {
+	ID         uuid.UUID     `json:"id"`
+	EventType  string        `json:"event_type"` // interaction | assignment
+	Kind       string        `json:"kind"`       // note | call | meeting | email | task | auto_assign | assign | transfer | remove
+	Body       string        `json:"body"`
+	RMName     string        `json:"rm_name,omitempty"`
+	FollowUpAt *apitime.Time `json:"follow_up_at,omitempty"`
+	DoneAt     *apitime.Time `json:"done_at,omitempty"`
+	CreatedAt  apitime.Time  `json:"created_at"`
+}
+
+// AddInteractionRequest is the POST body for logging a note/call/task.
+type AddInteractionRequest struct {
+	Kind       string  `json:"kind"`
+	Body       string  `json:"body"`
+	FollowUpAt *int64  `json:"follow_up_at,omitempty"` // epoch seconds
+}
+
+// PendingFollowUp is an open follow-up task surfaced on the RM dashboard.
+type PendingFollowUp struct {
+	ID         uuid.UUID    `json:"id"`
+	UserID     uuid.UUID    `json:"user_id"`
+	ClientName string       `json:"client_name"`
+	Kind       string       `json:"kind"`
+	Body       string       `json:"body"`
+	FollowUpAt apitime.Time `json:"follow_up_at"`
+	Overdue    bool         `json:"overdue"`
+}
+
 // --- RM book summary ---
 
 type BookAlert struct {

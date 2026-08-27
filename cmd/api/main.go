@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -40,14 +40,31 @@ func main() {
 	// 1. Load Configuration
 	cfg := config.Load()
 
+	// Configure the global structured (JSON) logger. Every slog.Info/Warn/Error
+	// call — including the StructuredLogger middleware — writes to stdout as a
+	// JSON object. CloudWatch / Loki can ingest this without any format config.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+		// ReplaceAttr converts the built-in "time" key from an ISO-8601 string
+		// to Unix epoch seconds, matching the project-wide apitime wire format.
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.Int64(slog.TimeKey, a.Value.Time().Unix())
+			}
+			return a
+		},
+	})))
+
 	// 2. Apply schema migrations, then initialize the application DB pool.
 	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
-		log.Fatalf("Could not apply database migrations: %v", err)
+		slog.Error("database migration failed", "error", err)
+		os.Exit(1)
 	}
 
 	db, err := database.NewDatabase(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Could not initialize database: %v", err)
+		slog.Error("database init failed", "error", err)
+		os.Exit(1)
 	}
 	defer db.Close()
 
@@ -57,9 +74,9 @@ func main() {
 	// API from serving.
 	if os.Getenv("RM_SEED_ON_BOOT") == "true" {
 		if res, serr := rmseed.Run(ctx, db.Pool, rmseed.ConfigFromEnv()); serr != nil {
-			log.Printf("RM_SEED_ON_BOOT: seeding failed (continuing): %v", serr)
+			slog.Warn("RM_SEED_ON_BOOT: seeding failed (continuing)", "error", serr)
 		} else {
-			log.Printf("RM_SEED_ON_BOOT: staff seeded, %d user(s) backfilled", res.UsersAssigned)
+			slog.Info("RM_SEED_ON_BOOT: staff seeded", "users_assigned", res.UsersAssigned)
 		}
 	}
 
@@ -93,10 +110,13 @@ func main() {
 	// separate schema. Composes the user-domain providers read-only.
 	rmUserRepo := repository.NewPostgresRMUserRepository(db.Pool)
 	assignmentRepo := repository.NewPostgresAssignmentRepository(db.Pool)
+	rmInteractionRepo := repository.NewPostgresRMInteractionRepository(db.Pool)
+	rmChatRepo := repository.NewPostgresRMChatRepository(db.Pool)
 	userRepo.SetAssigner(assignmentRepo) // auto-assign new signups to an RM
 	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, cfg.RMOTPDevCode, rmUserRepo)
-	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, db.Pool)
+	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
+	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
@@ -116,14 +136,17 @@ func main() {
 	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
 	rmHandler := handler.NewRMHandler(rmService)
 	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService)
+	rmChatHandler := handler.NewRMChatHandler(rmChatService)
 
 	// 6. Setup Router
 	r := chi.NewRouter()
 
-	// Base Middleware
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	// Base Middleware — execution order matches r.Use() registration order.
+	r.Use(middleware.RequestID)      // 1. generate X-Request-Id
+	r.Use(middleware.RealIP)         // 2. resolve real client IP
+	r.Use(authmw.WithRequestLogger)  // 3. inject per-request slog.Logger into ctx
+	r.Use(authmw.Interceptor)        // 4. set security headers, echo X-Request-Id in response, log 5xx errors
+	r.Use(authmw.StructuredLogger)   // 5. emit one JSON summary line per request
 	// VerboseLogger dumps full request bodies/headers (including
 	// Authorization) to logs — it must never run by default in a deployed
 	// environment. Opt in locally only, with DEBUG_VERBOSE_LOG=true.
@@ -222,7 +245,8 @@ func main() {
 			r.Use(authmw.RequireRMAuth(rmAuthService))
 			r.Get("/auth/me", rmAuthHandler.Me)
 			r.Patch("/auth/me", rmAuthHandler.UpdateMe)
-			rmHandler.Register(r) // /clients, /dashboard/summary, ...
+			rmHandler.Register(r)     // /clients, /dashboard/summary, ...
+			rmChatHandler.Register(r) // /chat, /chat/history, /chat/tts, /chat/stt
 
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(authmw.RequireAdmin)
@@ -238,9 +262,10 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Starting server on port %s", cfg.Port)
+		slog.Info("server starting", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("Server startup failed: %v", err)
+			slog.Error("server startup failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -248,13 +273,14 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("Shutting down server...")
+	slog.Info("server shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("forced shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Println("Server exited properly")
+	slog.Info("server exited cleanly")
 }

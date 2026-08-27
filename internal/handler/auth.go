@@ -2,7 +2,6 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -51,7 +50,7 @@ func (h *AuthHandler) SendOTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mock OTP send for demo
-	log.Printf("MOCK OTP: Sent OTP 123456 to %s", req.PhoneNumber)
+	middleware.L(r.Context()).Info("mock OTP sent", "phone", req.PhoneNumber, "otp", "123456")
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -85,7 +84,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	// 1. Find or Create User
 	user, isNewUser, err := h.userRepo.FindOrCreateUser(r.Context(), req.AstraUserID, req.PhoneNumber, req.Name, req.WantsRM, req.Banks)
 	if err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("find or create user", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")
 		return
 	}
@@ -93,7 +92,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	// 2. Generate JWT for the verified user
 	tokenString, err := h.authService.GenerateToken(user.ID)
 	if err != nil {
-		log.Printf("Auth Service Error: %v", err)
+		middleware.L(r.Context()).Error("generate access token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
 		return
 	}
@@ -103,12 +102,12 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 	// forcing the user through OTP verification again on every app launch.
 	refreshToken, refreshHash, err := h.authService.GenerateRefreshToken()
 	if err != nil {
-		log.Printf("Auth Service Error: %v", err)
+		middleware.L(r.Context()).Error("generate refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating refresh token")
 		return
 	}
 	if err := h.userRepo.CreateRefreshToken(r.Context(), user.ID, refreshHash, time.Now().Add(service.RefreshTokenTTL)); err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("persist refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error persisting refresh token")
 		return
 	}
@@ -143,7 +142,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	hash := service.HashRefreshToken(req.RefreshToken)
 	rt, err := h.userRepo.GetRefreshToken(r.Context(), hash)
 	if err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("get refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error validating refresh token")
 		return
 	}
@@ -155,25 +154,25 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// Rotate: revoke the token that was just used before issuing its
 	// replacement, so it can't be exchanged a second time.
 	if err := h.userRepo.RevokeRefreshToken(r.Context(), hash); err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("revoke refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error rotating refresh token")
 		return
 	}
 
 	accessToken, err := h.authService.GenerateToken(rt.UserID)
 	if err != nil {
-		log.Printf("Auth Service Error: %v", err)
+		middleware.L(r.Context()).Error("generate access token (refresh)", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
 		return
 	}
 	newRefreshToken, newRefreshHash, err := h.authService.GenerateRefreshToken()
 	if err != nil {
-		log.Printf("Auth Service Error: %v", err)
+		middleware.L(r.Context()).Error("generate new refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating refresh token")
 		return
 	}
 	if err := h.userRepo.CreateRefreshToken(r.Context(), rt.UserID, newRefreshHash, time.Now().Add(service.RefreshTokenTTL)); err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("persist new refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error persisting refresh token")
 		return
 	}
@@ -196,7 +195,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.userRepo.RevokeRefreshToken(r.Context(), service.HashRefreshToken(req.RefreshToken)); err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("revoke refresh token on logout", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error revoking refresh token")
 		return
 	}
@@ -256,7 +255,7 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.userRepo.UpdateUserName(r.Context(), userID, name); err != nil {
-		log.Printf("User DB Error: %v", err)
+		middleware.L(r.Context()).Error("update user name", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error updating profile")
 		return
 	}

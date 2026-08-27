@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -128,7 +129,9 @@ func (h *PaymentsHandler) mandateHistory(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	mandateID := chi.URLParam(r, "mandateID")
-	history, err := h.svc.MandateHistory(r.Context(), userID, mandateID)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	history, err := h.svc.MandateHistory(r.Context(), userID, mandateID, limit, offset)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
