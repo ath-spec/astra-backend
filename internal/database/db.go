@@ -2,33 +2,26 @@ package database
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/yourusername/astra-backend/internal/commons/connectors"
 )
 
 type Database struct {
 	Pool *pgxpool.Pool
 }
 
+// NewDatabase opens the application connection pool via the shared Postgres
+// connector (bounded retry, production pool tuning, DSN/env-driven TLS and
+// transaction-pooler compatibility).
 func NewDatabase(ctx context.Context, connectionString string) (*Database, error) {
-	if connectionString == "" {
-		return nil, fmt.Errorf("database connection string is empty")
-	}
-
-	pool, err := pgxpool.New(ctx, connectionString)
+	pool, err := connectors.CreatePostgresPool(ctx, connectionString)
 	if err != nil {
-		return nil, fmt.Errorf("unable to connect to database: %w", err)
+		return nil, err
 	}
-
-	// Test the connection
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("unable to ping database: %w", err)
-	}
-
-	log.Println("Successfully connected to the database.")
-
+	slog.Info("database pool ready")
 	return &Database{Pool: pool}, nil
 }
 

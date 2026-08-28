@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jackc/pgx/v5/pgxpool"
-
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
 	"github.com/yourusername/astra-backend/internal/rmseed"
@@ -26,13 +24,13 @@ func main() {
 	if err := database.RunMigrations(cfg.DatabaseURL); err != nil {
 		log.Fatalf("migrations: %v", err)
 	}
-	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
+	db, err := database.NewDatabase(ctx, cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}
-	defer pool.Close()
+	defer db.Close()
 
-	res, err := rmseed.Run(ctx, pool, rmseed.ConfigFromEnv())
+	res, err := rmseed.Run(ctx, db.Pool, rmseed.ConfigFromEnv())
 	if err != nil {
 		log.Fatalf("seed: %v", err)
 	}

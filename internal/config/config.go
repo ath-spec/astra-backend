@@ -17,6 +17,12 @@ type Config struct {
 	RMOTPDevCode      string
 	MasterInternalKey string
 	SarvamAPIKey      string
+
+	// RedisURL is optional. When set (redis:// or rediss://), the shared cache
+	// connector is available for cross-replica state — rate limiting, shared
+	// response cache, agent session state. Unset today: single API instance,
+	// Postgres fingerprint cache is sufficient.
+	RedisURL string
 }
 
 func Load() *Config {
@@ -25,6 +31,7 @@ func Load() *Config {
 	cfg := &Config{
 		Port:              os.Getenv("PORT"),
 		DatabaseURL:       os.Getenv("DATABASE_URL"),
+		RedisURL:          os.Getenv("REDIS_URL"),
 		MasterInternalKey: masterKey,
 
 		// These might be encrypted, we will check below
