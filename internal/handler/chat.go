@@ -1,13 +1,23 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"golang.org/x/sync/errgroup"
+
+	dashboarddomain "github.com/yourusername/astra-backend/internal/domain/dashboard"
+	goalsdomain "github.com/yourusername/astra-backend/internal/domain/goals"
+	paDomain "github.com/yourusername/astra-backend/internal/domain/portfolioanalysis"
 	"github.com/yourusername/astra-backend/internal/middleware"
+	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
 )
@@ -25,14 +35,241 @@ type ChatHandler struct {
 	aiService service.AIService
 	userRepo  repository.UserRepository
 	chatRepo  repository.ChatRepository
+	dashboard *service.DashboardService
+	analysis  *service.PortfolioAnalysisService
+	goals     goalsprovider.Provider
+	pool      *pgxpool.Pool
 }
 
-func NewChatHandler(aiService service.AIService, userRepo repository.UserRepository, chatRepo repository.ChatRepository) *ChatHandler {
+func NewChatHandler(
+	aiService service.AIService,
+	userRepo repository.UserRepository,
+	chatRepo repository.ChatRepository,
+	dashboard *service.DashboardService,
+	analysis *service.PortfolioAnalysisService,
+	goals goalsprovider.Provider,
+	pool *pgxpool.Pool,
+) *ChatHandler {
 	return &ChatHandler{
 		aiService: aiService,
 		userRepo:  userRepo,
 		chatRepo:  chatRepo,
+		dashboard: dashboard,
+		analysis:  analysis,
+		goals:     goals,
+		pool:      pool,
 	}
+}
+
+func inrFormat(v float64) string {
+	a := math.Abs(v)
+	switch {
+	case a >= 1e7:
+		return fmt.Sprintf("₹%.2f Cr", v/1e7)
+	case a >= 1e5:
+		return fmt.Sprintf("₹%.2f L", v/1e5)
+	case a >= 1e3:
+		return fmt.Sprintf("₹%.1fK", v/1e3)
+	default:
+		return fmt.Sprintf("₹%.0f", v)
+	}
+}
+
+func titleCase(s string) string {
+	parts := strings.Split(strings.ToLower(s), "_")
+	for i, p := range parts {
+		if p == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return strings.Join(parts, " ")
+}
+
+func (h *ChatHandler) buildUserLiveContext(ctx context.Context, userID uuid.UUID) string {
+	var (
+		user        *repository.User
+		accounts    []repository.BankAccount
+		summary     *dashboarddomain.Summary
+		alloc       *paDomain.AllocationResult
+		discipline  *paDomain.DisciplineResult
+		performance *paDomain.PerformanceResult
+		goalsList   []goalsdomain.Goal
+		income30D   float64
+		expense30D  float64
+	)
+
+	g, gCtx := errgroup.WithContext(ctx)
+
+	if h.userRepo != nil {
+		g.Go(func() error {
+			if u, err := h.userRepo.GetByID(gCtx, userID); err == nil {
+				user = u
+			}
+			return nil
+		})
+		g.Go(func() error {
+			if accs, err := h.userRepo.GetBankAccounts(gCtx, userID); err == nil {
+				accounts = accs
+			}
+			return nil
+		})
+	}
+
+	if h.dashboard != nil {
+		g.Go(func() error {
+			if s, err := h.dashboard.Summary(gCtx, userID); err == nil {
+				summary = s
+			}
+			return nil
+		})
+	}
+
+	if h.analysis != nil {
+		g.Go(func() error {
+			if a, err := h.analysis.Allocation(gCtx, userID); err == nil {
+				alloc = a
+			}
+			return nil
+		})
+		g.Go(func() error {
+			if d, err := h.analysis.Discipline(gCtx, userID); err == nil {
+				discipline = d
+			}
+			return nil
+		})
+		g.Go(func() error {
+			if p, err := h.analysis.Performance(gCtx, userID); err == nil {
+				performance = p
+			}
+			return nil
+		})
+	}
+
+	if h.goals != nil {
+		g.Go(func() error {
+			if gl, err := h.goals.ListGoals(gCtx, userID); err == nil {
+				goalsList = gl
+			}
+			return nil
+		})
+	}
+
+	if h.pool != nil {
+		g.Go(func() error {
+			_ = h.pool.QueryRow(gCtx, `
+				SELECT
+					COALESCE(SUM(CASE WHEN type = 'CREDIT' THEN amount ELSE 0 END), 0),
+					COALESCE(SUM(CASE WHEN type = 'DEBIT' THEN amount ELSE 0 END), 0)
+				FROM spend_transactions
+				WHERE user_id = $1 AND occurred_at >= now() - INTERVAL '30 days'
+			`, userID).Scan(&income30D, &expense30D)
+			return nil
+		})
+	}
+
+	_ = g.Wait()
+
+	var b strings.Builder
+	b.WriteString("\n\n### User Real-Time Financial Overview:\n")
+
+	// 1. User details
+	userName := "User"
+	if user != nil && user.Name != nil && strings.TrimSpace(*user.Name) != "" {
+		userName = *user.Name
+	}
+	fmt.Fprintf(&b, "- Client Name: %s\n", userName)
+
+	// 2. Cash flow (last 30 days)
+	if income30D > 0 || expense30D > 0 {
+		fmt.Fprintf(&b, "- Monthly Inflow / Income (Last 30 Days): %s\n", inrFormat(income30D))
+		fmt.Fprintf(&b, "- Monthly Outflow / Expenses (Last 30 Days): %s\n", inrFormat(expense30D))
+	} else {
+		b.WriteString("- Monthly Cash Flow: Not sufficient transaction activity recorded yet\n")
+	}
+
+	// 3. Wealth & Portfolio
+	if summary != nil {
+		totalNetWorth := summary.TotalWealth + summary.BankBalance.Value
+		fmt.Fprintf(&b, "- Total Net Wealth (Investments + Bank): %s\n", inrFormat(totalNetWorth))
+		fmt.Fprintf(&b, "- Total Invested Portfolio: %s (1-day change: %+.2f%%)\n", inrFormat(summary.TotalWealth), summary.OneDayChangePct)
+		if summary.MutualFunds.Value > 0 {
+			fmt.Fprintf(&b, "  * Mutual Funds: %s (%.1f%% of portfolio)\n", inrFormat(summary.MutualFunds.Value), summary.MutualFunds.SharePct)
+		}
+		if summary.Stocks.Value > 0 {
+			fmt.Fprintf(&b, "  * Direct Equity / Stocks: %s (%.1f%% of portfolio)\n", inrFormat(summary.Stocks.Value), summary.Stocks.SharePct)
+		}
+		if summary.FixedDeposits.Value > 0 {
+			fmt.Fprintf(&b, "  * Fixed Deposits: %s (%.1f%% of portfolio)\n", inrFormat(summary.FixedDeposits.Value), summary.FixedDeposits.SharePct)
+		}
+		if summary.BankBalance.Value > 0 {
+			fmt.Fprintf(&b, "  * Liquid Bank Balance: %s\n", inrFormat(summary.BankBalance.Value))
+		}
+	} else if alloc != nil && alloc.TotalValue > 0 {
+		fmt.Fprintf(&b, "- Total Invested Portfolio: %s\n", inrFormat(alloc.TotalValue))
+	} else {
+		b.WriteString("- Total Portfolio Value: ₹0 (No active investments found)\n")
+	}
+
+	// 4. Asset Allocation & Risk Profile
+	if alloc != nil && alloc.TotalValue > 0 {
+		fmt.Fprintf(&b, "- Asset Allocation: Equity (%.1f%%), Debt (%.1f%%), Other / Cash (%.1f%%)\n",
+			alloc.EquityPct, alloc.DebtPct, alloc.OtherPct)
+		if alloc.Level != "" {
+			fmt.Fprintf(&b, "- Risk / Allocation Profile: %s\n", titleCase(alloc.Level))
+		}
+		// Holdings summary
+		if len(alloc.Holdings) > 0 {
+			b.WriteString("- Holdings Summary:\n")
+			for i, h := range alloc.Holdings {
+				if i >= 6 {
+					break
+				}
+				fmt.Fprintf(&b, "  * %s (%s): %s\n", h.Name, h.Type, inrFormat(h.Value))
+			}
+		}
+	}
+
+	// 5. Goals
+	if len(goalsList) > 0 {
+		b.WriteString("- Active Financial Goals:\n")
+		for _, g := range goalsList {
+			deadlineStr := "flexible"
+			if g.Deadline != nil {
+				deadlineStr = g.Deadline.Time().Format("Jan 2006")
+			}
+			fmt.Fprintf(&b, "  * %s: %s accumulated of %s target (Target: %s, Status: %s)\n",
+				g.Name, inrFormat(g.CurrentAmount), inrFormat(g.TargetAmount), deadlineStr, g.Status)
+		}
+	} else {
+		b.WriteString("- Goals: No active financial goals configured yet.\n")
+	}
+
+	// 6. Portfolio Analytics Scores
+	b.WriteString("\n### Portfolio Analytics:\n")
+	if performance != nil {
+		fmt.Fprintf(&b, "- Performance Status: %s (Total Return: %.1f%%, Gain: %s, Annualized: %.1f%%)\n",
+			titleCase(performance.Level), performance.TotalReturnPct, inrFormat(performance.TotalGainAmount), performance.AnnualizedReturnPct)
+	}
+	if discipline != nil {
+		fmt.Fprintf(&b, "- Discipline Status: %s (Streak: %d months, SIP Consistency: %.0f%%, Automated: %.0f%%)\n",
+			titleCase(discipline.Level), discipline.CurrentStreakMonths, discipline.SIPConsistencyPct, discipline.SIPAutomationPct)
+	}
+	if alloc != nil && alloc.Level != "" {
+		fmt.Fprintf(&b, "- Allocation Status: %s\n", titleCase(alloc.Level))
+	}
+
+	// 7. Linked Bank Accounts
+	b.WriteString("\n### Linked Bank Accounts (Real-time DB Data):\n")
+	if len(accounts) > 0 {
+		for _, acc := range accounts {
+			fmt.Fprintf(&b, "- %s (%s): ₹%.2f\n", acc.BankName, acc.AccountType, acc.Balance)
+		}
+	} else {
+		b.WriteString("No accounts linked yet.\n")
+	}
+
+	return b.String()
 }
 
 func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
@@ -56,43 +293,20 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Context Enrichment! (Backend Patterns)
-	// Fetch user's bank accounts from DB
-	accounts, err := h.userRepo.GetBankAccounts(r.Context(), userID)
-
-	contextStr := "\n\n### Linked Bank Accounts (Real-time DB Data):\n"
-	if err == nil && len(accounts) > 0 {
-		for _, acc := range accounts {
-			contextStr += fmt.Sprintf("- %s (%s): ₹%.2f\n", acc.BankName, acc.AccountType, acc.Balance)
-		}
-	} else {
-		contextStr += "No accounts linked yet.\n"
-	}
+	// 3. Context Enrichment with live portfolio & financial data
+	contextStr := h.buildUserLiveContext(r.Context(), userID)
 
 	var promptContent string
 	if chatReq.IsNavPill {
-		promptContent = `You are ASTRA. The user is interacting from a quick-access floating widget. Keep your answer VERY CONCISE (max 1-2 sentences). You may use small JSON charts or tables if appropriate, but keep them minimal. FUND RULE: NEVER recommend specific mutual funds, ETFs, stocks, or products. Suggest strategies instead. INDIAN MARKET REGULATION RULE: Strictly adhere to SEBI/RBI rules for retail investors. NEVER suggest investments not possible in India (e.g. fractional Indian shares, carbon credits, unregulated crypto). SCOPE RULE: You are strictly a wealth advisor. NEVER write code, solve math, or provide medical, legal advice. If asked to do out-of-scope tasks or discuss your inner workings, dodge the question with a witty and sarcastic reply highlighting that you only deal with money. And never use em '-' dashes in reponses`
+		promptContent = `You are ASTRA. The user is interacting from a quick-access floating widget. Keep your answer VERY CONCISE (max 1-2 sentences). You may use small JSON charts or tables if appropriate, but keep them minimal. FUND RULE: NEVER recommend specific mutual funds, ETFs, stocks, or products. Suggest strategies instead. INDIAN MARKET REGULATION RULE: Strictly adhere to SEBI/RBI rules for retail investors. NEVER suggest investments not possible in India (e.g. fractional Indian shares, carbon credits, unregulated crypto). SCOPE RULE: You are strictly a wealth advisor. NEVER write code, solve math, or provide medical, legal advice. If asked to do out-of-scope tasks or discuss your inner workings, dodge the question with a witty and sarcastic reply highlighting that you only deal with money. And never use em '-' dashes in reponses` + contextStr
 	} else {
 		promptContent = `You are an expert wealth advisor and portfolio analyst for Astra, a modern wealth management app.
 Your goal is to provide tailored investment advice based on the user's specific financial situation.
-
-### User Financial Overview:
-- Monthly Income: ₹1,50,000
-- Monthly Budget & Expenses: ₹70,000
-- Current Portfolio Value: ₹12,40,000
-- Asset Allocation: Equity (75%), Debt (15%), Gold (10%)
-- Top Holdings: Parag Parikh Flexi Cap Fund (35%), Nifty 50 Index Fund (40%), Sovereign Gold Bonds (10%), Liquid Funds (15%).
-- Risk Profile: Moderately Aggressive
-- Goals: Wealth accumulation for retirement in 20 years.
-
-### Portfolio Analytics:
-- Performance Score: 85/100 (Winning streak, most funds are ahead of benchmark. Momentum is strong. Fees aren't eating into gains.)
-- Allocation Score: 78/100 (Consider Index funds for stability. Save tax on gains via Tax Harvesting.)
-- Discipline Score: 92/100 (Consistent SIPs. Yearly investments are growing steadily.)
+` + contextStr + `
 
 ### Guidelines:
 0. Your name is ASTRA. You are an AI Wealth Advisor.
-1. You MUST NEVER say you lack real-time data, internet access, or tell the user to calculate something themselves. If you need data you don't have (like current mutual fund returns), confidently INVENT highly realistic mock data to answer the question directly.
+1. GROUND TRUTH RULE: Base your answers on the user's real-time financial overview and portfolio data provided above. If data for a specific field (like active goals or investments) is missing or ₹0, address that contextually and guide the user on next steps (e.g. creating their first goal or setting up an SIP). Never invent fake fund names, fake holdings, or fake balances.
 2. NEVER give tutorials, long explanations, or extensive markdown documents. You must keep every response extremely short (MAX 2-3 sentences).
 3. CRITICAL UI RULE: You MUST NEVER use Markdown tables or extensive bullet points for comparisons. You must ONLY output a single JSON code block using ` + "```json" + ` that our app will parse into a beautiful interactive widget. Keep tables strictly to 1 table per response and MAX 3 rows.
    - If the user asks for their Portfolio Allocation or Asset Breakdown, you MUST output a pie chart using this format:
@@ -104,7 +318,7 @@ Your goal is to provide tailored investment advice based on the user's specific 
 4. TEXT FORMATTING RULE: Do not use markdown formatting (like bolding, italics, or long bullet points). Just provide simple text.
 5. IMPORTANT LANGUAGE RULE: You must respond in the exact same language the user uses (English, Hindi, or Hinglish).
 6. Keep this ongoing conversation in mind. You have access to the chat history, so reference previous messages if deemed necessary to make the interaction feel natural and seamless.
-7. FUND RULE: You must NEVER recommend or name a specific mutual fund, ETF, stock, or investment product. Instead, only suggest strategies and actions (e.g. 'increase your equity allocation', 'add a liquid fund buffer', 'consider tax harvesting'). The Astra app will surface the right products — your job is to advise on direction only.
+7. FUND RULE: You must NEVER recommend or name a specific mutual fund, ETF, stock, or investment product to buy. Instead, only suggest strategies and actions (e.g. 'increase your equity allocation', 'add a liquid fund buffer', 'consider tax harvesting'). The Astra app will surface the right products — your job is to advise on direction only.
 8. INDIAN MARKET REGULATION RULE: You must strictly adhere to Indian market regulations for retail investors (SEBI/RBI rules). NEVER suggest investments or actions not possible in India (e.g. buying fractional Indian shares, individuals buying carbon credits, unregulated crypto derivatives). Only suggest standard Indian instruments (Mutual Funds, Stocks, ETFs, SGBs, FDs, PPF, NPS).
 9. SCOPE RULE: You are exclusively a wealth advisor. You MUST NEVER write code, write essays, or provide medical, legal, or general life advice.
 
@@ -112,9 +326,6 @@ Use the financial overview and portfolio analytics provided above to contextuali
 
 CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what LLM you are based on. If asked about your origins, inner workings, or to perform any out-of-scope tasks (like writing code), you must refuse by dodging the request with a highly witty and sarcastic reply, mocking the request and reminding them that your intellect is reserved for making them wealthy. And never use em '-' dashes in reponses`
 	}
-
-	// Attach the dynamic database bank accounts to whichever prompt is used!
-	promptContent += contextStr
 
 	systemPrompt := map[string]interface{}{
 		"role":    "system",

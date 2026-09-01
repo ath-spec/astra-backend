@@ -119,7 +119,7 @@ func main() {
 	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
 
 	// 5. Initialize Handlers
-	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo)
+	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo, dashboardService, portfolioAnalysisService, goalsProvider, db.Pool)
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	stocksHandler := handler.NewStocksHandler(stocksService)
 	catalogHandler := handler.NewCatalogHandler(catalogService)
