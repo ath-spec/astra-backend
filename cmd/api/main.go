@@ -83,9 +83,11 @@ func main() {
 	// 3. Initialize Repositories
 	userRepo := repository.NewPostgresUserRepository(db)
 	chatRepo := repository.NewPostgresChatRepository(db)
+	chatMemoryRepo := repository.NewPostgresChatMemoryRepository(db.Pool)
 
 	// 4. Initialize Services
 	aiService := service.NewGroqAIService(cfg.GroqAPIKey, cfg.SarvamAPIKey, chatRepo)
+	memoryService := service.NewMemoryService(chatMemoryRepo, cfg.GroqAPIKey)
 	authService := service.NewAuthService(cfg.JWTSecret)
 
 	stocksProvider := stocksprovider.NewMockProvider(db.Pool)
@@ -119,7 +121,12 @@ func main() {
 	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
 
 	// 5. Initialize Handlers
-	chatHandler := handler.NewChatHandler(aiService, userRepo, chatRepo, dashboardService, portfolioAnalysisService, goalsProvider, db.Pool)
+	chatHandler := handler.NewChatHandler(
+		aiService, userRepo, chatRepo, memoryService,
+		dashboardService, portfolioAnalysisService, goalsProvider,
+		stocksProvider, mfProvider, fdProvider, watchlistService, spendAnalyticsService,
+		db.Pool,
+	)
 	authHandler := handler.NewAuthHandler(authService, userRepo)
 	stocksHandler := handler.NewStocksHandler(stocksService)
 	catalogHandler := handler.NewCatalogHandler(catalogService)
@@ -210,6 +217,9 @@ func main() {
 		r.Patch("/api/auth/me", authHandler.UpdateMe)
 		r.Post("/api/chat", chatHandler.HandleChat)
 		r.Get("/api/chat/history", chatHandler.GetHistory)
+		r.Get("/api/chat/memory", chatHandler.GetMemory)
+		r.Post("/api/chat/memory", chatHandler.AddMemory)
+		r.Delete("/api/chat/memory/{id}", chatHandler.DeleteMemory)
 		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route
 
 		// v1 financial domain APIs (see the IDBI sandbox spec doc).

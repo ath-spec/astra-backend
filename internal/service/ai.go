@@ -78,7 +78,7 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 		lastStatusCode = resp.StatusCode
 		lastBodyBytes = bodyBytes
 
-		// If successful, save history and return immediately
+		// If successful, save clean dialogue history and return immediately
 		if resp.StatusCode == http.StatusOK {
 			var groqResp struct {
 				Choices []struct {
@@ -87,11 +87,25 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 			}
 
 			if err := json.Unmarshal(bodyBytes, &groqResp); err == nil && len(groqResp.Choices) > 0 {
-				updatedMessages := append(messages, groqResp.Choices[0].Message)
+				assistantMsg := groqResp.Choices[0].Message
+
+				// Filter out system messages so only dialogue history is persisted
+				dialogueMessages := make([]map[string]interface{}, 0, len(messages)+1)
+				for _, msg := range messages {
+					if role, ok := msg["role"].(string); ok && role != "system" {
+						dialogueMessages = append(dialogueMessages, msg)
+					}
+				}
+				dialogueMessages = append(dialogueMessages, assistantMsg)
+
+				// Keep sliding window of last 20 messages to prevent token explosion
+				if len(dialogueMessages) > 20 {
+					dialogueMessages = dialogueMessages[len(dialogueMessages)-20:]
+				}
 
 				session, err := s.chatRepo.GetSessionForUser(ctx, userID)
 				if err == nil {
-					session.Messages = updatedMessages
+					session.Messages = dialogueMessages
 					_ = s.chatRepo.SaveSession(ctx, session)
 				}
 			}
