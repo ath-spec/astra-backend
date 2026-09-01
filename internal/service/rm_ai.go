@@ -182,10 +182,10 @@ func titleCaseWords(s string) string {
 }
 
 // Chat runs one turn: builds the scoped system prompt, calls Groq, persists
-// the exchange, and returns the assistant's reply text.
-func (s *RMChatService) Chat(ctx context.Context, rmID uuid.UUID, scope string, clientID *uuid.UUID, history []map[string]interface{}) (string, error) {
+// the exchange into the session, and returns the assistant's reply text and session.
+func (s *RMChatService) Chat(ctx context.Context, rmID uuid.UUID, scope string, sessionID *uuid.UUID, clientID *uuid.UUID, history []map[string]interface{}) (string, *repository.RMChatSession, error) {
 	if s.groqKey == "" {
-		return "", fmt.Errorf("chat is not configured on this environment: %w", apiresponse.ErrInternal)
+		return "", nil, fmt.Errorf("chat is not configured on this environment: %w", apiresponse.ErrInternal)
 	}
 	sys := map[string]interface{}{"role": "system", "content": s.systemPrompt(ctx, scope, rmID, clientID)}
 
@@ -204,18 +204,51 @@ func (s *RMChatService) Chat(ctx context.Context, rmID uuid.UUID, scope string, 
 		payload["model"] = "openai/gpt-oss-20b"
 		reply, err = s.callGroq(ctx, payload)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 	}
 
-	if sess, err := s.chatRepo.GetSession(ctx, rmID, scope); err == nil {
-		if len(history) > 0 {
-			sess.Messages = append(sess.Messages, history[len(history)-1])
-		}
-		sess.Messages = append(sess.Messages, map[string]interface{}{"role": "assistant", "content": reply})
-		_ = s.chatRepo.SaveSession(ctx, sess)
+	var sess *repository.RMChatSession
+	if sessionID != nil && *sessionID != uuid.Nil {
+		sess, _ = s.chatRepo.GetSessionByID(ctx, *sessionID, rmID)
 	}
-	return reply, nil
+	if sess == nil {
+		title := deriveSessionTitle(history)
+		sess, err = s.chatRepo.CreateSession(ctx, rmID, scope, title)
+		if err != nil {
+			return reply, nil, nil
+		}
+	} else if sess.Title == "New Conversation" || sess.Title == "" {
+		sess.Title = deriveSessionTitle(history)
+	}
+
+	if len(history) > 0 {
+		sess.Messages = append(sess.Messages, history[len(history)-1])
+	}
+	sess.Messages = append(sess.Messages, map[string]interface{}{"role": "assistant", "content": reply})
+	_ = s.chatRepo.SaveSession(ctx, sess)
+
+	return reply, sess, nil
+}
+
+func deriveSessionTitle(history []map[string]interface{}) string {
+	for _, m := range history {
+		if role, ok := m["role"].(string); ok && role == "user" {
+			if content, ok := m["content"].(string); ok {
+				trimmed := strings.TrimSpace(content)
+				if trimmed != "" {
+					if len(trimmed) > 45 {
+						if idx := strings.LastIndex(trimmed[:45], " "); idx > 20 {
+							return trimmed[:idx] + "..."
+						}
+						return trimmed[:45] + "..."
+					}
+					return trimmed
+				}
+			}
+		}
+	}
+	return "New Conversation"
 }
 
 func (s *RMChatService) callGroq(ctx context.Context, payload map[string]interface{}) (string, error) {
@@ -256,7 +289,27 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// History returns the stored messages for this staff member + scope.
+// ListSessions returns all stored conversation sessions for this RM.
+func (s *RMChatService) ListSessions(ctx context.Context, rmID uuid.UUID, scope string) ([]repository.RMChatSessionListItem, error) {
+	return s.chatRepo.ListSessions(ctx, rmID, scope)
+}
+
+// GetSession returns a specific chat session with its full message history.
+func (s *RMChatService) GetSession(ctx context.Context, id uuid.UUID, rmID uuid.UUID) (*repository.RMChatSession, error) {
+	return s.chatRepo.GetSessionByID(ctx, id, rmID)
+}
+
+// CreateSession creates a fresh, empty conversation session.
+func (s *RMChatService) CreateSession(ctx context.Context, rmID uuid.UUID, scope string, title string) (*repository.RMChatSession, error) {
+	return s.chatRepo.CreateSession(ctx, rmID, scope, title)
+}
+
+// DeleteSession deletes a conversation session.
+func (s *RMChatService) DeleteSession(ctx context.Context, id uuid.UUID, rmID uuid.UUID) error {
+	return s.chatRepo.DeleteSession(ctx, id, rmID)
+}
+
+// History returns the stored messages for the latest session of this staff member.
 func (s *RMChatService) History(ctx context.Context, rmID uuid.UUID, scope string) ([]map[string]interface{}, error) {
 	sess, err := s.chatRepo.GetSession(ctx, rmID, scope)
 	if err != nil {

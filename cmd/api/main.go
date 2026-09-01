@@ -95,7 +95,8 @@ func main() {
 	watchlistProvider := watchlistprovider.NewPostgresProvider(db.Pool)
 
 	stocksService := service.NewStocksService(stocksProvider)
-	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool), mfProvider, watchlistProvider)
+	portfolioAnalysisService := service.NewPortfolioAnalysisService(mfProvider, stocksProvider, fdProvider, db.Pool)
+	catalogService := service.NewCatalogService(catalogprovider.NewMockProvider(db.Pool), mfProvider, watchlistProvider, portfolioAnalysisService)
 	watchlistService := service.NewWatchlistService(watchlistProvider)
 	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
@@ -104,7 +105,6 @@ func main() {
 	goalsService := service.NewGoalsService(goalsProvider)
 	mfService := service.NewMFService(mfProvider)
 	dashboardService := service.NewDashboardService(stocksProvider, mfProvider, fdProvider, userRepo, db.Pool)
-	portfolioAnalysisService := service.NewPortfolioAnalysisService(mfProvider, stocksProvider, fdProvider, db.Pool)
 
 	// RM/Admin console: separate identity, separate auth (RM_JWT_SECRET),
 	// separate schema. Composes the user-domain providers read-only.

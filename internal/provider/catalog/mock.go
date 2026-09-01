@@ -169,8 +169,8 @@ func deriveFundDeepDive(category, schemeName string) catalogdomain.DeepDiveInfo 
 	}
 }
 
-// computeFundVector calculates a fund's exact 7-axis asset vector from its database allocation percentages and category characteristics.
-func computeFundVector(category, schemeName string, equityPct, debtPct, otherPct float64) []float64 {
+// ComputeFundVector calculates a fund's exact 7-axis asset vector from its database allocation percentages and category characteristics.
+func ComputeFundVector(category, schemeName string, equityPct, debtPct, otherPct float64) []float64 {
 	lower := strings.ToLower(category + " " + schemeName)
 
 	beta := 1.0
@@ -270,7 +270,7 @@ func deriveFundInsights(category, schemeName string, equityPct, debtPct, otherPc
 	}
 
 	// Calculate fund's intrinsic vector from actual database asset percentages
-	fundVector := computeFundVector(category, schemeName, equityPct, debtPct, otherPct)
+	fundVector := ComputeFundVector(category, schemeName, equityPct, debtPct, otherPct)
 
 	// Mathematical Portfolio Simulation (Aladdin What-If Analysis):
 	// Blending equation: V_projected = (1 - w) * V_current + w * V_fund (w = 0.35 simulated allocation weight)

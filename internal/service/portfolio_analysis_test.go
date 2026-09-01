@@ -3,6 +3,7 @@ package service
 import (
 	"testing"
 
+	catalogdomain "github.com/yourusername/astra-backend/internal/domain/catalog"
 	paDomain "github.com/yourusername/astra-backend/internal/domain/portfolioanalysis"
 )
 
@@ -109,5 +110,94 @@ func TestPerformanceLevelAndSegments(t *testing.T) {
 		if gotLevel != tt.wantLevel || gotSegments != tt.wantSegments {
 			t.Errorf("performanceLevelAndSegments(%v) = (%q, %d), want (%q, %d)", tt.returnPct, gotLevel, gotSegments, tt.wantLevel, tt.wantSegments)
 		}
+	}
+}
+
+func TestComputeQuantitativeGenome(t *testing.T) {
+	// Zero holdings -> all 0
+	zeroGenome := ComputeQuantitativeGenome(0, 0, 0, 0, nil, nil)
+	if zeroGenome.Growth != 0 || zeroGenome.Income != 0 || len(zeroGenome.Values) != 7 {
+		t.Errorf("zero genome mismatch: got %+v", zeroGenome)
+	}
+	for i, v := range zeroGenome.Values {
+		if v != 0 {
+			t.Errorf("zero genome value[%d] = %v, want 0", i, v)
+		}
+	}
+
+	// 100% equity holdings -> high growth, low income/capPres
+	eqGenome := ComputeQuantitativeGenome(100000, 0, 0, 100000, nil, nil)
+	if eqGenome.Growth != 0.95 {
+		t.Errorf("equity growth = %v, want 0.95", eqGenome.Growth)
+	}
+	if eqGenome.CapitalPreservation != 0.0 {
+		t.Errorf("equity capPres = %v, want 0.0", eqGenome.CapitalPreservation)
+	}
+
+	// 100% debt holdings -> high income, high capPres
+	debtGenome := ComputeQuantitativeGenome(0, 100000, 0, 100000, nil, nil)
+	if debtGenome.Income != 0.85 {
+		t.Errorf("debt income = %v, want 0.85", debtGenome.Income)
+	}
+	if debtGenome.CapitalPreservation != 0.92 {
+		t.Errorf("debt capPres = %v, want 0.92", debtGenome.CapitalPreservation)
+	}
+}
+
+func TestCatalogServiceEnrichFundInsightsWithLiveDNA(t *testing.T) {
+	svc := &CatalogService{}
+
+	// Case 1: User with zero holdings
+	zeroAlloc := &paDomain.AllocationResult{
+		TotalValue: 0,
+		Genome:     paDomain.PortfolioGenome{Values: []float64{0, 0, 0, 0, 0, 0, 0}},
+	}
+	profile := &catalogdomain.FundProfile{
+		Fund: catalogdomain.Fund{
+			Category:   "Equity: Small Cap",
+			SchemeName: "Nippon India Small Cap Fund - Growth",
+		},
+		Allocation: catalogdomain.AllocationBreakdown{
+			EquityPct: 100,
+			DebtPct:   0,
+			OtherPct:  0,
+		},
+	}
+	svc.enrichFundInsightsWithLiveDNA(profile, zeroAlloc)
+
+	if len(profile.Insights.CurrentValues) != 7 {
+		t.Fatalf("expected 7 current values, got %d", len(profile.Insights.CurrentValues))
+	}
+	for i, v := range profile.Insights.CurrentValues {
+		if v != 0 {
+			t.Errorf("zero-state current value[%d] = %v, want 0", i, v)
+		}
+	}
+	// Projected should be the fund's intrinsic vector (high growth for small cap)
+	if profile.Insights.ProjectedValues[0] < 0.90 {
+		t.Errorf("expected small cap projected growth to be >= 0.90, got %v", profile.Insights.ProjectedValues[0])
+	}
+
+	// Case 2: User with existing portfolio (e.g. 50k Equity, 50k Debt)
+	liveAlloc := &paDomain.AllocationResult{
+		TotalValue:   100000,
+		EquityAmount: 50000,
+		DebtAmount:   50000,
+		OtherAmount:  0,
+		Genome:       ComputeQuantitativeGenome(50000, 50000, 0, 100000, nil, nil),
+	}
+	svc.enrichFundInsightsWithLiveDNA(profile, liveAlloc)
+
+	for i := 0; i < 7; i++ {
+		if profile.Insights.CurrentValues[i] != liveAlloc.Genome.Values[i] {
+			t.Errorf("current value[%d] = %v, want %v (exact match with live allocation)",
+				i, profile.Insights.CurrentValues[i], liveAlloc.Genome.Values[i])
+		}
+	}
+
+	// Projected should increase growth
+	if profile.Insights.ProjectedValues[0] <= profile.Insights.CurrentValues[0] {
+		t.Errorf("buying small cap should increase growth: current=%v, projected=%v",
+			profile.Insights.CurrentValues[0], profile.Insights.ProjectedValues[0])
 	}
 }

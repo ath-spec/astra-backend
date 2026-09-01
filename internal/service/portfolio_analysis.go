@@ -203,7 +203,7 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 	sortSectorsDesc(res.SectorExposure)
 
 	res.Level = allocationLevel(res.TotalValue, volAmounts[paDomain.VolatilityHigh])
-	res.Genome = computeQuantitativeGenome(res.EquityAmount, res.DebtAmount, res.OtherAmount, res.TotalValue, volAmounts, sectorAmounts)
+	res.Genome = ComputeQuantitativeGenome(res.EquityAmount, res.DebtAmount, res.OtherAmount, res.TotalValue, volAmounts, sectorAmounts)
 
 	// ---- Per-holding breakdown + equity exposure (index funds, market cap) ----
 	var holdings []paDomain.HoldingBreakdown
@@ -350,9 +350,9 @@ func (s *PortfolioAnalysisService) peerIndexFundPct(ctx context.Context, userID 
 	return round2(idx / total * 100)
 }
 
-// computeQuantitativeGenome implements professional multi-factor portfolio risk & genome analysis (MSCI Barra / Morningstar methodology).
+// ComputeQuantitativeGenome implements professional multi-factor portfolio risk & genome analysis (MSCI Barra / Morningstar methodology).
 // When totalVal == 0 (no holdings), all DNA values are strictly 0.
-func computeQuantitativeGenome(
+func ComputeQuantitativeGenome(
 	equityAmt, debtAmt, otherAmt, totalVal float64,
 	volAmounts map[string]float64,
 	sectorAmounts map[string]float64,
@@ -1033,6 +1033,7 @@ func (s *PortfolioAnalysisService) SimulatePurchase(ctx context.Context, userID 
 	}
 
 	projected.Level = allocationLevel(newTotal, highVolAmt)
+	projected.Genome = ComputeQuantitativeGenome(newEquityAmt, newDebtAmt, newOtherAmt, newTotal, nil, nil)
 
 	return &SimulationResult{
 		CurrentAllocation:   current,

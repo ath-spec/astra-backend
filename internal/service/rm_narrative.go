@@ -44,9 +44,6 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
 		return nil, err
 	}
-	if s.groqKey == "" {
-		return map[string]string{}, nil
-	}
 
 	fp, err := s.narrativeFingerprint(ctx, userID)
 	if err != nil {
@@ -65,7 +62,7 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	fresh := cachedFP == fp && time.Since(updatedAt) < narrativeMaxAge
 	if !force && fresh && len(cachedRaw) > 0 {
 		var m map[string]string
-		if json.Unmarshal(cachedRaw, &m) == nil {
+		if json.Unmarshal(cachedRaw, &m) == nil && len(m) > 0 {
 			return m, nil
 		}
 	}
@@ -89,25 +86,35 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		return map[string]string{}, nil
 	}
 
-	m, err := s.generateNarrative(ctx, blob)
-	if err != nil {
-		if len(cachedRaw) > 0 { // serve stale rather than nothing
-			var old map[string]string
-			if json.Unmarshal(cachedRaw, &old) == nil {
-				return old, nil
-			}
-		}
-		return nil, err
+	// 1. Try AI-generated narrative via Groq
+	var m map[string]string
+	if s.groqKey != "" {
+		m, _ = s.generateNarrative(ctx, blob)
 	}
 
-	raw, _ := json.Marshal(m)
-	_, _ = s.pool.Exec(ctx, `
-		INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
-		VALUES ($1, $2, $3, now())
-		ON CONFLICT (user_id) DO UPDATE
-		SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
-	`, userID, fp, raw)
-	return m, nil
+	// If Groq successfully generated the narrative, persist to cache
+	if len(m) > 0 {
+		raw, _ := json.Marshal(m)
+		_, _ = s.pool.Exec(ctx, `
+			INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
+			VALUES ($1, $2, $3, now())
+			ON CONFLICT (user_id) DO UPDATE
+			SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
+		`, userID, fp, raw)
+		return m, nil
+	}
+
+	// 2. If Groq failed or is unconfigured:
+	// If an earlier Groq narrative exists in cache, serve it
+	if len(cachedRaw) > 0 {
+		var old map[string]string
+		if json.Unmarshal(cachedRaw, &old) == nil && len(old) > 0 {
+			return old, nil
+		}
+	}
+
+	// 3. Compute dynamic deterministic fallback on the fly (NOT cached, always live)
+	return buildDeterministicNarratives(pa, an, adv), nil
 }
 
 // narrativeFingerprint is a single round-trip digest of the client's material
@@ -147,64 +154,164 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 }
 
 func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[string]string, error) {
-	payload := map[string]interface{}{
-		"model":       "openai/gpt-oss-120b",
-		"temperature": 0.3,
-		"messages": []map[string]interface{}{
-			{"role": "system", "content": narrativeSystemPrompt},
-			{"role": "user", "content": figures},
-		},
-	}
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, "POST", groqAPIURL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+s.groqKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := (&http.Client{Timeout: 45 * time.Second}).Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("contacting narrative model: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("narrative model returned %d", resp.StatusCode)
-	}
-	var parsed struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
-		return nil, fmt.Errorf("could not parse narrative response")
+	if s.groqKey == "" {
+		return nil, fmt.Errorf("groq API key not set")
 	}
 
-	content := strings.TrimSpace(parsed.Choices[0].Message.Content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	if i := strings.IndexByte(content, '{'); i > 0 {
-		content = content[i:]
-	}
-	if i := strings.LastIndexByte(content, '}'); i >= 0 && i < len(content)-1 {
-		content = content[:i+1]
+	models := []string{
+		"llama-3.3-70b-versatile",
+		"llama-3.1-8b-instant",
+		"openai/gpt-oss-120b",
 	}
 
-	var m map[string]string
-	if err := json.Unmarshal([]byte(content), &m); err != nil {
-		return nil, fmt.Errorf("narrative JSON invalid: %w", err)
-	}
-	out := map[string]string{}
-	for _, t := range narrativeTopics {
-		if v := strings.TrimSpace(m[t]); v != "" {
-			out[t] = v
+	var lastErr error
+	for _, model := range models {
+		payload := map[string]interface{}{
+			"model":       model,
+			"temperature": 0.2,
+			"max_tokens":  2048,
+			"response_format": map[string]string{
+				"type": "json_object",
+			},
+			"messages": []map[string]interface{}{
+				{"role": "system", "content": narrativeSystemPrompt},
+				{"role": "user", "content": figures},
+			},
+		}
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, "POST", groqAPIURL, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Authorization", "Bearer "+s.groqKey)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		raw, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("model %s returned %d: %s", model, resp.StatusCode, string(raw))
+			continue
+		}
+
+		var parsed struct {
+			Choices []struct {
+				Message struct {
+					Content string `json:"content"`
+				} `json:"message"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
+			lastErr = fmt.Errorf("could not parse narrative model response")
+			continue
+		}
+
+		content := strings.TrimSpace(parsed.Choices[0].Message.Content)
+		if start := strings.IndexByte(content, '{'); start >= 0 {
+			if end := strings.LastIndexByte(content, '}'); end > start {
+				content = content[start : end+1]
+			}
+		}
+
+		var parsedMap map[string]string
+		if err := json.Unmarshal([]byte(content), &parsedMap); err != nil {
+			lastErr = fmt.Errorf("narrative JSON invalid: %w", err)
+			continue
+		}
+
+		out := map[string]string{}
+		for _, t := range narrativeTopics {
+			if v := strings.TrimSpace(parsedMap[t]); v != "" {
+				out[t] = v
+			}
+		}
+		if len(out) > 0 {
+			return out, nil
 		}
 	}
-	return out, nil
+
+	return nil, lastErr
+}
+
+// buildDeterministicNarratives provides figure-grounded fallback narratives when the LLM is unreachable.
+func buildDeterministicNarratives(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientAnalytics, adv *rmdomain.ClientAdvisory) map[string]string {
+	out := make(map[string]string)
+
+	if pa != nil && pa.Allocation != nil {
+		a := pa.Allocation
+		out["allocation"] = fmt.Sprintf(
+			"The portfolio maintains a %s allocation with %.1f%% equity, %.1f%% debt, and %.1f%% in other assets (total %s). Asset allocation aligns with current risk capacity while preserving compounding momentum.",
+			titleCaseWords(a.Level), a.EquityPct, a.DebtPct, a.OtherPct, inr(a.TotalValue),
+		)
+
+		gm := a.Genome
+		out["genome"] = fmt.Sprintf(
+			"Risk DNA registers Growth at %.0f%% and Capital Preservation at %.0f%%, balanced by Liquidity at %.0f%% and Inflation Defense at %.0f%%. This factor profile provides stable portfolio defense across market cycles.",
+			norm100(gm.Growth), norm100(gm.CapitalPreservation), norm100(gm.Liquidity), norm100(gm.InflationDefense),
+		)
+	}
+
+	if pa != nil && pa.Discipline != nil {
+		d := pa.Discipline
+		out["discipline"] = fmt.Sprintf(
+			"Client discipline is categorized as %s with an active %d-month investment streak and %.0f%% SIP consistency. Automated mandate execution is at %.0f%%.",
+			titleCaseWords(d.Level), d.CurrentStreakMonths, d.SIPConsistencyPct, d.SIPAutomationPct,
+		)
+	}
+
+	if pa != nil && pa.Performance != nil {
+		p := pa.Performance
+		out["performance"] = fmt.Sprintf(
+			"Portfolio return is %.1f%% (%.1f%% annualized) with cumulative gains of %s. Alpha metrics vs benchmark indices remain %s.",
+			p.TotalReturnPct, p.AnnualizedReturnPct, inr(p.TotalGainAmount), strings.ToLower(titleCaseWords(p.Level)),
+		)
+	}
+
+	if an != nil {
+		if r := an.Risk; r != nil && r.Points >= 3 {
+			out["risk"] = fmt.Sprintf(
+				"Historical max drawdown is %.1f%% with annualized volatility at %.1f%%. The portfolio has demonstrated solid drawdown recovery across observed holding periods.",
+				r.MaxDrawdownPct, r.VolatilityPct,
+			)
+		}
+		if c := an.Cost; c != nil && c.MFValue > 0 {
+			out["cost"] = fmt.Sprintf(
+				"Weighted expense ratio is %.2f%% with an annual fee impact of %s. Moving out of high-cost regular schemes could save approximately %s annually.",
+				c.WeightedExpenseRatio, inr(c.AnnualFee), inr(c.AvoidableAnnualFee),
+			)
+		}
+		if cc := an.Concentration; cc != nil && cc.HoldingsCount > 0 {
+			out["concentration"] = fmt.Sprintf(
+				"Sector concentration index is %s (HHI %.0f) across %d active holdings, maintaining suitable multi-sector diversification.",
+				strings.ToLower(cc.SectorHHILabel), cc.SectorHHI, cc.HoldingsCount,
+			)
+		}
+		if wc := an.WhatChanged; wc != nil && wc.SinceDays > 0 {
+			out["drift"] = fmt.Sprintf(
+				"Over the past %d days, equity allocation shifted by %+.1f%% and overall portfolio wealth changed by %+.1f%%.",
+				wc.SinceDays, wc.EquityPctDelta, wc.WealthPctDelta,
+			)
+		}
+		if tx := an.Tax; tx != nil && (tx.LTCGGain > 0 || tx.STCGGain > 0) {
+			out["tax"] = fmt.Sprintf(
+				"Estimated tax exposure is %s (LTCG) and %s (STCG). Consider opportunistic tax-loss harvesting to optimize net realized yields.",
+				inr(tx.EstLTCGTax), inr(tx.EstSTCGTax),
+			)
+		}
+	}
+
+	return out
 }
 
 // buildFiguresBlob renders the client's computed analytics as a compact,
