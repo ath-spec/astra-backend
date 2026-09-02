@@ -23,6 +23,13 @@ type Config struct {
 	// response cache, agent session state. Unset today: single API instance,
 	// Postgres fingerprint cache is sufficient.
 	RedisURL string
+
+	// BudgetMLBaseURL / BudgetMLToken point at the budget-bloc ML service
+	// (Hugging Face Space). Only two endpoints are called — POST /ml/diagnosis
+	// and POST /suggest/categories. When unreachable the budget service falls
+	// back to local heuristics, so the token is optional.
+	BudgetMLBaseURL string
+	BudgetMLToken   string
 }
 
 func Load() *Config {
@@ -39,6 +46,13 @@ func Load() *Config {
 		JWTSecret:    os.Getenv("JWT_SECRET"),
 		RMJWTSecret:  os.Getenv("RM_JWT_SECRET"),
 		SarvamAPIKey: os.Getenv("SARVAM_API_KEY"),
+
+		BudgetMLBaseURL: os.Getenv("BUDGET_ML_BASE_URL"),
+		BudgetMLToken:   os.Getenv("BUDGET_ML_TOKEN"),
+	}
+
+	if cfg.BudgetMLBaseURL == "" {
+		cfg.BudgetMLBaseURL = "https://zeyro87-budget-bloc.hf.space/api/v1"
 	}
 
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
@@ -49,6 +63,9 @@ func Load() *Config {
 		cfg.SarvamAPIKey = decryptOrFatal(cfg.SarvamAPIKey, masterKey, "SARVAM_API_KEY")
 		if cfg.RMJWTSecret != "" {
 			cfg.RMJWTSecret = decryptOrFatal(cfg.RMJWTSecret, masterKey, "RM_JWT_SECRET")
+		}
+		if cfg.BudgetMLToken != "" {
+			cfg.BudgetMLToken = decryptOrFatal(cfg.BudgetMLToken, masterKey, "BUDGET_ML_TOKEN")
 		}
 	} else if masterKey != "" {
 		log.Fatalf("FATAL: MASTER_INTERNAL_KEY is set but is %d characters long (must be 32).", len(masterKey))

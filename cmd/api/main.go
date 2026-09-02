@@ -21,6 +21,7 @@ import (
 	"github.com/yourusername/astra-backend/internal/handler"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
+	budgetprovider "github.com/yourusername/astra-backend/internal/provider/budget"
 	catalogprovider "github.com/yourusername/astra-backend/internal/provider/catalog"
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
 	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
@@ -32,6 +33,7 @@ import (
 	"github.com/yourusername/astra-backend/internal/rmseed"
 	"github.com/yourusername/astra-backend/internal/service"
 	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
+	budgetservice "github.com/yourusername/astra-backend/internal/service/budget"
 )
 
 func main() {
@@ -102,11 +104,21 @@ func main() {
 	watchlistService := service.NewWatchlistService(watchlistProvider)
 	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
-	spendAnalyticsService := analyticsservice.NewService(analyticsprovider.NewMockSource(db.Pool), analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
+	spendSource := analyticsprovider.NewMockSource(db.Pool)
+	spendAnalyticsService := analyticsservice.NewService(spendSource, analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
 	goalsProvider := goalsprovider.NewPostgresProvider(db.Pool)
 	goalsService := service.NewGoalsService(goalsProvider)
 	mfService := service.NewMFService(mfProvider)
 	dashboardService := service.NewDashboardService(stocksProvider, mfProvider, fdProvider, userRepo, db.Pool)
+
+	// Budget feature: setup-wizard sessions -> finalized monthly budgets ->
+	// active dashboard. Spend history is read from the same seeded
+	// transaction source the analytics engine uses; ML suggestions come from
+	// budget-bloc (POST /ml/diagnosis, POST /suggest/categories) with local
+	// heuristic fallbacks.
+	budgetRepo := repository.NewBudgetRepository(db.Pool)
+	budgetMLClient := budgetprovider.NewClient(cfg.BudgetMLBaseURL, cfg.BudgetMLToken)
+	budgetService := budgetservice.NewService(budgetRepo, spendSource, budgetMLClient)
 
 	// RM/Admin console: separate identity, separate auth (RM_JWT_SECRET),
 	// separate schema. Composes the user-domain providers read-only.
@@ -133,6 +145,7 @@ func main() {
 	fdHandler := handler.NewFDHandler(fdService)
 	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
+	budgetHandler := handler.NewBudgetHandler(budgetService)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
 	aaHandler := handler.NewAAHandler(db.Pool)
 	kycHandler := handler.NewKYCHandler()
@@ -149,11 +162,11 @@ func main() {
 	r := chi.NewRouter()
 
 	// Base Middleware — execution order matches r.Use() registration order.
-	r.Use(middleware.RequestID)      // 1. generate X-Request-Id
-	r.Use(middleware.RealIP)         // 2. resolve real client IP
-	r.Use(authmw.WithRequestLogger)  // 3. inject per-request slog.Logger into ctx
-	r.Use(authmw.Interceptor)        // 4. set security headers, echo X-Request-Id in response, log 5xx errors
-	r.Use(authmw.StructuredLogger)   // 5. emit one JSON summary line per request
+	r.Use(middleware.RequestID)     // 1. generate X-Request-Id
+	r.Use(middleware.RealIP)        // 2. resolve real client IP
+	r.Use(authmw.WithRequestLogger) // 3. inject per-request slog.Logger into ctx
+	r.Use(authmw.Interceptor)       // 4. set security headers, echo X-Request-Id in response, log 5xx errors
+	r.Use(authmw.StructuredLogger)  // 5. emit one JSON summary line per request
 	// VerboseLogger dumps full request bodies/headers (including
 	// Authorization) to logs — it must never run by default in a deployed
 	// environment. Opt in locally only, with DEBUG_VERBOSE_LOG=true.
@@ -228,6 +241,7 @@ func main() {
 		r.Mount("/api/v1/fd", fdHandler.Routes())
 		r.Mount("/api/v1/payments", paymentsHandler.Routes())
 		r.Mount("/api/v1/analytics/spend", analyticsHandler.Routes())
+		r.Mount("/api/v1/analytics/budgets", budgetHandler.Routes())
 		r.Mount("/api/v1/goals", goalsHandler.Routes())
 		r.Mount("/api/v1/dashboard", dashboardHandler.Routes())
 		r.Mount("/api/v1/portfolio-analysis", portfolioAnalysisHandler.Routes())
@@ -264,6 +278,22 @@ func main() {
 			})
 		})
 	})
+
+	// Optional month-rollover scheduler: opt in with BUDGET_ROLLOVER_SCHEDULER=true.
+	// Drafts next month's budget for every user with an active budget, once on
+	// boot and daily thereafter (in-process ticker). Non-fatal.
+	if os.Getenv("BUDGET_ROLLOVER_SCHEDULER") == "true" {
+		go func() {
+			defer func() { _ = recover() }()
+			t := time.NewTicker(24 * time.Hour)
+			defer t.Stop()
+			budgetService.RunRollover(context.Background())
+			for range t.C {
+				budgetService.RunRollover(context.Background())
+			}
+		}()
+		slog.Info("BUDGET_ROLLOVER_SCHEDULER: daily budget rollover enabled")
+	}
 
 	// 7. Start Server with Graceful Shutdown
 	server := &http.Server{

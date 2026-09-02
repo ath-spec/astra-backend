@@ -227,16 +227,25 @@ func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID
 	sum := sha256.Sum256([]byte(phoneNumber + userID.String()))
 	archetype := int(binary.BigEndian.Uint32(sum[:4]) % 4)
 
+	var err error
 	switch archetype {
 	case 0:
-		return r.seedTechGrowthArchetype(ctx, userID)
+		err = r.seedTechGrowthArchetype(ctx, userID)
 	case 1:
-		return r.seedBalancedWealthArchetype(ctx, userID)
+		err = r.seedBalancedWealthArchetype(ctx, userID)
 	case 2:
-		return r.seedGlobalMultiAssetArchetype(ctx, userID)
+		err = r.seedGlobalMultiAssetArchetype(ctx, userID)
 	default:
-		return r.seedConservativeIncomeArchetype(ctx, userID)
+		err = r.seedConservativeIncomeArchetype(ctx, userID)
 	}
+	if err != nil {
+		return err
+	}
+
+	// Layer on ~6 months of categorized spend history matching this
+	// archetype's income/spending persona, so the budget feature has real
+	// data to diagnose against from first login.
+	return r.seedSpendHistory(ctx, userID, spendProfiles[archetype])
 }
 
 // Archetype 0: Tech & Semiconductor Growth Investor
