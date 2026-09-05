@@ -22,3 +22,8 @@ go.work.sum
 .env
 .env.*
 !.env.example
+
+# IDBI api response curls
+docs/api_req_response_hackathon.xlsx
+docs/api response curls hackathon.xlsx
+docs/*.xlsx
