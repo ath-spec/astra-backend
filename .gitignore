@@ -27,3 +27,7 @@ go.work.sum
 docs/api_req_response_hackathon.xlsx
 docs/api response curls hackathon.xlsx
 docs/*.xlsx
+
+# Certificates and keys
+*.pem
+zeyro-idbi.pem
