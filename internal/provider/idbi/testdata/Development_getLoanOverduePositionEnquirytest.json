@@ -1,0 +1,126 @@
+{
+  "spec_file": "Open API Specifications (8).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getLoanOverduePositionEnquirytest",
+  "path": "/Development/getLoanOverduePositionEnquirytest",
+  "example": "sample 1",
+  "request": {
+    "input": {
+      "loanOvduPosInqCustomData": {
+        "setId": "1234"
+      },
+      "asOnDate": "2026-05-27T07:08:38.194",
+      "recCtrlIn": {
+        "maxRec": "",
+        "setNum": ""
+      },
+      "custId": {
+        "personName": {
+          "lastName": "",
+          "firstName": "",
+          "name": "",
+          "middleName": "",
+          "titlePrefix": ""
+        },
+        "custId": "68453002"
+      },
+      "curCode": "INR",
+      "selRangeLoanAcctId": {
+        "lowAcctId": {
+          "bankInfo": {
+            "branchId": ""
+          },
+          "acctType": {
+            "schmCode": "",
+            "schmType": ""
+          },
+          "acctCurr": "",
+          "acctId": "660100100003"
+        },
+        "highAcctId": {
+          "bankInfo": {
+            "branchId": "105",
+            "bankId": "",
+            "postAddr": {
+              "stateProv": "",
+              "country": "",
+              "addr2": "",
+              "addr1": "",
+              "city": "",
+              "addr3": "",
+              "postalCode": "",
+              "addrType": ""
+            },
+            "name": "",
+            "branchName": ""
+          },
+          "acctType": {
+            "schmCode": "",
+            "schmType": ""
+          },
+          "acctCurr": "",
+          "acctId": "660100100003"
+        }
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "loanOvduRec": [
+      {
+        "totalIntColl": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        },
+        "totalIntDmd": {
+          "amountValue": "268.00",
+          "currencyCode": "INR"
+        },
+        "totalIntOvdu": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        },
+        "pTotalColl": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        },
+        "pTotalDmd": {
+          "amountValue": "34601.39",
+          "currencyCode": "INR"
+        },
+        "pTotalOvdu": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        },
+        "acctId": {
+          "acctId": "660100100003",
+          "acctType": {
+            "schmCode": "SB002",
+            "schmType": "SAVINGS"
+          },
+          "acctCurr": "INR",
+          "bankInfo": {
+            "bankId": "IDBI001",
+            "name": "IDBIBANK",
+            "branchId": "105",
+            "branchName": "PUNE",
+            "postAddr": {
+              "addr1": "142, Lake View",
+              "addr2": "Near City Mall",
+              "addr3": "",
+              "city": "PUNE",
+              "stateProv": "MH",
+              "postalCode": "411001",
+              "country": "India",
+              "addrType": "REGISTERED"
+            }
+          }
+        }
+      }
+    ],
+    "recCtrlOut": {
+      "isLastSet": "Y",
+      "setNum": "0"
+    }
+  }
+}

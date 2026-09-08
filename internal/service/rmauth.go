@@ -42,14 +42,35 @@ type RMClaims struct {
 	jwt.RegisteredClaims
 }
 
+// HRMSVerifier confirms that an employee code belongs to a real, active
+// employee in IDBI's HRMS (508 fetchHRMSEmployeeDetails). It is an optional,
+// additive check: when set (IDBI_HRMS_LOGIN_ENABLED), SendOTP will not
+// dispatch a login code for an EIN HRMS does not recognise as active. A
+// transport error is treated as "cannot say" and does not block login, so
+// an HRMS outage never locks staff out. The local OTP store is unchanged.
+type HRMSVerifier interface {
+	// VerifyActiveEmployee returns (true, nil) when the code is an active
+	// employee, (false, nil) when HRMS positively says otherwise, and a
+	// non-nil error when it could not be determined.
+	VerifyActiveEmployee(ctx context.Context, employeeCode string) (bool, error)
+}
+
 type RMAuthService struct {
 	jwtSecret  string
 	otpDevCode string // when non-empty, always accepted (dev/testing only)
 	repo       repository.RMUserRepository
+	hrms       HRMSVerifier // nil unless IDBI_HRMS_LOGIN_ENABLED
 }
 
 func NewRMAuthService(jwtSecret, otpDevCode string, repo repository.RMUserRepository) *RMAuthService {
 	return &RMAuthService{jwtSecret: jwtSecret, otpDevCode: otpDevCode, repo: repo}
+}
+
+// UseHRMSVerifier attaches an HRMS active-employee check to the login flow
+// (feature 7). Called once at startup when the flag is on; a nil verifier
+// leaves the flow exactly as it was.
+func (s *RMAuthService) UseHRMSVerifier(v HRMSVerifier) {
+	s.hrms = v
 }
 
 // generateOpaqueToken returns a random refresh-token plaintext plus its
@@ -159,6 +180,19 @@ func (s *RMAuthService) SendOTP(ctx context.Context, identifier string) (*rmdoma
 	if staff == nil || staff.Status != rmdomain.StatusActive || staff.PhoneNumber == nil || strings.TrimSpace(*staff.PhoneNumber) == "" {
 		// Uniform response — don't disclose which of these was the reason.
 		return resp, nil
+	}
+
+	// Optional HRMS active-employee check (feature 7). Only a positive
+	// "not an active employee" from HRMS blocks the code; a lookup error
+	// falls through so an HRMS outage cannot lock staff out.
+	if s.hrms != nil {
+		ok, herr := s.hrms.VerifyActiveEmployee(ctx, staff.EmployeeCode)
+		if herr != nil {
+			log.Printf("RM OTP: HRMS check errored for %s (%v) — proceeding", staff.EmployeeCode, herr)
+		} else if !ok {
+			log.Printf("RM OTP: HRMS reports %s is not an active employee — code not sent", staff.EmployeeCode)
+			return resp, nil
+		}
 	}
 
 	code := s.otpDevCode

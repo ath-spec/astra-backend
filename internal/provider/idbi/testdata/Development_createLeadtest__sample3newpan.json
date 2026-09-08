@@ -1,0 +1,33 @@
+{
+  "spec_file": "Open API Specifications (3).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/createLeadtest",
+  "path": "/Development/createLeadtest",
+  "example": "sample 3 new pan",
+  "request": {
+    "input": {
+      "leadType": "NEW",
+      "customerType": "INDIVIDUAL",
+      "firstName": "Amit",
+      "lastName": "Verma",
+      "mobileNo": "9123456780",
+      "emailId": "amit.verma@email.com",
+      "pancard": "ABCDX99995",
+      "addressLine1": "22 MG Road",
+      "pincode": "560001",
+      "state": "KA",
+      "product": "Personal Loan",
+      "prodCategory": "Loans",
+      "prodSubCategory": "Instant PL",
+      "estimatedAmount": "300000",
+      "solid": "0200",
+      "leadChannel": "Mobile",
+      "leadSource": "App",
+      "leadId": "LD20260622099"
+    }
+  },
+  "status": 400,
+  "response": {
+    "message": "pancard is not valid: must be 10 characters in format AAAAA9999A"
+  }
+}

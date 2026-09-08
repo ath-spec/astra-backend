@@ -1,0 +1,46 @@
+{
+  "spec_file": "Open API Specifications (19).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getLoanOverdueDetailstest01",
+  "path": "/Development/getLoanOverdueDetailstest01",
+  "example": "sample 1",
+  "request": {
+    "customerId": "88823456",
+    "accountNo": ""
+  },
+  "status": 200,
+  "response": {
+    "overdueDetails": [
+      {
+        "customerId": "88823456",
+        "accountId": "660100100006",
+        "outstandingBal": "0",
+        "overdueDate": "NULL",
+        "dpd": "0",
+        "npaStatus": "SA",
+        "totalOverdueAmt": "0",
+        "npaDate": "NULL"
+      },
+      {
+        "customerId": "88823456",
+        "accountId": "660100100008",
+        "outstandingBal": "485000",
+        "overdueDate": "NULL",
+        "dpd": "0",
+        "npaStatus": "SA",
+        "totalOverdueAmt": "0",
+        "npaDate": "NULL"
+      },
+      {
+        "customerId": "88823456",
+        "accountId": "660100100009",
+        "outstandingBal": "118000",
+        "overdueDate": "NULL",
+        "dpd": "0",
+        "npaStatus": "SA",
+        "totalOverdueAmt": "0",
+        "npaDate": "NULL"
+      }
+    ]
+  }
+}

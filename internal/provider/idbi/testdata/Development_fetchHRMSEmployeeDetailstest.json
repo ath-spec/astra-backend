@@ -1,0 +1,42 @@
+{
+  "spec_file": "Open API Specifications (17).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/fetchHRMSEmployeeDetailstest",
+  "path": "/Development/fetchHRMSEmployeeDetailstest",
+  "example": "sample 1",
+  "request": {
+    "ein": "137075",
+    "otpRequired": "Y",
+    "channelName": "MOBILE_APP"
+  },
+  "status": 200,
+  "response": {
+    "failureStage": null,
+    "otpId": 982374,
+    "getHRMSEmployeeDetails": {
+      "ein": "137075",
+      "fullNameTitle": "Ms Priya Patil",
+      "grade": "Manager",
+      "gender": "F",
+      "empClass": "Permanent",
+      "vertical": "Digital Banking",
+      "organization": "Corporate Centre Mumbai",
+      "position": "Assistant Manager",
+      "location": "Mumbai",
+      "region": "West",
+      "email": "priya@gmail",
+      "sol": "CC001",
+      "zone": "Mumbai Zone",
+      "supEin": "120045",
+      "supFullNameTitle": "Mr Pawan Sharma",
+      "supGrade": "Senior Manager",
+      "supEmail": "pawan.sharma@bank.com",
+      "supposition": "Manager - DBD",
+      "supLocation": "Mumbai",
+      "supSol": "CC001",
+      "supZone": "Mumbai Zone",
+      "posId": "POS98765"
+    },
+    "errors": []
+  }
+}

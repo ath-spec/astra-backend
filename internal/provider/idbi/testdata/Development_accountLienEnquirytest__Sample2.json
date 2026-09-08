@@ -1,0 +1,43 @@
+{
+  "spec_file": "Open API Specifications (13).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/accountLienEnquirytest",
+  "path": "/Development/accountLienEnquirytest",
+  "example": "Sample 2",
+  "request": {
+    "input": {
+      "acctId": "660100100004",
+      "moduleType": "DEPOSIT",
+      "acctCurr": "INR",
+      "acctType": {
+        "schmCode": "SB003",
+        "schmType": "SAVINGS"
+      },
+      "bankInfo": {
+        "bankId": "IDBI001",
+        "name": "IDBIBANK",
+        "branchId": "106",
+        "branchName": "MUMBAI",
+        "postAddr": {
+          "addr1": "7, Sea Breeze",
+          "addr2": "Marine Lines",
+          "addr3": "MH",
+          "city": "MUMBAI",
+          "stateProv": "MH",
+          "postalCode": "400002",
+          "country": "India",
+          "addrType": "REGISTERED"
+        }
+      }
+    }
+  },
+  "status": 400,
+  "response": {
+    "message": "addr1 does not match; addr2 does not match; postalCode does not match",
+    "failedFields": [
+      "addr1 does not match",
+      "addr2 does not match",
+      "postalCode does not match"
+    ]
+  }
+}

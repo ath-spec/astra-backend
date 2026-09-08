@@ -1,0 +1,274 @@
+{
+  "spec_file": "Open API Specifications (20).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getLoanAccountDetailstest",
+  "path": "/Development/getLoanAccountDetailstest",
+  "example": "sample 1",
+  "request": {
+    "input": {
+      "loanAcctId": {
+        "acctId": "660100100003",
+        "acctType": {
+          "schmCode": "SB002",
+          "schmType": "SAVINGS"
+        },
+        "acctCurr": "INR",
+        "bankInfo": {
+          "bankId": "IDBI001",
+          "name": "IDBIBANK",
+          "branchId": "105",
+          "branchName": "PUNE",
+          "postAddr": {
+            "addr1": "142, Lake View",
+            "addr2": "Near City Mall",
+            "addr3": "",
+            "city": "PUNE",
+            "stateProv": "MH",
+            "postalCode": "411001",
+            "country": "India",
+            "addrType": "Office"
+          }
+        }
+      },
+      "custId": {
+        "custId": "68453002"
+      },
+      "channel": "API",
+      "requestId": "REQ202607160001",
+      "reqDate": "2026-07-16"
+    }
+  },
+  "status": 200,
+  "response": {
+    "result": {
+      "loanAcctId": {
+        "acctId": "660100100003",
+        "acctType": {
+          "schmCode": "SB002",
+          "schmType": "SAVINGS"
+        },
+        "acctCurr": "INR",
+        "bankInfo": {
+          "bankId": "IDBI001",
+          "name": "IDBIBANK",
+          "branchId": "105",
+          "branchName": "PUNE",
+          "postAddr": {
+            "addr1": "142, Lake View",
+            "addr2": "Near City Mall",
+            "addr3": "",
+            "city": "PUNE",
+            "stateProv": "MH",
+            "postalCode": "411001",
+            "country": "India",
+            "addrType": "REGISTERED"
+          }
+        }
+      },
+      "netIntRate": {
+        "value": "8.75"
+      },
+      "acctOpenDt": "2018-04-18T00:00:00.000",
+      "modeOfOper": "SINGLE",
+      "custId": {
+        "custId": "68453002",
+        "personName": {
+          "lastName": "PATIL",
+          "firstName": "PRIYA",
+          "middleName": "",
+          "name": "PRIYAPATIL",
+          "titlePrefix": "MS"
+        }
+      },
+      "loanAcctGenInfo": {
+        "genLedgerSubHead": {
+          "genLedgerSubHeadCode": "GL0000",
+          "curCode": "INR"
+        },
+        "acctName": "PRIYAPATIL Loan",
+        "eotEnabled": "Y",
+        "drIntMethodInd": "Reducing Balance",
+        "acctShortName": "PRIYL",
+        "acctStmtMode": "Email",
+        "acctStmtFreq": {
+          "cal": "Monthly",
+          "type": "Regular",
+          "startDt": "2018-04-18T00:00:00.000",
+          "weekDay": "Monday",
+          "weekNum": "1",
+          "holStat": "Ignore"
+        },
+        "acctStmtNxtPrintDt": "",
+        "despatchMode": "E"
+      },
+      "amtAlreadyDisb": {
+        "amountValue": "1500000",
+        "currencyCode": "INR"
+      },
+      "amtAvailForDisb": {
+        "amountValue": "500000",
+        "currencyCode": "INR"
+      },
+      "disbAmt": {
+        "amountValue": "2000000",
+        "currencyCode": "INR"
+      },
+      "srcDealerCode": {
+        "dsaId": "",
+        "dsaName": ""
+      },
+      "disbDealerCode": {
+        "dsaId": "",
+        "dsaName": ""
+      },
+      "loanGenDetails": {
+        "loanAmt": {
+          "amountValue": "2000000",
+          "currencyCode": "INR"
+        },
+        "loanPeriodDays": "0",
+        "loanPeriodMonths": "240",
+        "rePmtMethod": "EMI",
+        "operAcctId": {
+          "acctId": "660100100003",
+          "acctType": {
+            "schmCode": "SB002",
+            "schmType": "SAVINGS"
+          },
+          "acctCurr": "INR",
+          "bankInfo": {
+            "bankId": "IDBI001",
+            "name": "IDBIBANK",
+            "branchId": "105",
+            "branchName": "PUNE",
+            "postAddr": {
+              "addr1": "142, Lake View",
+              "addr2": "Near City Mall",
+              "addr3": "",
+              "city": "PUNE",
+              "stateProv": "MH",
+              "postalCode": "411001",
+              "country": "India",
+              "addrType": "REGISTERED"
+            }
+          }
+        },
+        "reschedParams": {
+          "reschedAdjTenorAmtFlg": "Y",
+          "autoReschedForEveryDisbFlg": "N",
+          "autoReschedForIntRateChange": "Y",
+          "reschedAmtFlg": "N",
+          "autoReschedPrepaymentFlg": "Y",
+          "installmentGracePeriodDays": "5",
+          "InstallmentGracePeriodMonths": "0",
+          "rephasementCapitalizeChargeFlg": "N"
+        },
+        "pmtPlan": {
+          "holidayPeriodDetails": {
+            "holidayPeriod": "0",
+            "autoReschedPostHolidayPeriod": "Y",
+            "intDuringHolidayPeriod": "Y",
+            "intFreq": {
+              "cal": "Monthly",
+              "type": "Regular",
+              "startDt": "2018-04-18T00:00:00.000",
+              "weekDay": "",
+              "weekNum": "",
+              "holStat": "Ignore"
+            }
+          },
+          "intRestBasis": "Monthly",
+          "intRestFreq": "1M",
+          "eqInstallDetails": {
+            "eqInstallFlg": "Y",
+            "eqInstallType": "EMI",
+            "eqInstallFormula": "Standard",
+            "repayCode": "EMI01"
+          },
+          "repmtRec": [
+            {
+              "installmentId": "1",
+              "installStartDt": "2018-04-18T00:00:00.000",
+              "installFreq": {
+                "cal": "Monthly",
+                "type": "Regular",
+                "startDt": "2018-04-18T00:00:00.000",
+                "weekDay": "",
+                "weekNum": "",
+                "holStat": "Ignore"
+              },
+              "intFreq": {
+                "cal": "Monthly",
+                "type": "Regular",
+                "startDt": "2018-04-18T00:00:00.000",
+                "weekDay": "",
+                "weekNum": "",
+                "holStat": "Ignore"
+              },
+              "noOfInstall": "240",
+              "intStartDt": "2018-04-18T00:00:00.000",
+              "flowAmt": {
+                "amountValue": "16800",
+                "currencyCode": "INR"
+              },
+              "installRate": {
+                "value": "8.75"
+              },
+              "actualNoOfFlows": {
+                "value": "240"
+              },
+              "installIndicator": "EMI"
+            }
+          ],
+          "hldyPerdIntAmt": {
+            "amountValue": "0",
+            "currencyCode": "INR"
+          },
+          "defApplIntRateFlg": "N",
+          "negotiatedRate": {
+            "value": "8.75"
+          },
+          "capEMIFlg": "N",
+          "defStartMonth": "06",
+          "singEmiDiffFlg": "N",
+          "numOfAdvInst": "0",
+          "brokenPeriodInterestFlg": "Y",
+          "defApplIntRate": {
+            "value": "8.75"
+          }
+        }
+      },
+      "ACHDetails": {
+        "paySysId": "NACH",
+        "respAcctId": {
+          "acctId": "660100100003",
+          "acctType": {
+            "schmCode": "SB002",
+            "schmType": "SAVINGS"
+          },
+          "acctCurr": "INR",
+          "bankInfo": {
+            "bankId": "IDBI001",
+            "name": "IDBIBANK",
+            "branchId": "105",
+            "branchName": "PUNE",
+            "postAddr": {
+              "addr1": "142, Lake View",
+              "addr2": "Near City Mall",
+              "addr3": "",
+              "city": "PUNE",
+              "stateProv": "MH",
+              "postalCode": "411001",
+              "country": "India",
+              "addrType": "REGISTERED"
+            }
+          }
+        }
+      },
+      "refNum": "",
+      "tranId": "",
+      "tranDt": ""
+    },
+    "errors": []
+  }
+}

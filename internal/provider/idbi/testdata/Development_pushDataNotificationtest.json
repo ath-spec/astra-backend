@@ -1,0 +1,37 @@
+{
+  "spec_file": "Open API Specifications (12).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/pushDataNotificationtest",
+  "path": "/Development/pushDataNotificationtest",
+  "example": "sample 1",
+  "request": {
+    "transactionID": "1990927",
+    "timestamp": "2023-01-18T12:15:16.215Z",
+    "consentHandle": "6afdd734-be3b-475f-a8fc-3fcd18c04714",
+    "eventType": "DATA",
+    "eventStatus": "DATA_READY",
+    "consentId": "CONSENT-0001",
+    "vua": "9988776655@onemoney",
+    "eventMessage": "Data ready for consent id CONSENT-0001",
+    "productID": "TEST",
+    "accountID": "660100100003",
+    "fetchType": "PERIODIC",
+    "consentExpiry": "2027-01-17 09:47:07",
+    "dataExpiry": "2026-01-10T06:15:48.000Z",
+    "sessionId": "21caa19d-f69f-4954-b965-bdc1d6fc5f8a",
+    "firstTimeFetch": "false",
+    "linkRefNumbers": [
+      {
+        "linkRefNumber": "cf885ed4-3085-45db-bd65-f9472d0073a4",
+        "fiStatus": "READY",
+        "fipName": "IDBI Bank",
+        "fipId": "IDBI001",
+        "maskedAccountNumber": "XXXXXXXX0003"
+      }
+    ]
+  },
+  "status": 200,
+  "response": {
+    "message": "Success"
+  }
+}

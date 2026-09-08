@@ -1,0 +1,102 @@
+{
+  "spec_file": "Open API Specifications (4).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/fetchCustomerLimitDetailstest",
+  "path": "/Development/fetchCustomerLimitDetailstest",
+  "example": "sample 1",
+  "request": {
+    "custCifId": "98655854"
+  },
+  "status": 200,
+  "response": {
+    "customerSummary": {
+      "customerName": "PRIYAPATIL",
+      "custCifId": "98655854",
+      "accountManager": "MIGR1",
+      "customerID": "68453002",
+      "custRating": "NA"
+    },
+    "exposureSummary": {
+      "totalLimit": {
+        "amount": "11821212.00",
+        "currency": "INR"
+      },
+      "fundedLimit": {
+        "amount": "7249562.75",
+        "currency": "INR"
+      },
+      "nonFundedLimit": {
+        "amount": "0.00",
+        "currency": ""
+      },
+      "totalOutstanding": {
+        "amount": "7249562.75",
+        "currency": "INR"
+      },
+      "totalNodeLimit": {
+        "amount": "11821212.00",
+        "currency": "INR"
+      },
+      "totalNodeOutstanding": {
+        "amount": "7249562.75",
+        "currency": "INR"
+      }
+    },
+    "customerLimits": [
+      {
+        "currency": "INR",
+        "sanctionDate": "22-11-2018",
+        "expiryDate": "31-12-2099"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "08-11-2008",
+        "expiryDate": "10-10-2027"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "13-10-2023",
+        "expiryDate": "12-10-2026"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "13-11-2023",
+        "expiryDate": "13-11-2024"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "16-11-2023",
+        "expiryDate": "16-11-2024"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "05-07-2019",
+        "expiryDate": "31-07-2037"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "29-10-2024",
+        "expiryDate": "30-01-2025"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "30-10-2024",
+        "expiryDate": "01-02-2025"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "18-11-2024",
+        "expiryDate": "25-03-2025"
+      },
+      {
+        "currency": "INR",
+        "sanctionDate": "21-11-2024",
+        "expiryDate": "01-02-2025"
+      }
+    ],
+    "emptyLimitRecords": "4",
+    "rawMetadata": {
+      "inquireCustomerLimitDetails_CustomData": ""
+    }
+  }
+}

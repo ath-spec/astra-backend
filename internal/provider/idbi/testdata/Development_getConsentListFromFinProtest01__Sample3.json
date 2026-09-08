@@ -1,0 +1,69 @@
+{
+  "spec_file": "Open API Specifications (29).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getConsentListFromFinProtest01",
+  "path": "/Development/getConsentListFromFinProtest01",
+  "example": "Sample 3",
+  "request": {
+    "partyIdentifierType": "MOBILE",
+    "partyIdentifierValue": "9765400022",
+    "productID": "TEST",
+    "accountID": "660100100008",
+    "vua": "9765400022@onemoney"
+  },
+  "status": 200,
+  "response": {
+    "status": "SUCCESS",
+    "ver": "1.0",
+    "data": [
+      {
+        "consentID": "CONSENT123456001",
+        "status": "ACTIVE",
+        "consent_handle": "aa003-CONSENT123456001-handle",
+        "productID": "TEST",
+        "accountID": "660100100006,660100100007,660100100008,660100100009",
+        "aaId": "onemoney",
+        "vua": "9765400022@onemoney",
+        "consentCreationData": "2025-05-01T10:00:00.000Z",
+        "accounts": [
+          {
+            "fipName": "IDBI Bank",
+            "fipId": "IDBI",
+            "accountType": "SAVINGS",
+            "linkReferenceNumber": "lr-003-sav-0001-11aa22bb33cc",
+            "maskedAccountNumber": "XXXXXXXXXX0006",
+            "fiType": "DEPOSIT"
+          },
+          {
+            "fipName": "IDBI Bank",
+            "fipId": "IDBI",
+            "accountType": "CURRENT",
+            "linkReferenceNumber": "lr-003-cur-0002-44dd55ee66ff",
+            "maskedAccountNumber": "XXXXXXXXXX0007",
+            "fiType": "DEPOSIT"
+          },
+          {
+            "fipName": "IDBI Bank",
+            "fipId": "IDBI",
+            "accountType": "TERM_DEPOSIT",
+            "linkReferenceNumber": "lr-003-fd-0003-77gg88hh99ii",
+            "maskedAccountNumber": "XXXXXXXXXX0008",
+            "fiType": "TERM_DEPOSIT"
+          },
+          {
+            "fipName": "IDBI Bank",
+            "fipId": "IDBI",
+            "accountType": "SALARY",
+            "linkReferenceNumber": "lr-003-sal-0004-00jj11kk22ll",
+            "maskedAccountNumber": "XXXXXXXXXX0009",
+            "fiType": "DEPOSIT"
+          }
+        ]
+      }
+    ],
+    "timestamp": "",
+    "errorCode": null,
+    "errorMsg": null,
+    "errors": []
+  }
+}

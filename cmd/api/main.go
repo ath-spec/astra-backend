@@ -25,6 +25,7 @@ import (
 	catalogprovider "github.com/yourusername/astra-backend/internal/provider/catalog"
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
 	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
+	idbiprovider "github.com/yourusername/astra-backend/internal/provider/idbi"
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	paymentsprovider "github.com/yourusername/astra-backend/internal/provider/payments"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
@@ -34,6 +35,14 @@ import (
 	"github.com/yourusername/astra-backend/internal/service"
 	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
 	budgetservice "github.com/yourusername/astra-backend/internal/service/budget"
+	creditscoreservice "github.com/yourusername/astra-backend/internal/service/creditscore"
+	idbiaaservice "github.com/yourusername/astra-backend/internal/service/idbiaa"
+	idbiaccountsservice "github.com/yourusername/astra-backend/internal/service/idbiaccounts"
+	idbihrmsservice "github.com/yourusername/astra-backend/internal/service/idbihrms"
+	idbikycservice "github.com/yourusername/astra-backend/internal/service/idbikyc"
+	idbiloansservice "github.com/yourusername/astra-backend/internal/service/idbiloans"
+	rmcreditriskservice "github.com/yourusername/astra-backend/internal/service/rmcreditrisk"
+	statementsyncservice "github.com/yourusername/astra-backend/internal/service/statementsync"
 )
 
 func main() {
@@ -104,7 +113,14 @@ func main() {
 	watchlistService := service.NewWatchlistService(watchlistProvider)
 	fdService := service.NewFDService(fdProvider)
 	paymentsService := service.NewPaymentsService(paymentsprovider.NewMockProvider(db.Pool, userRepo))
-	spendSource := analyticsprovider.NewMockSource(db.Pool)
+	// Spend transaction source. Default: the seeded MockSource. When
+	// IDBI_SPEND_ENABLED is on, read spend_transactions as-is (PgSource) and
+	// let statementsync fill it from IDBI 393 / AA 595 instead.
+	var spendSource analyticsprovider.TransactionSource = analyticsprovider.NewMockSource(db.Pool)
+	if cfg.IDBISpendEnabled {
+		spendSource = analyticsprovider.NewPgSource(db.Pool)
+		slog.Info("IDBI feature enabled: real transactions in spend analytics (spend_transactions)")
+	}
 	spendAnalyticsService := analyticsservice.NewService(spendSource, analyticsprovider.NewPgInvestmentSource(db.Pool), userRepo)
 	goalsProvider := goalsprovider.NewPostgresProvider(db.Pool)
 	goalsService := service.NewGoalsService(goalsProvider)
@@ -120,6 +136,68 @@ func main() {
 	budgetMLClient := budgetprovider.NewClient(cfg.BudgetMLBaseURL, cfg.BudgetMLToken)
 	budgetService := budgetservice.NewService(budgetRepo, spendSource, budgetMLClient)
 
+	// IDBI Atlas integration. The client always exists (cheap); each feature
+	// service is only constructed + routed when its flag is on. Flag off =>
+	// the app reads its existing mock/seeded data, unchanged.
+	idbiClient := idbiprovider.NewClient(idbiprovider.Config{BaseURL: cfg.IDBIBaseURL})
+	idbiRepo := repository.NewIDBIRepository(db.Pool)
+	var idbiAccountsSvc *idbiaccountsservice.Service
+	var idbiSpendSvc *statementsyncservice.Service
+	if cfg.IDBIAccountsEnabled {
+		idbiAccountsSvc = idbiaccountsservice.New(idbiClient, idbiRepo, idbiaccountsservice.Config{}, slog.Default())
+		slog.Info("IDBI feature enabled: account balances (idbi_accounts)")
+	}
+	if cfg.IDBISpendEnabled {
+		idbiSpendSvc = statementsyncservice.New(idbiClient, idbiRepo, statementsyncservice.Config{}, slog.Default())
+	}
+	var idbiLoansSvc *idbiloansservice.Service
+	if cfg.IDBILoansEnabled {
+		idbiLoansSvc = idbiloansservice.New(idbiClient, idbiRepo, idbiloansservice.Config{}, slog.Default())
+		slog.Info("IDBI feature enabled: My Loans (idbi_loans)")
+	}
+	var idbiKYCSvc *idbikycservice.Service
+	if cfg.IDBIKYCEnabled {
+		idbiKYCSvc = idbikycservice.New(idbiClient, db.Pool, idbikycservice.Config{
+			ParentCompany: cfg.IDBICKYCParentCompany,
+			APIToken:      cfg.IDBICKYCAPIToken,
+			BranchCode:    cfg.IDBICKYCBranchCode,
+			SourceSystem:  cfg.IDBICKYCSourceSystem,
+		})
+		slog.Info("IDBI feature enabled: CKYC verification (415)")
+	}
+	var creditScoreSvc *creditscoreservice.Service
+	if cfg.IDBICreditScoreEnabled {
+		// 408 is dead in the sandbox — use the mock source. Swap to
+		// creditscoreservice.IDBISource{Client: idbiClient} when ACC fixes creds.
+		creditScoreSvc = creditscoreservice.New(creditscoreservice.MockSource{}, 24*time.Hour)
+		slog.Info("IDBI feature enabled: credit score (mock source — 408 unavailable in sandbox)")
+	}
+	idbiHandler := handler.NewIDBIHandler(idbiAccountsSvc, idbiSpendSvc, idbiLoansSvc, creditScoreSvc)
+
+	// Feature 4: Account Aggregator consent flow. Off => aa_handler keeps its
+	// original stub behaviour (fake CONSENT-xxxx, no state).
+	var idbiAASvc *idbiaaservice.Service
+	if cfg.IDBIAAEnabled {
+		idbiAARepo := repository.NewIDBIAARepository(db.Pool)
+		idbiAASvc = idbiaaservice.New(idbiClient, idbiAARepo, idbiRepo, idbiaaservice.Config{
+			RedirectMode: cfg.IDBIAARedirectMode,
+			CallbackURL:  cfg.IDBIAACallbackURL,
+			ProductID:    cfg.IDBIAAProductID,
+			VUASuffix:    cfg.IDBIAAVUASuffix,
+		}, slog.Default())
+		slog.Info("IDBI feature enabled: Account Aggregator consent flow (idbi_aa_consents)", "redirect_mode", cfg.IDBIAARedirectMode)
+	}
+
+	var idbiRMHandler *handler.IDBIRMHandler
+	{
+		var rmRiskSvc *rmcreditriskservice.Service
+		if cfg.IDBIRMRiskEnabled {
+			rmRiskSvc = rmcreditriskservice.New(idbiClient, idbiRepo, slog.Default())
+			slog.Info("IDBI feature enabled: RM credit-risk view (idbi_credit_exposure)")
+		}
+		idbiRMHandler = handler.NewIDBIRMHandler(rmRiskSvc)
+	}
+
 	// RM/Admin console: separate identity, separate auth (RM_JWT_SECRET),
 	// separate schema. Composes the user-domain providers read-only.
 	rmUserRepo := repository.NewPostgresRMUserRepository(db.Pool)
@@ -128,6 +206,12 @@ func main() {
 	rmChatRepo := repository.NewPostgresRMChatRepository(db.Pool)
 	userRepo.SetAssigner(assignmentRepo) // auto-assign new signups to an RM
 	rmAuthService := service.NewRMAuthService(cfg.RMJWTSecret, cfg.RMOTPDevCode, rmUserRepo)
+	if cfg.IDBIHRMSLoginEnabled {
+		// Feature 7: withhold a login code for an EIN HRMS does not recognise
+		// as an active employee. Additive — the local OTP path is unchanged.
+		rmAuthService.UseHRMSVerifier(idbihrmsservice.New(idbiClient, ""))
+		slog.Info("IDBI feature enabled: HRMS active-employee check on RM login (508)")
+	}
 	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, cfg.GroqAPIKey, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
@@ -148,7 +232,10 @@ func main() {
 	budgetHandler := handler.NewBudgetHandler(budgetService)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
 	aaHandler := handler.NewAAHandler(db.Pool)
-	kycHandler := handler.NewKYCHandler()
+	if idbiAASvc != nil {
+		aaHandler.WithIDBI(idbiAASvc)
+	}
+	kycHandler := handler.NewKYCHandler(idbiKYCSvc)
 	mfHandler := handler.NewMFHandler(mfService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
@@ -221,6 +308,13 @@ func main() {
 		r.Post("/api/auth/refresh", authHandler.Refresh)
 		r.Post("/api/auth/logout", authHandler.Logout)
 		r.Post("/api/auth/reset", authHandler.ResetUser)
+
+		// Inbound AA notifications (497/498): called by IDBI's gateway, no
+		// user JWT. Mounted on a dedicated top-level path (not under the
+		// protected /api/v1/aa subtree). Only routed when IDBI_AA_ENABLED.
+		if wh := aaHandler.WebhookRoutes(); wh != nil {
+			r.Mount("/webhooks/idbi-aa", wh)
+		}
 	})
 
 	// Protected Routes (Requires JWT Bearer Token)
@@ -253,6 +347,11 @@ func main() {
 		// Scaffolded only: routed, but return 501 until a provider is picked.
 		r.Mount("/api/v1/aa", aaHandler.Routes())
 		r.Mount("/api/v1/kyc", kycHandler.Routes())
+
+		// IDBI mirror APIs — mounted only when at least one feature flag is on.
+		if idbiHandler.Enabled() {
+			r.Mount("/api/v1/idbi", idbiHandler.Routes())
+		}
 	})
 
 	// RM/Admin console API. Entirely separate from the user app above:
@@ -271,6 +370,7 @@ func main() {
 			r.Patch("/auth/me", rmAuthHandler.UpdateMe)
 			rmHandler.Register(r)     // /clients, /dashboard/summary, ...
 			rmChatHandler.Register(r) // /chat, /chat/history, /chat/tts, /chat/stt
+			idbiRMHandler.Register(r) // /idbi/clients/{userID}/credit-risk (feature-flagged)
 
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(authmw.RequireAdmin)

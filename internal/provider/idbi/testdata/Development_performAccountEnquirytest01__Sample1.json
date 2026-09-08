@@ -1,0 +1,103 @@
+{
+  "spec_file": "Open API Specifications (10).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/performAccountEnquirytest01",
+  "path": "/Development/performAccountEnquirytest01",
+  "example": "Sample 1",
+  "request": {
+    "acctId": "660100100006"
+  },
+  "status": 200,
+  "response": {
+    "acctId": "660100100006",
+    "acctType": {
+      "schmCode": "SB004",
+      "schmType": "SAVINGS"
+    },
+    "acctCurr": "INR",
+    "custId": "88823456",
+    "personName": {
+      "lastName": "SINGH",
+      "firstName": "NEHA",
+      "middleName": "",
+      "name": "NEHASINGH",
+      "titlePrefix": "MS"
+    },
+    "acctOpenDt": "2020-02-20T00:00:00.000",
+    "bankAcctStatusCode": "A",
+    "bankInfo": {
+      "bankId": "IDBI001",
+      "name": "IDBIBANK",
+      "branchId": "107",
+      "branchName": "DELHI",
+      "postAddr": {
+        "addr1": "12 Connaught Place",
+        "addr2": "Central Delhi",
+        "addr3": "",
+        "city": "DELHI",
+        "stateProv": "DL",
+        "postalCode": "110001",
+        "country": "India",
+        "addrType": "REGISTERED"
+      }
+    },
+    "acctBal": [
+      {
+        "balType": "LEDGER",
+        "balAmt": {
+          "amountValue": "72400.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "AVAIL",
+        "balAmt": {
+          "amountValue": "71400.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "EFFAVL",
+        "balAmt": {
+          "amountValue": "70400.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "LIEN",
+        "balAmt": {
+          "amountValue": "1000.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "FLOAT",
+        "balAmt": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "DRWPWR",
+        "balAmt": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "ACCBAL",
+        "balAmt": {
+          "amountValue": "72400.00",
+          "currencyCode": "INR"
+        }
+      }
+    ],
+    "custStat": {
+      "refRecType": ""
+    },
+    "acctInqCustomData": {
+      "acctName": "NEHASINGH",
+      "status": "A"
+    }
+  }
+}

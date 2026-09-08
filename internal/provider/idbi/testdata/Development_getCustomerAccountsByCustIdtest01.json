@@ -1,0 +1,61 @@
+{
+  "spec_file": "Open API Specifications (9).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getCustomerAccountsByCustIdtest01",
+  "path": "/Development/getCustomerAccountsByCustIdtest01",
+  "example": "sample 1",
+  "request": {
+    "input": {
+      "acctType": "SBA",
+      "branchId": "107",
+      "cifId": "88234567"
+    }
+  },
+  "status": 200,
+  "response": {
+    "numOfAccounts": "4",
+    "customerAccountInfo": [
+      {
+        "acctCurrCode": "INR",
+        "acctNumber": "660100100006",
+        "acctBalance": {
+          "amountValue": "72400.00",
+          "currencyCode": "INR"
+        },
+        "acctType": "SAVINGS"
+      },
+      {
+        "acctCurrCode": "INR",
+        "acctNumber": "660100100007",
+        "acctBalance": {
+          "amountValue": "250000.00",
+          "currencyCode": "INR"
+        },
+        "acctType": "CURRENT"
+      },
+      {
+        "acctCurrCode": "INR",
+        "acctNumber": "660100100008",
+        "acctBalance": {
+          "amountValue": "500000.00",
+          "currencyCode": "INR"
+        },
+        "acctType": "TERM_DEPOSIT"
+      },
+      {
+        "acctCurrCode": "INR",
+        "acctNumber": "660100100009",
+        "acctBalance": {
+          "amountValue": "118000.00",
+          "currencyCode": "INR"
+        },
+        "acctType": "SALARY"
+      }
+    ],
+    "acctTypeRequested": "SBA",
+    "customData": {
+      "thb": "49"
+    },
+    "cifId": "88234567"
+  }
+}

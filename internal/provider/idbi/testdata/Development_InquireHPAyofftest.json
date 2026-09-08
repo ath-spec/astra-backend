@@ -1,0 +1,25 @@
+{
+  "spec_file": "Open API Specifications (18).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/InquireHPAyofftest",
+  "path": "/Development/InquireHPAyofftest",
+  "example": "sample 1",
+  "request": {
+    "hPayOffInq": {
+      "foracid": "660100100003"
+    }
+  },
+  "status": 200,
+  "response": {
+    "executeFinacleScriptCustomData": {
+      "netPayofamt": "400537.00",
+      "accountLiab": "400000.00",
+      "pendingPrincipal": "400000.00",
+      "pendingNormalInterest": "0",
+      "pendingPenalInterest": "0",
+      "pendingOverdueInterest": "0",
+      "interestSinceLastApplication": "537.00",
+      "interestRate": "7.000000"
+    }
+  }
+}

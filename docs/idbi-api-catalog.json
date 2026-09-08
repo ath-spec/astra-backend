@@ -25,7 +25,7 @@
       "sandbox_base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
       "doc_portal": "https://innobox.idbi.bank.in",
       "path_shape": "POST /Development/<name>test  — dev/sandbox stage; production path prefix and the 'test' suffix will differ",
-      "auth": "gateway API key / token (from Atlas portal) — exact scheme TBD from portal",
+      "auth": "NONE at the app layer. The gateway allow-lists the caller's egress IP (sandbox: 43.205.52.148). No API key, client id/secret, or bearer token is sent. Confirmed with ACC. Production may differ.",
       "error_envelope": {
         "errors": [
           {
@@ -37,7 +37,20 @@
       },
       "specs_dir": "docs/idbireposne/",
       "note_456": "API 456 performCustomerMasterDedupeCheck has NO OpenAPI spec in idbireposne/ — endpoint unknown, only the xlsx skeleton is available"
-    }
+    },
+    "data_source_values": {
+      "idbi": "real populated data from the sandbox — wire directly",
+      "simulated": "call succeeds and the response shape is real, but there is no live counterparty (AA chain); build the flow, expect fixture/canned data",
+      "mock": "unusable in the sandbox — the app must supply its own value (see finding)"
+    },
+    "capture": {
+      "script": "scripts/idbi-capture-fixtures.py",
+      "dir": "internal/provider/idbi/testdata/",
+      "date": "2026-09-08",
+      "method": "live POST through the SOCKS proxy (egress 43.205.52.148) using the OpenAPI 'sample 1' request bodies",
+      "result": "42 calls / 24 of 25 APIs (456 has no spec); 39x200, 3x400 (real field validation)"
+    },
+    "provider_pkg": "internal/provider/idbi (client + typed structs, one method per op)"
   },
   "apis": [
     {
@@ -67,6 +80,13 @@
         "path": "/Development/getFullAccountStatementWithPaginationtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/e7c58fee-dc58-4759-ac9a-159cb26f7a42/d2d078a6-e887-44b9-a648-6dc77590ec61",
         "spec_file": "docs/idbireposne/Open API Specifications (14).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getFullAccountStatementWithPaginationtest.json",
+        "sandbox_status": 200,
+        "finding": "result{} envelope. Per-txn fields nested under transactionSummary; txnType 'D'/'C'. Page while result.hasMoreData=='Y'. Sandbox narrations are generic ('S1 TXN 1')."
       }
     },
     {
@@ -93,6 +113,13 @@
         "path": "/Development/performAccountEnquirytest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/c36c574a-8f10-4271-8d06-cdaea4f4fd40/d1d8a2f4-85a4-4624-b367-9d51811ecd55",
         "spec_file": "docs/idbireposne/Open API Specifications (11).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_performAccountEnquirytest__Sample1.json",
+        "sandbox_status": 200,
+        "finding": "Flat envelope. 7 balType rows in acctBal[]. Returns custId + personName + registered postAddr — the identity-resolution entry point."
       }
     },
     {
@@ -117,6 +144,13 @@
         "path": "/Development/getCustomerAccountsByCustIdtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/370ef1b0-a38f-4ca1-8ab9-b50f74c13a9a/a4ff4177-f6ac-48c8-b543-ac64d0d8f6a3",
         "spec_file": "docs/idbireposne/Open API Specifications (1).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getCustomerAccountsByCustIdtest.json",
+        "sandbox_status": 200,
+        "finding": "Flat envelope. customerAccountInfo[] with acctType (SAVINGS/CURRENT/TERM_DEPOSIT/SALARY on test01). Keyed by cifId."
       }
     },
     {
@@ -142,6 +176,13 @@
         "path": "/Development/accountLienEnquirytest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/d19a7df9-7a80-4d2f-b74d-6401b3cc1cb7/7b38bf35-b991-49e8-b71a-646edfa27ad3",
         "spec_file": "docs/idbireposne/Open API Specifications (13).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_accountLienEnquirytest__Sample1.json",
+        "sandbox_status": 200,
+        "finding": "result{} envelope, errors:[]. lienDetails nested INSIDE result.bankInfo. Sample2 -> 400 'addr does not match' — the API cross-validates bankInfo.postAddr against the account's registered address; source it from a prior 365."
       }
     },
     {
@@ -170,6 +211,13 @@
         "path": "/Development/getAccountStatementFromFinProtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/4d0aa45f-e5bb-4ab4-a336-fe80500ecd55/59dedfad-1b1a-4b77-b847-d796a93717ec",
         "spec_file": "docs/idbireposne/Open API Specifications (26).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getAccountStatementFromFinProtest.json",
+        "sandbox_status": 200,
+        "finding": "data[] envelope. Richest statement: Profile.Holders.Holder[] (dob/pan/mobile/address/ckyc), Summary (ifsc/micrCode/currentBalance), Transactions.Transaction[] (mode/type DEBIT|CREDIT/narration/reference)."
       }
     },
     {
@@ -196,6 +244,13 @@
         "path": "/Development/getAccountStatementtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/ed2cc79e-6cd2-4d84-af0f-d608ce320618/b774f008-27b1-4123-8162-3b7f7a2e3b43",
         "spec_file": "docs/idbireposne/Open API Specifications (24).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getAccountStatementtest.json",
+        "sandbox_status": 200,
+        "finding": "data[] envelope, has pageDetails. Same shape as 739. Some test01 samples use 'transactionalBalance' instead of 'currentBalance' — accept both."
       }
     },
     {
@@ -221,6 +276,13 @@
         "path": "/Development/requestConsentFromFinProtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/6804b0f7-7034-488a-bbf8-b90525128e34/57edafc1-4e70-47b6-9326-8a5c6356263a",
         "spec_file": "docs/idbireposne/Open API Specifications (27).yaml"
+      },
+      "data_source": "simulated",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_requestConsentFromFinProtest.json",
+        "sandbox_status": 200,
+        "finding": "data{status:'PENDING', consent_handle}. No real consent created — fixed handle. Build the flow; there is no live counterparty."
       }
     },
     {
@@ -246,6 +308,13 @@
         "path": "/Development/getConsentListFromFinProtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/ba5ab412-3bd6-43c7-8044-68a777e5a177/645c953d-aa03-4513-96c7-63798fccecad",
         "spec_file": "docs/idbireposne/Open API Specifications (21).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getConsentListFromFinProtest.json",
+        "sandbox_status": 200,
+        "finding": "data[] envelope. Real consent list with linked accounts[] (accountType/linkReferenceNumber/maskedAccountNumber/fiType). accountID is comma-joined on the test01 variant."
       }
     },
     {
@@ -270,6 +339,13 @@
         "path": "/Development/getWebRedirectionEncryptedURLtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/be2b4350-2341-4bbc-a0b5-f15922b8e582/9e816d01-63cf-4d0d-9165-79295e9fede1",
         "spec_file": "docs/idbireposne/Open API Specifications (22).yaml"
+      },
+      "data_source": "simulated",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getWebRedirectionEncryptedURLtest.json",
+        "sandbox_status": 200,
+        "finding": "data[].webRedirectionUrl is a DUMMY webrd.onemoney.in/uat link that renders nothing. Gate opening it behind IDBI_AA_REDIRECT_MODE=stub|live."
       }
     },
     {
@@ -294,6 +370,13 @@
         "path": "/Development/generateDecryptedResponseFromFinProtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/f8734776-9591-44e0-abf6-e3f09a39d08d/f460b7ba-41d5-4b67-874d-0d3c5432f497",
         "spec_file": "docs/idbireposne/Open API Specifications (25).yaml"
+      },
+      "data_source": "simulated",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_generateDecryptedResponseFromFinProtest.json",
+        "sandbox_status": 200,
+        "finding": "data{status:'S', errorcode:'0', sessionid, txnid, userid}. Canned decode. errorcode=='0' => approved."
       }
     },
     {
@@ -318,6 +401,13 @@
         "path": "/Development/pushConsentNotificationtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/7514fc60-af7a-4bf5-b78a-8cffa61d56eb/f3178fdd-df1f-4474-a687-81493684b256",
         "spec_file": "docs/idbireposne/Open API Specifications (5).yaml"
+      },
+      "data_source": "simulated",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_pushConsentNotificationtest.json",
+        "sandbox_status": 200,
+        "finding": "INBOUND webhook we host. Body decodes to {consentHandle,consentId,eventType:'CONSENT',eventStatus}. We ack HTTP 200 empty. Sandbox POST returns {message:'Success'}."
       }
     },
     {
@@ -341,6 +431,13 @@
         "path": "/Development/pushDataNotificationtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/6c194acc-e25e-4f63-a7d0-a7203e7dfdb5/977b2f55-c805-420f-beba-c4b53f440bd4",
         "spec_file": "docs/idbireposne/Open API Specifications (12).yaml"
+      },
+      "data_source": "simulated",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_pushDataNotificationtest.json",
+        "sandbox_status": 200,
+        "finding": "INBOUND webhook we host. Body has sessionId + linkRefNumbers[]. On receipt we call 595. Ack HTTP 200 empty."
       }
     },
     {
@@ -368,6 +465,13 @@
         "path": "/Development/fetchCibilScoretest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/ef7b3d77-5970-4712-99e0-be87a0aab0fb/d4cc63df-56a3-4dc1-86f5-987898e9f7b3",
         "spec_file": "docs/idbireposne/Open API Specifications (6).yaml"
+      },
+      "data_source": "mock",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_fetchCibilScoretest.json",
+        "sandbox_status": 200,
+        "finding": "DEAD: HTTP 200 but body.dcResponse.bureauResponse.isSuccess=false, idVision IDVErr001 'InvalidUserIdOrPassword'. NO score field anywhere. Bureau credentials in the shipped sample are rejected. Fails identically in ACC's own portal 'Try' console. Mock the score until ACC supplies working credentials."
       }
     },
     {
@@ -394,6 +498,13 @@
         "path": "/Development/fetchLoanInterestRatestest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/f8b2ce08-deff-4d06-8f98-a25bb129dc41/20aa3c86-06d8-4a47-86e1-9b4b9d1f8aa5",
         "spec_file": "docs/idbireposne/Open API Specifications (15).yaml"
+      },
+      "data_source": "mock",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_fetchLoanInterestRatestest.json",
+        "sandbox_status": 200,
+        "finding": "BROKEN: sandbox returns an unrelated kitchen-sink object (webRedirectInfo, drivingLicence, ckycDob, workPermit, hpPayoffInfo...) — NOT a rate table. Mock or hardcode a rate card."
       }
     },
     {
@@ -418,6 +529,13 @@
         "path": "/Development/generateLoanRepaymentScheduletest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/c7587225-fee5-4577-bb41-3923cf850a66/7ac814d1-5c6c-4c31-a390-faa58f21f1a4",
         "spec_file": "docs/idbireposne/Open API Specifications (23).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_generateLoanRepaymentScheduletest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: loanModellingSchOutputVO{lamodRepaymentLL[EMI summary], oamortLL[{cummPrincAmt,cummIntAmt,princOutStanding,instlAmt,intAmt,flowDate}]}. Full amortization."
       }
     },
     {
@@ -449,6 +567,13 @@
         "path": "/Development/getLoanAccountDetailstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/82814bf5-f546-4afb-a147-92ad799d77cb/4c4e4152-844e-4523-b25f-777eedecc310",
         "spec_file": "docs/idbireposne/Open API Specifications (20).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getLoanAccountDetailstest.json",
+        "sandbox_status": 200,
+        "finding": "result{} envelope. netIntRate.value, loanGenDetails{loanAmt,loanPeriodMonths,rePmtMethod}, amtAlreadyDisb/amtAvailForDisb/disbAmt, drIntMethodInd. Address-validated like 362 (Sample2 -> 400)."
       }
     },
     {
@@ -472,6 +597,13 @@
         "path": "/Development/InquireHPAyofftest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/2d61e77c-2c20-453c-b985-950891c08eb4/89b70ca4-9a66-4940-8759-c6b16fbda90d",
         "spec_file": "docs/idbireposne/Open API Specifications (18).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_InquireHPAyofftest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: executeFinacleScriptCustomData{netPayofamt (one 'f'), pendingPrincipal, pendingNormal/Penal/OverdueInterest, interestRate}. Gateway path is 'InquireHPAyoff' (IDBI typo). No errors array."
       }
     },
     {
@@ -496,6 +628,13 @@
         "path": "/Development/getLoanOverduePositionEnquirytest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/4abca8cd-a62c-4c0d-97f2-3e381e3d0eb6/b3c70029-5315-4237-a31a-a9975423ddb3",
         "spec_file": "docs/idbireposne/Open API Specifications (8).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getLoanOverduePositionEnquirytest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: loanOvduRec[{totalIntDmd/Coll/Ovdu, pTotalDmd/Coll/Ovdu}], recCtrlOut{isLastSet:'Y'}. Paginated. Demands cumulative across instalments."
       }
     },
     {
@@ -519,6 +658,13 @@
         "path": "/Development/getLoanOverdueDetailstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/3925b39f-62de-409b-bac4-6f9067a983d7/fc3639ba-3f64-4f04-9c2e-e3fdfa00e320",
         "spec_file": "docs/idbireposne/Open API Specifications (7).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_getLoanOverdueDetailstest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: overdueDetails[{accountId, outstandingBal, dpd, npaStatus:'SA'|SMA-0/1/2|NPA, totalOverdueAmt, npaDate}]. Multiple loan accts per customerId. Empty dates are literal 'NULL'."
       }
     },
     {
@@ -543,6 +689,13 @@
         "path": "/Development/fetchLoanAccountLimitstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/9ca0ce35-fb37-4cd7-a484-c5a93a9c717b/867b6626-f4a4-473b-a846-5127dbab9fdc",
         "spec_file": "docs/idbireposne/Open API Specifications (28).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_fetchLoanAccountLimitstest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: accountLimitDetails{acctDrwngPowerLimitHistMsgInq.olimitLL[], acctSanctLimitHistMsg.olimitLL[]}. Both are dated history — sort by applicableDate."
       }
     },
     {
@@ -569,6 +722,13 @@
         "path": "/Development/fetchCustomerLimitDetailstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/ba793222-d48e-4b84-9ebc-6895f9abf33e/26292680-408a-40ac-a9d8-a54539b13d8b",
         "spec_file": "docs/idbireposne/Open API Specifications (4).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_fetchCustomerLimitDetailstest.json",
+        "sandbox_status": 200,
+        "finding": "Flat. USES {amount,currency} NOT {amountValue,currencyCode}. customerSummary + exposureSummary{totalLimit,fundedLimit,totalOutstanding} + customerLimits[] (dd-mm-yyyy dates)."
       }
     },
     {
@@ -593,6 +753,13 @@
         "path": "/Development/createLeadtest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/d6c2980d-a6cd-434c-900b-bc53936a5ed9/5c611dd3-bb88-46e4-8944-dcabdabd5b96",
         "spec_file": "docs/idbireposne/Open API Specifications (3).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_createLeadtest__sample1alreadyexitlead.json",
+        "sandbox_status": 200,
+        "finding": "result{message,errors:[]}. 'Lead already created' / created. Sample3 -> 400 'pancard is not valid: must be AAAAA9999A' (spec's sample PAN is malformed, not an API bug)."
       }
     },
     {
@@ -618,6 +785,13 @@
         "docs_url": null,
         "spec_file": null,
         "note": "no OpenAPI spec found in idbireposne/"
+      },
+      "data_source": "mock",
+      "capture": {
+        "verified": false,
+        "fixture": null,
+        "sandbox_status": null,
+        "finding": "No OpenAPI spec in idbireposne/ and not in the capture. Portal lists it as 'performCustomerMasterDedupeCheck' / category 'Customer Onboarding' — 'takes Name, DOB, PAN to query the customer record'. Get the spec from the portal 'API Subscribed' tab, then wire."
       }
     },
     {
@@ -643,6 +817,13 @@
         "path": "/Development/searchCkycDetailstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/0a85e451-deae-4e1c-bad2-b56de9accd23/3775f2c5-004b-4104-8961-f570bfaf1347",
         "spec_file": "docs/idbireposne/Open API Specifications (16).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_searchCkycDetailstest.json",
+        "sandbox_status": 200,
+        "finding": "result{} envelope. JSON in, JSON out (not XML). details.searchInCkycResponseDetails{ckycAvailable:'Yes', ckycId, ckycName, ckycIdDetails.id[]}. Carries a base64 ckycPhoto/ckycPhotoBytes — ignore those."
       }
     },
     {
@@ -668,6 +849,13 @@
         "path": "/Development/fetchHRMSEmployeeDetailstest",
         "docs_url": "https://innobox.idbi.bank.in/api-specification/d293668b-1aaf-4930-8df1-bf119c7967c0/6098f184-3bd6-42ac-87af-88f42c661d90",
         "spec_file": "docs/idbireposne/Open API Specifications (17).yaml"
+      },
+      "data_source": "idbi",
+      "capture": {
+        "verified": true,
+        "fixture": "internal/provider/idbi/testdata/Development_fetchHRMSEmployeeDetailstest.json",
+        "sandbox_status": 200,
+        "finding": "Flat: otpId (OTP 'sent' — simulated in sandbox), getHRMSEmployeeDetails{ein,grade,position,vertical,organization,sol,zone,supEin,supEmail}, errors:[]. Backs RM/staff login."
       }
     }
   ]

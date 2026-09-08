@@ -30,6 +30,34 @@ type Config struct {
 	// back to local heuristics, so the token is optional.
 	BudgetMLBaseURL string
 	BudgetMLToken   string
+
+	// IDBI Atlas gateway integration. IDBIBaseURL defaults to the sandbox; the
+	// gateway allow-lists the caller's egress IP, so no key/token is sent.
+	// Each feature is gated by its own flag — all default OFF, meaning the app
+	// behaves exactly as before (mock/seeded data). Turning a flag on makes
+	// that feature read its idbi_* mirror instead.
+	IDBIBaseURL            string
+	IDBIAccountsEnabled    bool // feature 1: real account balances (365/394)
+	IDBISpendEnabled       bool // feature 2: real transactions in spend analytics (393)
+	IDBILoansEnabled       bool // feature 3: My Loans (391/402/538)
+	IDBIKYCEnabled         bool // feature 6: CKYC verification (415)
+	IDBICreditScoreEnabled bool // feature 8: credit score (mock until 408 works)
+	IDBIRMRiskEnabled      bool // feature 5: RM credit-risk view (442/402)
+	IDBIAAEnabled          bool // feature 4: Account Aggregator consent flow (590/591/592/497/498/595)
+	IDBIHRMSLoginEnabled   bool // feature 7: verify staff EIN against HRMS (508) before issuing an RM login code
+
+	// AA-flow tuning (only read when IDBIAAEnabled). Load() fills the blanks
+	// from IDBI_AA_* — there are no literals buried in the service layer.
+	IDBIAARedirectMode string // IDBI_AA_REDIRECT_MODE: "stub" | "live"
+	IDBIAACallbackURL  string // IDBI_AA_CALLBACK_URL: redirectUrl handed to 592 in "live" mode
+	IDBIAAProductID    string // IDBI_AA_PRODUCT_ID
+	IDBIAAVUASuffix    string // IDBI_AA_VUA_SUFFIX: appended to the mobile to form the VUA
+
+	// CKYC caller identity (only read when IDBIKYCEnabled). All from IDBI_CKYC_*.
+	IDBICKYCParentCompany string // IDBI_CKYC_PARENT_COMPANY
+	IDBICKYCAPIToken      string // IDBI_CKYC_API_TOKEN
+	IDBICKYCBranchCode    string // IDBI_CKYC_BRANCH_CODE
+	IDBICKYCSourceSystem  string // IDBI_CKYC_SOURCE_SYSTEM
 }
 
 func Load() *Config {
@@ -54,6 +82,24 @@ func Load() *Config {
 	if cfg.BudgetMLBaseURL == "" {
 		cfg.BudgetMLBaseURL = "https://zeyro87-budget-bloc.hf.space/api/v1"
 	}
+
+	cfg.IDBIBaseURL = envOr("IDBI_BASE_URL", "https://sandboxpocgatewayprod.idbi.bank.in")
+	cfg.IDBIAccountsEnabled = os.Getenv("IDBI_ACCOUNTS_ENABLED") == "true"
+	cfg.IDBISpendEnabled = os.Getenv("IDBI_SPEND_ENABLED") == "true"
+	cfg.IDBILoansEnabled = os.Getenv("IDBI_LOANS_ENABLED") == "true"
+	cfg.IDBIKYCEnabled = os.Getenv("IDBI_KYC_ENABLED") == "true"
+	cfg.IDBICreditScoreEnabled = os.Getenv("IDBI_CREDIT_SCORE_ENABLED") == "true"
+	cfg.IDBIRMRiskEnabled = os.Getenv("IDBI_RM_RISK_ENABLED") == "true"
+	cfg.IDBIAAEnabled = os.Getenv("IDBI_AA_ENABLED") == "true"
+	cfg.IDBIHRMSLoginEnabled = os.Getenv("IDBI_HRMS_LOGIN_ENABLED") == "true"
+	cfg.IDBIAARedirectMode = envOr("IDBI_AA_REDIRECT_MODE", "stub")
+	cfg.IDBIAACallbackURL = os.Getenv("IDBI_AA_CALLBACK_URL") // only used in "live" mode
+	cfg.IDBIAAProductID = envOr("IDBI_AA_PRODUCT_ID", "TEST")
+	cfg.IDBIAAVUASuffix = envOr("IDBI_AA_VUA_SUFFIX", "@onemoney")
+	cfg.IDBICKYCParentCompany = os.Getenv("IDBI_CKYC_PARENT_COMPANY")
+	cfg.IDBICKYCAPIToken = os.Getenv("IDBI_CKYC_API_TOKEN")
+	cfg.IDBICKYCBranchCode = os.Getenv("IDBI_CKYC_BRANCH_CODE")
+	cfg.IDBICKYCSourceSystem = envOr("IDBI_CKYC_SOURCE_SYSTEM", "Finacle")
 
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
 	if len(masterKey) == 32 {
@@ -111,6 +157,16 @@ func Load() *Config {
 	}
 
 	return cfg
+}
+
+// envOr returns the environment variable value, or fallback when it is unset
+// or empty. Used so tunable defaults live here in the config layer, in one
+// visible place, rather than as literals scattered through the services.
+func envOr(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func decryptOrFatal(ciphertext, key, varName string) string {

@@ -1,0 +1,26 @@
+{
+  "spec_file": "Open API Specifications (22).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getWebRedirectionEncryptedURLtest",
+  "path": "/Development/getWebRedirectionEncryptedURLtest",
+  "example": "sample 1",
+  "request": {
+    "consentHandle": "6afdd734-be3b-475f-a8fc-3fcd18c04714",
+    "redirectUrl": "https://myapp.com/consent/callback"
+  },
+  "status": 200,
+  "response": {
+    "status": "Success",
+    "ver": "1.21.0",
+    "message": "Success",
+    "data": [
+      {
+        "webRedirectionUrl": "https://webrd.onemoney.in/uat/v2/?ecreq=nwjkn5kcSuRkDUDIKekQhcB6QCtrcsQ9ks4jvi-L8gaWia-pJnZgEqnD1Tzqv-mDHrHKkji20RHBmCoXPGcb8e1ev7upLYGcXbVVbUuySceXTMAOg511Q89REzhggPj7DbG2woiCZPzbtkZfnwSRlEa5yFaGPdwqMhoNPPk6llcnTa_WX5CXqHKo5He0tdrP2-2hXgKUHhiJS50Nu-ZECHEGqrq72P1fak_c2aSxZ_DkbF1hCxenxrQ5QtAR14Oa&reqdate=250220261248050&fi=W1FSW1BRXF0cVF1NHUBRRg&requestorType=dHxl"
+      }
+    ],
+    "timestamp": "2026-06-22T17:40:00Z",
+    "errorCode": null,
+    "errorMsg": null,
+    "errors": []
+  }
+}

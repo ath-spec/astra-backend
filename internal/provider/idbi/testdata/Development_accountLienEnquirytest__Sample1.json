@@ -1,0 +1,81 @@
+{
+  "spec_file": "Open API Specifications (13).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/accountLienEnquirytest",
+  "path": "/Development/accountLienEnquirytest",
+  "example": "Sample 1",
+  "request": {
+    "input": {
+      "acctId": "660100100003",
+      "moduleType": "DEPOSIT",
+      "acctCurr": "INR",
+      "acctType": {
+        "schmCode": "SB002",
+        "schmType": "SAVINGS"
+      },
+      "bankInfo": {
+        "bankId": "IDBI001",
+        "name": "IDBIBANK",
+        "branchId": "105",
+        "branchName": "PUNE",
+        "postAddr": {
+          "addr1": "142, Lake View",
+          "addr2": "Near City Mall",
+          "addr3": "MH",
+          "city": "PUNE",
+          "stateProv": "MH",
+          "postalCode": "411001",
+          "country": "India",
+          "addrType": "REGISTERED"
+        }
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "result": {
+      "acctId": "660100100003",
+      "moduleType": "DEPOSIT",
+      "acctCurr": "INR",
+      "acctType": {
+        "schmCode": "SB002",
+        "schmType": "SAVINGS"
+      },
+      "bankInfo": {
+        "bankId": "IDBI001",
+        "name": "IDBIBANK",
+        "branchId": "105",
+        "branchName": "PUNE",
+        "postAddr": {
+          "addr1": "142, Lake View",
+          "addr2": "Near City Mall",
+          "addr3": "",
+          "city": "PUNE",
+          "stateProv": "MH",
+          "postalCode": "411001",
+          "country": "India",
+          "addrType": "REGISTERED"
+        },
+        "lienDetails": {
+          "newLienAmt": {
+            "amountValue": "5000",
+            "currencyCode": "INR"
+          },
+          "oldLienAmt": {
+            "amountValue": "0",
+            "currencyCode": "INR"
+          },
+          "lienDate": {
+            "startDate": "2026-07-09",
+            "endDate": "2027-07-08"
+          },
+          "reasonCode": "ACCOUNT_LIEN",
+          "remarks": "Lien marked on savings account",
+          "isDeleted": "N",
+          "lienId": "LIEN660100100003"
+        }
+      }
+    },
+    "errors": []
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "spec_file": "Open API Specifications (1).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getCustomerAccountsByCustIdtest",
+  "path": "/Development/getCustomerAccountsByCustIdtest",
+  "example": "sample 1",
+  "request": {
+    "input": {
+      "acctType": "SBA",
+      "branchId": "105",
+      "cifId": "98655854"
+    },
+    "txn": "E"
+  },
+  "status": 200,
+  "response": {
+    "numOfAccounts": "1",
+    "customerAccountInfo": [
+      {
+        "acctCurrCode": "INR",
+        "acctNumber": "660100100003",
+        "acctBalance": {
+          "amountValue": "56780.25",
+          "currencyCode": "INR"
+        },
+        "acctType": "SBA"
+      }
+    ],
+    "acctTypeRequested": "SBA",
+    "customData": {
+      "thb": "49"
+    },
+    "cifId": "98655854"
+  }
+}
