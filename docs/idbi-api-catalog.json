@@ -1,0 +1,674 @@
+{
+  "_meta": {
+    "source": "docs/api_req_response_hackathon.xlsx",
+    "payloads": "docs/idbi-api-payloads.md",
+    "count": 25,
+    "status_values": {
+      "wire": "feature already exists in astra; swap mock/placeholder data for this API",
+      "extend": "partial scaffold exists (route/handler); finish the integration",
+      "build": "net-new feature; astra has nothing for this today"
+    },
+    "surface_values": [
+      "app",
+      "rm",
+      "both",
+      "plumbing"
+    ],
+    "call_pattern_values": {
+      "sync": "pulled on a schedule into Postgres; UI reads our DB",
+      "on-demand-cache": "called when explicitly needed, result cached with a TTL",
+      "interactive": "in the live request path (consent flow)",
+      "event": "fired by a backend event, not a schedule",
+      "webhook-in": "we host the endpoint; AA calls us"
+    },
+    "gateway": {
+      "sandbox_base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+      "doc_portal": "https://innobox.idbi.bank.in",
+      "path_shape": "POST /Development/<name>test  — dev/sandbox stage; production path prefix and the 'test' suffix will differ",
+      "auth": "gateway API key / token (from Atlas portal) — exact scheme TBD from portal",
+      "error_envelope": {
+        "errors": [
+          {
+            "code": "",
+            "title": "",
+            "description": ""
+          }
+        ]
+      },
+      "specs_dir": "docs/idbireposne/",
+      "note_456": "API 456 performCustomerMasterDedupeCheck has NO OpenAPI spec in idbireposne/ — endpoint unknown, only the xlsx skeleton is available"
+    }
+  },
+  "apis": [
+    {
+      "id": "393",
+      "name": "getFullAccountStatementWithPagination",
+      "surface": "both",
+      "status": "wire",
+      "call_pattern": "sync",
+      "feature": "Spend analytics + budget diagnosis (astra-backend /analytics/spend, /analytics/budgets) — currently on analyticsprovider.NewMockSource",
+      "work": "Replace the mock transaction source with a sync worker that pages this API into spend_transactions.",
+      "key_fields": [
+        "transactionDetails[].transactionSummary.{txnAmt,txnDate,txnDesc,txnType}",
+        "transactionDetails[].{txnCat,txnBalance,pstdDate,valueDate}",
+        "accountBalances.{availableBalance,ledgerBalance,fFDBalance,floatingBalance,userDefinedBalance}",
+        "hasMoreData"
+      ],
+      "ignore": [
+        "field125",
+        "field126",
+        "field127",
+        "customData.THB"
+      ],
+      "notes": "5 balance types, not 2. Per-txn fields are nested under transactionSummary. Check whether txnCat is pre-populated by IDBI before building our own categoriser.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getFullAccountStatementWithPaginationtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/e7c58fee-dc58-4759-ac9a-159cb26f7a42/d2d078a6-e887-44b9-a648-6dc77590ec61",
+        "spec_file": "docs/idbireposne/Open API Specifications (14).yaml"
+      }
+    },
+    {
+      "id": "365",
+      "name": "performAccountEnquiry",
+      "surface": "both",
+      "status": "wire",
+      "call_pattern": "on-demand-cache",
+      "feature": "Balance shown on the home dashboard (/dashboard/summary exists; real balance not wired)",
+      "work": "Call on dashboard open with a short TTL cache; map acctBal[] rows by balType.",
+      "key_fields": [
+        "acctBal[].{balType,balAmt.amountValue}",
+        "bankAcctStatusCode",
+        "acctOpenDt"
+      ],
+      "ignore": [
+        "bankInfo.postAddr",
+        "GL sub-head codes"
+      ],
+      "notes": "acctBal[] has multiple balType rows — select, don't index.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/performAccountEnquirytest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/c36c574a-8f10-4271-8d06-cdaea4f4fd40/d1d8a2f4-85a4-4624-b367-9d51811ecd55",
+        "spec_file": "docs/idbireposne/Open API Specifications (11).yaml"
+      }
+    },
+    {
+      "id": "394",
+      "name": "getCustomerAccountsByCustId",
+      "surface": "both",
+      "status": "wire",
+      "call_pattern": "sync",
+      "feature": "Consolidated IDBI holdings view (portfolio/dashboard exists for investments; bank accounts not listed)",
+      "work": "Sync into an accounts table; render Savings/Current/FD/Loan list. RM: 360 view.",
+      "key_fields": [
+        "customerAccountInfo[].{acctNumber,acctType,acctCurrCode,acctBalance.amountValue}",
+        "numOfAccounts"
+      ],
+      "ignore": [
+        "customData.thb"
+      ],
+      "notes": "",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getCustomerAccountsByCustIdtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/370ef1b0-a38f-4ca1-8ab9-b50f74c13a9a/a4ff4177-f6ac-48c8-b543-ac64d0d8f6a3",
+        "spec_file": "docs/idbireposne/Open API Specifications (1).yaml"
+      }
+    },
+    {
+      "id": "362",
+      "name": "accountLienEnquiry",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "Investible-vs-locked balance (NEW — astra shows only a flat balance today)",
+      "work": "New: subtract active liens from balance; surface a 'locked' figure with reason. RM: stress signal.",
+      "key_fields": [
+        "bankInfo.lienDetails.{newLienAmt,reasonCode,remarks,isDeleted,lienId}",
+        "bankInfo.lienDetails.lienDate.{startDate,endDate}"
+      ],
+      "ignore": [
+        "oldLienAmt history",
+        "branch metadata"
+      ],
+      "notes": "lienDetails is nested inside bankInfo. Usable = balance - sum(active lienAmt). SPEC: Spec confirms the standard error envelope: errors:[{code,title,description}] with codes like EH003 'Mandatory fields missing', plus 400/403/500. Note title/description, NOT type/message as the xlsx showed.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/accountLienEnquirytest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/d19a7df9-7a80-4d2f-b74d-6401b3cc1cb7/7b38bf35-b991-49e8-b71a-646edfa27ad3",
+        "spec_file": "docs/idbireposne/Open API Specifications (13).yaml"
+      }
+    },
+    {
+      "id": "739",
+      "name": "getAccountStatementFromFinPro",
+      "surface": "both",
+      "status": "extend",
+      "call_pattern": "interactive",
+      "feature": "Multi-bank statements via Account Aggregator (/aa handler has /accounts, /consent, /accounts/{id}/transactions — likely mock)",
+      "work": "Wire the real AA statement fetch behind /accounts/{id}/transactions once consent + data-ready webhook land.",
+      "key_fields": [
+        "data.Summary.{currentBalance,accountType,drawingLimit}",
+        "data.Transactions.Transaction[].{amount,type,narration,transactionDateTime,balance}",
+        "data.Profile.Holders.Holder.name",
+        "pageDetails"
+      ],
+      "ignore": [
+        "ver",
+        "micrCode",
+        "protocol wrappers"
+      ],
+      "notes": "Source JSON in the sheet is missing commas between blocks — see payloads doc for the cleaned shape.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getAccountStatementFromFinProtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/4d0aa45f-e5bb-4ab4-a336-fe80500ecd55/59dedfad-1b1a-4b77-b847-d796a93717ec",
+        "spec_file": "docs/idbireposne/Open API Specifications (26).yaml"
+      }
+    },
+    {
+      "id": "595",
+      "name": "MoneyOneFIU_GetAccountStatement",
+      "surface": "both",
+      "status": "extend",
+      "call_pattern": "event",
+      "feature": "Same AA statement data as 739; the ingestion-side shape",
+      "work": "Backend calls this after the 498 data-ready webhook; upsert into spend_transactions tagged by source bank.",
+      "key_fields": [
+        "data[].Summary.{currentBalance,accountType,drawingLimit,currentODLimit}",
+        "data[].Transactions.Transaction[].{amount,type,narration,valueDate,transactionTimestamp}",
+        "data[].Profile.Holders.Holder[].{name,pan}"
+      ],
+      "ignore": [
+        "ver",
+        "status wrappers"
+      ],
+      "notes": "Sheet's 'request' column for 595 is actually the response schema; 'response' cell just says 'Fetch statement through AA'.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getAccountStatementtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/ed2cc79e-6cd2-4d84-af0f-d608ce320618/b774f008-27b1-4123-8162-3b7f7a2e3b43",
+        "spec_file": "docs/idbireposne/Open API Specifications (24).yaml"
+      }
+    },
+    {
+      "id": "590",
+      "name": "requestConsentFromFinPro",
+      "surface": "app",
+      "status": "extend",
+      "call_pattern": "interactive",
+      "feature": "'Link other bank accounts' — astra /aa has POST /consent (h.CreateConsent)",
+      "work": "Point CreateConsent at this API; store the returned consent handle.",
+      "key_fields": [
+        "data[].consent_handle",
+        "data[].status"
+      ],
+      "ignore": [
+        "ver",
+        "timestamps"
+      ],
+      "notes": "Source key is literally 'consent_handle: ' (trailing colon+space) — trim it.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/requestConsentFromFinProtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/6804b0f7-7034-488a-bbf8-b90525128e34/57edafc1-4e70-47b6-9326-8a5c6356263a",
+        "spec_file": "docs/idbireposne/Open API Specifications (27).yaml"
+      }
+    },
+    {
+      "id": "591",
+      "name": "getConsentListFromFinPro",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "'Manage connected accounts' screen (NEW — no consent-list endpoint in /aa today)",
+      "work": "New endpoint + screen: list active/expired consents and their linked FIP accounts; support revoke.",
+      "key_fields": [
+        "data[].{consentID,status}",
+        "data[].accounts[].{fipName,fipId,accountType,maskedAccountNumber,linkReferenceNumber,fiType}"
+      ],
+      "ignore": [
+        "consentCreationData",
+        "internal product IDs"
+      ],
+      "notes": "SPEC: Spec request also carries vua (the AA VUA handle), which the xlsx omitted.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getConsentListFromFinProtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/ba5ab412-3bd6-43c7-8044-68a777e5a177/645c953d-aa03-4513-96c7-63798fccecad",
+        "spec_file": "docs/idbireposne/Open API Specifications (21).yaml"
+      }
+    },
+    {
+      "id": "592",
+      "name": "getWebRedirectionEncryptedURL",
+      "surface": "app",
+      "status": "build",
+      "call_pattern": "interactive",
+      "feature": "Redirect step of AA linking (NEW)",
+      "work": "New: exchange consent handle for the OneMoney webview URL; open it in-app.",
+      "key_fields": [
+        "data[].webRedirectionUrl"
+      ],
+      "ignore": [
+        "ver",
+        "message"
+      ],
+      "notes": "Source key has a leading space: ' webRedirectionUrl'.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getWebRedirectionEncryptedURLtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/be2b4350-2341-4bbc-a0b5-f15922b8e582/9e816d01-63cf-4d0d-9165-79295e9fede1",
+        "spec_file": "docs/idbireposne/Open API Specifications (22).yaml"
+      }
+    },
+    {
+      "id": "593",
+      "name": "generateDecryptedResponseFromFinPro",
+      "surface": "app",
+      "status": "build",
+      "call_pattern": "interactive",
+      "feature": "Read the AA approve/reject result on return (NEW)",
+      "work": "New: decrypt the redirect callback; branch on errorCode (0=approved, 1=rejected).",
+      "key_fields": [
+        "data[].{status,errorCode,sessionId,txnId,userid}"
+      ],
+      "ignore": [
+        "srcref",
+        "redirect"
+      ],
+      "notes": "Every key inside data[0] has a leading space in the source. SPEC: Spec request wraps args: {webRedirectionURL:{ecres,resdate,fi}} — not flat as the xlsx showed. ecres is the long encrypted blob from the redirect return.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/generateDecryptedResponseFromFinProtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/f8734776-9591-44e0-abf6-e3f09a39d08d/f460b7ba-41d5-4b67-874d-0d3c5432f497",
+        "spec_file": "docs/idbireposne/Open API Specifications (25).yaml"
+      }
+    },
+    {
+      "id": "497",
+      "name": "pushConsentNotification",
+      "surface": "plumbing",
+      "status": "build",
+      "call_pattern": "webhook-in",
+      "feature": "Inbound AA webhook: consent approved/rejected (NEW)",
+      "work": "New hosted endpoint; update consent status, return HTTP 200 with empty body.",
+      "key_fields": [
+        "consentHandle",
+        "consentId",
+        "eventType",
+        "eventStatus"
+      ],
+      "ignore": [],
+      "notes": "Response body must be blank; non-2xx triggers AA retry.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/pushConsentNotificationtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/7514fc60-af7a-4bf5-b78a-8cffa61d56eb/f3178fdd-df1f-4474-a687-81493684b256",
+        "spec_file": "docs/idbireposne/Open API Specifications (5).yaml"
+      }
+    },
+    {
+      "id": "498",
+      "name": "pushDataNotification",
+      "surface": "plumbing",
+      "status": "build",
+      "call_pattern": "webhook-in",
+      "feature": "Inbound AA webhook: financial data ready (NEW)",
+      "work": "New hosted endpoint; on receipt call 595 to pull statements. Return HTTP 200 empty.",
+      "key_fields": [
+        "sessionId",
+        "consentId",
+        "linkRefNumbers[].{linkRefNumber,fipName,maskedAccountNumber,fiStatus}"
+      ],
+      "ignore": [],
+      "notes": "",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/pushDataNotificationtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/6c194acc-e25e-4f63-a7d0-a7203e7dfdb5/977b2f55-c805-420f-beba-c4b53f440bd4",
+        "spec_file": "docs/idbireposne/Open API Specifications (12).yaml"
+      }
+    },
+    {
+      "id": "408",
+      "name": "fetchCibilScore",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "'Check credit health' (NEW — no credit-score feature in astra)",
+      "work": "New screen + endpoint. Bureau rules forbid speculative/bulk pulls: user/RM-initiated, consent-logged, cache ~30 days.",
+      "key_fields": [
+        "body.dcResponse.decision",
+        "body.dcResponse.bureauResponse.{status,isSuccess}",
+        "body.dcResponse.applicant.name",
+        "header.{statusCode,statusMessage}"
+      ],
+      "ignore": [
+        "dcRequest.authentication",
+        "session tokens"
+      ],
+      "notes": "Sample response has NO raw numeric score field — you get 'decision' + bureauResponse. The number, if any, is inside 'document' (formattedReport). Confirm on a live call before promising a score in the UI.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/fetchCibilScoretest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/ef7b3d77-5970-4712-99e0-be87a0aab0fb/d4cc63df-56a3-4dc1-86f5-987898e9f7b3",
+        "spec_file": "docs/idbireposne/Open API Specifications (6).yaml"
+      }
+    },
+    {
+      "id": "433",
+      "name": "fetchLoanInterestRates",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "Loan calculator / 'check your rate' (NEW — astra has no loans area)",
+      "work": "New: part of a Loans section. RM: rate quoting during conversion.",
+      "key_fields": [
+        "result.{baseIntRate.value,effctIntRate.value,penalIntRate.value}",
+        "result.oslabRateLL[].{beginSlabAmt,endSlabAmt,normalIntPcnt}"
+      ],
+      "ignore": [
+        "delFlg",
+        "laVerSlabSrlNum",
+        "key.serial_num"
+      ],
+      "notes": "SPEC: Spec request has NO 'input' wrapper — flat: {crncyCode,intTblCode:{tblCode},loanAmt:{amountValue,currencyCode},loanPerdDays,loanPerdMnths,originationDate}. tblCode example 'LY001'.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/fetchLoanInterestRatestest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/f8b2ce08-deff-4d06-8f98-a25bb129dc41/20aa3c86-06d8-4a47-86e1-9b4b9d1f8aa5",
+        "spec_file": "docs/idbireposne/Open API Specifications (15).yaml"
+      }
+    },
+    {
+      "id": "473",
+      "name": "generateLoanRepaymentSchedule",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "EMI schedule / amortization visualizer (NEW)",
+      "work": "New: render oamortLL[] as a month-by-month principal/interest table.",
+      "key_fields": [
+        "result.loanModellingSchOutputVO.oamortLL[].amortStruct.{flowDate,instlAmt,intAmt,princAmt,princOutStanding,cummIntAmt,cummPrincAmt}"
+      ],
+      "ignore": [
+        "doScheduleCustomData",
+        "lamodRepaymentLL Key"
+      ],
+      "notes": "",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/generateLoanRepaymentScheduletest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/c7587225-fee5-4577-bb41-3923cf850a66/7ac814d1-5c6c-4c31-a390-faa58f21f1a4",
+        "spec_file": "docs/idbireposne/Open API Specifications (23).yaml"
+      }
+    },
+    {
+      "id": "391",
+      "name": "getLoanAccountDetails",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "'My Loans' detail screen (App) + credit-risk view (RM). NEW.",
+      "work": "New. RM primary consumer: restructuring history is a risk signal.",
+      "key_fields": [
+        "result.netIntRate.value",
+        "result.loanGenDetails.loanAmt",
+        "result.{amtAlreadyDisb,amtAvailForDisb}",
+        "result.loanGenDetails.reschedParams.*",
+        "result.loanGenDetails.pmtPlan.repmtRec"
+      ],
+      "ignore": [
+        "loanAcctGenInfo",
+        "ACHDetails",
+        "postDtChkRec",
+        "leaseDetailsAdd",
+        "dealer codes"
+      ],
+      "notes": "reschedParams / pmtPlan are nested under loanGenDetails. Full payload is ~7.8 KB of mostly boilerplate.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getLoanAccountDetailstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/82814bf5-f546-4afb-a147-92ad799d77cb/4c4e4152-844e-4523-b25f-777eedecc310",
+        "spec_file": "docs/idbireposne/Open API Specifications (20).yaml"
+      }
+    },
+    {
+      "id": "538",
+      "name": "inquireHPPayoff",
+      "surface": "both",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "'Foreclose my loan' quote (NEW)",
+      "work": "New: show netPayofamt + the pending* breakup.",
+      "key_fields": [
+        "executeFinacleScriptCustomData.{netPayofamt,pendingPrincipal,pendingNormalInterest,pendingPenalInterest,pendingOverdueInterest,interestRate}"
+      ],
+      "ignore": [
+        "script wrapper headers"
+      ],
+      "notes": "netPayofamt spelled with one 'f' in the source. No errors array.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/InquireHPAyofftest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/2d61e77c-2c20-453c-b985-950891c08eb4/89b70ca4-9a66-4940-8759-c6b16fbda90d",
+        "spec_file": "docs/idbireposne/Open API Specifications (18).yaml"
+      }
+    },
+    {
+      "id": "404",
+      "name": "getLoanOverduePositionEnquiry",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "Default-prediction / Early Warning (PS4) — RM portal. NEW.",
+      "work": "New RM module: batch across the book; feed the interest-vs-principal overdue split into a risk model. App: at most an EMI-overdue nudge.",
+      "key_fields": [
+        "result.loanOvduRec[].{totalIntDmd,totalIntColl,totalIntOvdu,pTotalDmd,pTotalColl,pTotalOvdu}",
+        "result.recCtrlOut.{isLastSet,setNum}"
+      ],
+      "ignore": [
+        "branch address arrays"
+      ],
+      "notes": "Paginated; demands are cumulative across instalments. SPEC: Spec sample nests loanOvduPosInqCustomData INSIDE input (xlsx had it as a sibling). recCtrlIn.maxRec/setNum sent as empty strings for the first page.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getLoanOverduePositionEnquirytest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/4abca8cd-a62c-4c0d-97f2-3e381e3d0eb6/b3c70029-5315-4237-a31a-a9975423ddb3",
+        "spec_file": "docs/idbireposne/Open API Specifications (8).yaml"
+      }
+    },
+    {
+      "id": "402",
+      "name": "getLoanOverdueDetails",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "NPA / DPD tracking (PS4) — RM portal. NEW.",
+      "work": "New RM module: primary feed for default models. App: overdue nudge only.",
+      "key_fields": [
+        "result.overdueDetails[].{dpd,npaStatus,npaDate,outstandingBal,totalOverdueAmt,overdueDate}"
+      ],
+      "ignore": [
+        "error envelopes"
+      ],
+      "notes": "npaStatus carries the SMA-0/1/2/NPA classification.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/getLoanOverdueDetailstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/3925b39f-62de-409b-bac4-6f9067a983d7/fc3639ba-3f64-4f04-9c2e-e3fdfa00e320",
+        "spec_file": "docs/idbireposne/Open API Specifications (7).yaml"
+      }
+    },
+    {
+      "id": "441",
+      "name": "fetchLoanAccountLimits",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "MSME working-capital health / drawing-power erosion (PS3/PS4) — RM. NEW.",
+      "work": "New RM module: track drawing power vs sanction limit over time.",
+      "key_fields": [
+        "result.accountLimitDetails.acctDrwngPowerLimitHistMsgInq.olimitLL[].{drwngPower,drwngPowerPcnt,applicableDate}",
+        "result.accountLimitDetails.acctSanctLimitHistMsg.olimitLL[].{sanctLimit,expiryDate,applicableDate}"
+      ],
+      "ignore": [
+        "empty pagination records"
+      ],
+      "notes": "Both arrays are history; sort by applicableDate.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/fetchLoanAccountLimitstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/9ca0ce35-fb37-4cd7-a484-c5a93a9c717b/867b6626-f4a4-473b-a846-5127dbab9fdc",
+        "spec_file": "docs/idbireposne/Open API Specifications (28).yaml"
+      }
+    },
+    {
+      "id": "442",
+      "name": "fetchCustomerLimitDetails",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "sync",
+      "feature": "CIF-level credit exposure / leverage scoring (PS3/PS4) — RM. NEW.",
+      "work": "New RM module: funded vs non-funded mix, utilisation, rating drift.",
+      "key_fields": [
+        "result.customerLimitDetailsResponse.{totalLimit,totalOutstanding,fundedLimit,nonFundedLimit}",
+        "result.customerLimitDetailsResponse.limitHeaderDetails.custRating",
+        "result.customerLimitDetailsResponse.ltCustomerDetails.accountManager"
+      ],
+      "ignore": [
+        "node tree hierarchy",
+        "currency precision codes"
+      ],
+      "notes": "",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/fetchCustomerLimitDetailstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/ba793222-d48e-4b84-9ebc-6895f9abf33e/26292680-408a-40ac-a9d8-a54539b13d8b",
+        "spec_file": "docs/idbireposne/Open API Specifications (4).yaml"
+      }
+    },
+    {
+      "id": "428",
+      "name": "createLead",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "event",
+      "feature": "Lead pipeline (PS2) — RM has /clients/{id}/interactions (follow-ups) but not CRM lead creation. NEW.",
+      "work": "New: when an AI insight flags propensity, POST a lead to the IDBI CRM; track the returned leadId.",
+      "key_fields": [
+        "result.leadId",
+        "result.errors"
+      ],
+      "ignore": [
+        "telemetry headers"
+      ],
+      "notes": "Request keys 'dob ', 'mobileNo ', 'preferedTime ' have trailing spaces in the source. SPEC: Spec sample uses clean keys (mobileNo, not 'mobileNo ') — the trailing spaces in the xlsx were an artifact. Real sample fields: leadType,customerType,firstName,lastName,mobileNo,emailId,pancard,addressLine1,pincode,state,product,prodCategory,prodSubCategory,estimatedAmount,solid,leadChannel,leadSource,leadId.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/createLeadtest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/d6c2980d-a6cd-434c-900b-bc53936a5ed9/5c611dd3-bb88-46e4-8944-dcabdabd5b96",
+        "spec_file": "docs/idbireposne/Open API Specifications (3).yaml"
+      }
+    },
+    {
+      "id": "456",
+      "name": "performCustomerMasterDedupeCheck",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "Prospecting / duplicate-CIF check (PS2) — RM. NEW.",
+      "work": "New: on lead entry, search by PAN/mobile/GSTIN; surface existing relationship if any.",
+      "key_fields": [
+        "result.allMasterRecords[].{customerCount,custId,custName,dateOfBirth,panGirNum,ckycNo,customerType,kycDueDate}"
+      ],
+      "ignore": [
+        "NREGA/PIO/OIC/workPermit tags",
+        "freeText15"
+      ],
+      "notes": "customerCount on record 0 = match / no-match / multi-match. SPEC: NO OpenAPI spec in idbireposne/ — endpoint unknown. Only the xlsx skeleton is available. Ask ACC/IDBI for the spec or check the portal catalogue.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": null,
+        "path": null,
+        "docs_url": null,
+        "spec_file": null,
+        "note": "no OpenAPI spec found in idbireposne/"
+      }
+    },
+    {
+      "id": "415",
+      "name": "searchCkycDetails",
+      "surface": "rm",
+      "status": "extend",
+      "call_pattern": "on-demand-cache",
+      "feature": "CKYC verification — astra /kyc handler exists but POST /pan/verify returns notConfigured (stub)",
+      "work": "Fill in the KYC handler: XML request/response, by ID or name+DOB, batch-capable.",
+      "key_fields": [
+        "searchInCkycResponseDetails.{ckycAvailable,ckycId,ckycName,ckycAccType,ckycFatherName,ckycGenDate}",
+        "searchInCkycResponseDetails.ckycIdDetails.id[].{ckycAvailableIdType,ckycAvailableIdTypeStatus}"
+      ],
+      "ignore": [
+        "ckycPhoto",
+        "ckycPhotoBytes"
+      ],
+      "notes": "XML, not JSON. Content-Type: application/xml. SPEC: OpenAPI spec shows the gateway takes a JSON body: {input:{apiToken,parentCompany,searchInCkycRequestDetails:[{queryId,recordIdentifier,applicationFormNo,branchCode,inputIdType,inputIdNo,sourceSystem,...}]}}. The xlsx skeleton showed XML — use the JSON shape from the spec. Response may still be XML-structured; confirm live. ckycPhotoBytes = image blob, ignore.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/searchCkycDetailstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/0a85e451-deae-4e1c-bad2-b56de9accd23/3775f2c5-004b-4104-8961-f570bfaf1347",
+        "spec_file": "docs/idbireposne/Open API Specifications (16).yaml"
+      }
+    },
+    {
+      "id": "508",
+      "name": "fetchHRMSEmployeeDetails",
+      "surface": "rm",
+      "status": "build",
+      "call_pattern": "on-demand-cache",
+      "feature": "Staff directory / lead routing — RM auth exists (OTP) but no HRMS org lookup. NEW.",
+      "work": "New: resolve an EIN to name/grade/branch/region and the reporting chain for lead assignment.",
+      "key_fields": [
+        "getHRMSEmployeeDetails.{ein,fullNameTitle,grade,position,location,region,email,sol,zone}",
+        "getHRMSEmployeeDetails.{supEin,supFullNameTitle,supEmail,supLocation}"
+      ],
+      "ignore": [
+        "empClass",
+        "internal classification codes"
+      ],
+      "notes": "otpRequired in request / otpId in response — the call can be OTP-gated.",
+      "endpoint": {
+        "method": "POST",
+        "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
+        "path": "/Development/fetchHRMSEmployeeDetailstest",
+        "docs_url": "https://innobox.idbi.bank.in/api-specification/d293668b-1aaf-4930-8df1-bf119c7967c0/6098f184-3bd6-42ac-87af-88f42c661d90",
+        "spec_file": "docs/idbireposne/Open API Specifications (17).yaml"
+      }
+    }
+  ]
+}

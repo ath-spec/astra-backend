@@ -31,3 +31,7 @@ docs/*.xlsx
 # Certificates and keys
 *.pem
 zeyro-idbi.pem
+
+# IDBI response dumps
+docs/idbireposne/
+docs/idbiresponse/
