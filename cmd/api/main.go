@@ -16,6 +16,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 
+	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
 	"github.com/yourusername/astra-backend/internal/handler"
@@ -26,13 +27,16 @@ import (
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
 	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
 	idbiprovider "github.com/yourusername/astra-backend/internal/provider/idbi"
+	"github.com/yourusername/astra-backend/internal/provider/llm"
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	paymentsprovider "github.com/yourusername/astra-backend/internal/provider/payments"
+	"github.com/yourusername/astra-backend/internal/provider/speech"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	watchlistprovider "github.com/yourusername/astra-backend/internal/provider/watchlist"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/rmseed"
 	"github.com/yourusername/astra-backend/internal/service"
+	advisortipsservice "github.com/yourusername/astra-backend/internal/service/advisortips"
 	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
 	budgetservice "github.com/yourusername/astra-backend/internal/service/budget"
 	creditscoreservice "github.com/yourusername/astra-backend/internal/service/creditscore"
@@ -98,8 +102,64 @@ func main() {
 	chatMemoryRepo := repository.NewPostgresChatMemoryRepository(db.Pool)
 
 	// 4. Initialize Services
-	aiService := service.NewGroqAIService(cfg.GroqAPIKey, cfg.SarvamAPIKey, chatRepo)
-	memoryService := service.NewMemoryService(chatMemoryRepo, cfg.GroqAPIKey)
+
+	// Provider-agnostic LLM + speech seams. Groq / Sarvam are wired today;
+	// Bedrock / Polly+Transcribe are provisioned and switch on via
+	// LLM_PROVIDER / SPEECH_PROVIDER after the AWS review — no call-site change.
+	var groqModels []string
+	if cfg.LLMGroqModels != "" {
+		for _, m := range strings.Split(cfg.LLMGroqModels, ",") {
+			if m = strings.TrimSpace(m); m != "" {
+				groqModels = append(groqModels, m)
+			}
+		}
+	}
+	llmProvider := llm.New(llm.Config{
+		Provider: cfg.LLMProvider,
+		Groq:     llm.GroqConfig{APIKey: cfg.GroqAPIKey, Models: groqModels},
+		Bedrock: llm.BedrockConfig{
+			Region: cfg.BedrockRegion, ModelID: cfg.BedrockModelID,
+			AgentID: cfg.BedrockAgentID, AgentAliasID: cfg.BedrockAgentAliasID,
+		},
+	})
+	speechProvider := speech.New(speech.Config{
+		Provider: cfg.SpeechProvider,
+		Sarvam:   speech.SarvamConfig{APIKey: cfg.SarvamAPIKey},
+		AWS: speech.AWSConfig{
+			Region: cfg.SpeechAWSRegion, PollyVoice: cfg.SpeechPollyVoice, STTLang: cfg.SpeechSTTLang,
+		},
+	})
+
+	// Routing catalog for every LLM-backed surface (chat assistants, RM/Admin
+	// copilots, RM narrator, memory extractor). Per-agent Bedrock Agent ids
+	// come from BEDROCK_AGENT_<KEY>_ID; until set, each runs on its model list
+	// exactly as today.
+	agentCatalog := agents.New(agents.Overrides{
+		BedrockAgentIDs: map[agents.Key]string{
+			agents.KeyAppChat:      cfg.BedrockChatAgentIDs["app_chat"],
+			agents.KeyAppQuickChat: cfg.BedrockChatAgentIDs["app_quickchat"],
+			agents.KeyRMCopilot:    cfg.BedrockChatAgentIDs["rm_copilot"],
+			agents.KeyAdminCopilot: cfg.BedrockChatAgentIDs["admin_copilot"],
+			agents.KeyRMNarrator:   cfg.BedrockChatAgentIDs["rm_narrator"],
+			agents.KeyMemory:       cfg.BedrockChatAgentIDs["memory"],
+		},
+	})
+	slog.Info("AI providers", "llm", llmProvider.Name(), "speech", speechProvider.Name())
+
+	aiService := service.NewGroqAIService(llmProvider, speechProvider, agentCatalog, chatRepo)
+	memoryService := service.NewMemoryService(chatMemoryRepo, llmProvider, agentCatalog)
+
+	var advisorTipsSvc *advisortipsservice.Service
+	if cfg.AITipsEnabled {
+		advisorTipsSvc = advisortipsservice.New(llmProvider, advisortipsservice.Config{
+			AgentIDs: map[advisortipsservice.Topic]string{
+				advisortipsservice.TopicAllocation:  cfg.BedrockTipAgentIDs["allocation"],
+				advisortipsservice.TopicDiscipline:  cfg.BedrockTipAgentIDs["discipline"],
+				advisortipsservice.TopicPerformance: cfg.BedrockTipAgentIDs["performance"],
+				advisortipsservice.TopicFundProfile: cfg.BedrockTipAgentIDs["fund_profile"],
+			},
+		}, slog.Default())
+	}
 	authService := service.NewAuthService(cfg.JWTSecret)
 
 	stocksProvider := stocksprovider.NewMockProvider(db.Pool)
@@ -224,9 +284,9 @@ func main() {
 		rmAuthService.UseHRMSVerifier(idbihrmsservice.New(idbiClient, ""))
 		slog.Info("IDBI feature enabled: HRMS active-employee check on RM login (508)")
 	}
-	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, cfg.GroqAPIKey, db.Pool)
+	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, llmProvider, agentCatalog, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
-	rmChatService := service.NewRMChatService(cfg.GroqAPIKey, cfg.SarvamAPIKey, rmChatRepo, rmService, rmAdminService)
+	rmChatService := service.NewRMChatService(llmProvider, speechProvider, agentCatalog, rmChatRepo, rmService, rmAdminService)
 
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(
@@ -254,6 +314,9 @@ func main() {
 	mfHandler := handler.NewMFHandler(mfService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
+	if advisorTipsSvc != nil {
+		portfolioAnalysisHandler.WithTips(advisorTipsSvc)
+	}
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
 	rmHandler := handler.NewRMHandler(rmService)

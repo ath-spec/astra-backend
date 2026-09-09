@@ -1,20 +1,19 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yourusername/astra-backend/internal/ai/agents"
 	rmdomain "github.com/yourusername/astra-backend/internal/domain/rm"
+	"github.com/yourusername/astra-backend/internal/provider/llm"
 )
 
 // narrativeTopics is the fixed set of report sections the copilot may write.
@@ -86,13 +85,13 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		return map[string]string{}, nil
 	}
 
-	// 1. Try AI-generated narrative via Groq
+	// 1. Try AI-generated narrative through the LLM seam (Groq today).
 	var m map[string]string
-	if s.groqKey != "" {
+	if s.llm != nil {
 		m, _ = s.generateNarrative(ctx, blob)
 	}
 
-	// If Groq successfully generated the narrative, persist to cache
+	// If the model successfully generated the narrative, persist to cache
 	if len(m) > 0 {
 		raw, _ := json.Marshal(m)
 		_, _ = s.pool.Exec(ctx, `
@@ -154,94 +153,47 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 }
 
 func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[string]string, error) {
-	if s.groqKey == "" {
-		return nil, fmt.Errorf("groq API key not set")
+	if s.llm == nil {
+		return nil, fmt.Errorf("llm provider not set")
 	}
 
-	models := []string{
-		"llama-3.3-70b-versatile",
-		"llama-3.1-8b-instant",
-		"openai/gpt-oss-120b",
+	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req := s.agents.Get(agents.KeyRMNarrator).Request(
+		narrativeSystemPrompt,
+		[]llm.Message{{Role: llm.RoleUser, Content: figures}},
+	)
+	resp, err := s.llm.Complete(callCtx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp == nil {
+		return nil, fmt.Errorf("narrative model returned nil response")
 	}
 
-	var lastErr error
-	for _, model := range models {
-		payload := map[string]interface{}{
-			"model":       model,
-			"temperature": 0.2,
-			"max_tokens":  2048,
-			"response_format": map[string]string{
-				"type": "json_object",
-			},
-			"messages": []map[string]interface{}{
-				{"role": "system", "content": narrativeSystemPrompt},
-				{"role": "user", "content": figures},
-			},
-		}
-		body, err := json.Marshal(payload)
-		if err != nil {
-			return nil, err
-		}
-		req, err := http.NewRequestWithContext(ctx, "POST", groqAPIURL, bytes.NewReader(body))
-		if err != nil {
-			return nil, err
-		}
-		req.Header.Set("Authorization", "Bearer "+s.groqKey)
-		req.Header.Set("Content-Type", "application/json")
-
-		resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		raw, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp.StatusCode != http.StatusOK {
-			lastErr = fmt.Errorf("model %s returned %d: %s", model, resp.StatusCode, string(raw))
-			continue
-		}
-
-		var parsed struct {
-			Choices []struct {
-				Message struct {
-					Content string `json:"content"`
-				} `json:"message"`
-			} `json:"choices"`
-		}
-		if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
-			lastErr = fmt.Errorf("could not parse narrative model response")
-			continue
-		}
-
-		content := strings.TrimSpace(parsed.Choices[0].Message.Content)
-		if start := strings.IndexByte(content, '{'); start >= 0 {
-			if end := strings.LastIndexByte(content, '}'); end > start {
-				content = content[start : end+1]
-			}
-		}
-
-		var parsedMap map[string]string
-		if err := json.Unmarshal([]byte(content), &parsedMap); err != nil {
-			lastErr = fmt.Errorf("narrative JSON invalid: %w", err)
-			continue
-		}
-
-		out := map[string]string{}
-		for _, t := range narrativeTopics {
-			if v := strings.TrimSpace(parsedMap[t]); v != "" {
-				out[t] = v
-			}
-		}
-		if len(out) > 0 {
-			return out, nil
+	content := strings.TrimSpace(resp.Text)
+	if start := strings.IndexByte(content, '{'); start >= 0 {
+		if end := strings.LastIndexByte(content, '}'); end > start {
+			content = content[start : end+1]
 		}
 	}
 
-	return nil, lastErr
+	var parsedMap map[string]string
+	if err := json.Unmarshal([]byte(content), &parsedMap); err != nil {
+		return nil, fmt.Errorf("narrative JSON invalid: %w", err)
+	}
+
+	out := map[string]string{}
+	for _, t := range narrativeTopics {
+		if v := strings.TrimSpace(parsedMap[t]); v != "" {
+			out[t] = v
+		}
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("narrative model produced no usable topics")
+	}
+	return out, nil
 }
 
 // buildDeterministicNarratives provides figure-grounded fallback narratives when the LLM is unreachable.

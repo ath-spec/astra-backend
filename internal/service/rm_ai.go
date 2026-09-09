@@ -1,18 +1,17 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
-	"mime/multipart"
-	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 
+	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/provider/llm"
+	"github.com/yourusername/astra-backend/internal/provider/speech"
 	"github.com/yourusername/astra-backend/internal/repository"
 )
 
@@ -21,22 +20,22 @@ import (
 // system prompts (one for RMs, one for Admins), and hard guard-rails —
 // ground-truth-only, no internal disclosure, no out-of-scope tasks.
 type RMChatService struct {
-	groqKey   string
-	sarvamKey string
-	client    *http.Client
-	chatRepo  repository.RMChatRepository
-	rm        *RMService
-	admin     *RMAdminService
+	llm      llm.Provider
+	speech   speech.Provider
+	agents   *agents.Catalog
+	chatRepo repository.RMChatRepository
+	rm       *RMService
+	admin    *RMAdminService
 }
 
-func NewRMChatService(groqKey, sarvamKey string, chatRepo repository.RMChatRepository, rm *RMService, admin *RMAdminService) *RMChatService {
+func NewRMChatService(llmProvider llm.Provider, speechProvider speech.Provider, cat *agents.Catalog, chatRepo repository.RMChatRepository, rm *RMService, admin *RMAdminService) *RMChatService {
 	return &RMChatService{
-		groqKey:   groqKey,
-		sarvamKey: sarvamKey,
-		client:    &http.Client{},
-		chatRepo:  chatRepo,
-		rm:        rm,
-		admin:     admin,
+		llm:      llmProvider,
+		speech:   speechProvider,
+		agents:   cat,
+		chatRepo: chatRepo,
+		rm:       rm,
+		admin:    admin,
 	}
 }
 
@@ -184,29 +183,35 @@ func titleCaseWords(s string) string {
 // Chat runs one turn: builds the scoped system prompt, calls Groq, persists
 // the exchange into the session, and returns the assistant's reply text and session.
 func (s *RMChatService) Chat(ctx context.Context, rmID uuid.UUID, scope string, sessionID *uuid.UUID, clientID *uuid.UUID, history []map[string]interface{}) (string, *repository.RMChatSession, error) {
-	if s.groqKey == "" {
+	if s.llm == nil {
 		return "", nil, fmt.Errorf("chat is not configured on this environment: %w", apiresponse.ErrInternal)
 	}
-	sys := map[string]interface{}{"role": "system", "content": s.systemPrompt(ctx, scope, rmID, clientID)}
 
 	// Keep the last 10 turns for context.
 	trimmed := history
 	if len(trimmed) > 10 {
 		trimmed = trimmed[len(trimmed)-10:]
 	}
-	payload := map[string]interface{}{
-		"model":    "openai/gpt-oss-120b",
-		"messages": append([]map[string]interface{}{sys}, trimmed...),
+
+	agentKey := agents.KeyRMCopilot
+	if scope == ScopeAdmin {
+		agentKey = agents.KeyAdminCopilot
 	}
-	reply, err := s.callGroq(ctx, payload)
+	req := s.agents.Get(agentKey).Request(
+		s.systemPrompt(ctx, scope, rmID, clientID),
+		toLLMMessages(trimmed),
+	)
+	resp, err := s.llm.Complete(ctx, req)
 	if err != nil {
-		// one fallback model
-		payload["model"] = "openai/gpt-oss-20b"
-		reply, err = s.callGroq(ctx, payload)
-		if err != nil {
-			return "", nil, err
+		if errors.Is(err, llm.ErrNotConfigured) {
+			return "", nil, fmt.Errorf("chat is not configured on this environment: %w", apiresponse.ErrInternal)
 		}
+		return "", nil, err
 	}
+	if resp == nil || strings.TrimSpace(resp.Text) == "" {
+		return "", nil, fmt.Errorf("the copilot returned an empty response")
+	}
+	reply := resp.Text
 
 	var sess *repository.RMChatSession
 	if sessionID != nil && *sessionID != uuid.Nil {
@@ -251,42 +256,23 @@ func deriveSessionTitle(history []map[string]interface{}) string {
 	return "New Conversation"
 }
 
-func (s *RMChatService) callGroq(ctx context.Context, payload map[string]interface{}) (string, error) {
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, "POST", groqAPIURL, bytes.NewReader(body))
-	if err != nil {
-		return "", err
+// toLLMMessages converts the stored []map history turns into typed llm
+// messages, dropping any system turns (the persona is supplied separately) and
+// empty entries.
+func toLLMMessages(in []map[string]interface{}) []llm.Message {
+	out := make([]llm.Message, 0, len(in))
+	for _, m := range in {
+		role, _ := m["role"].(string)
+		content, _ := m["content"].(string)
+		if role == "system" || strings.TrimSpace(content) == "" {
+			continue
+		}
+		if role == "" {
+			role = llm.RoleUser
+		}
+		out = append(out, llm.Message{Role: role, Content: content})
 	}
-	req.Header.Set("Authorization", "Bearer "+s.groqKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("contacting chat model: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("chat model returned %d: %s", resp.StatusCode, truncate(string(raw), 300))
-	}
-	var parsed struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil || len(parsed.Choices) == 0 {
-		return "", fmt.Errorf("could not parse chat model response")
-	}
-	return strings.TrimSpace(parsed.Choices[0].Message.Content), nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n]
+	return out
 }
 
 // ListSessions returns all stored conversation sessions for this RM.
@@ -323,90 +309,51 @@ func (s *RMChatService) NewSession(ctx context.Context, rmID uuid.UUID, scope st
 	return s.chatRepo.ClearSession(ctx, rmID, scope)
 }
 
-// TTS proxies Sarvam text-to-speech; returns the raw Sarvam JSON body (which
-// carries base64 wav under "audios") and its status code.
+// ttsMaxChars bounds one TTS request; the copilot's replies can run long and
+// the speech backend caps input length.
+const ttsMaxChars = 490
+
+// TTS renders text to speech through the speech seam (Sarvam today, Polly when
+// SPEECH_PROVIDER=aws). It returns the provider's response body — for Sarvam,
+// the JSON envelope carrying base64 wav under "audios" — plus an HTTP status
+// the handler can forward.
 func (s *RMChatService) TTS(ctx context.Context, text string) ([]byte, int, error) {
-	if s.sarvamKey == "" {
-		return nil, http.StatusServiceUnavailable, fmt.Errorf("voice is not configured on this environment")
+	if s.speech == nil {
+		return nil, 503, fmt.Errorf("voice is not configured on this environment")
 	}
-	if len(text) > 490 {
-		if i := strings.LastIndex(text[:490], " "); i > 0 {
+	if len(text) > ttsMaxChars {
+		if i := strings.LastIndex(text[:ttsMaxChars], " "); i > 0 {
 			text = text[:i]
 		} else {
-			text = text[:490]
+			text = text[:ttsMaxChars]
 		}
 	}
-	payload, _ := json.Marshal(map[string]interface{}{
-		"inputs":               []string{text},
-		"target_language_code": "en-IN",
-		"speaker":              "shubh",
-		"model":                "bulbul:v3",
-	})
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.sarvam.ai/text-to-speech", bytes.NewReader(payload))
+	res, err := s.speech.TextToSpeech(ctx, speech.TTSRequest{Text: text, Language: "en-IN"})
 	if err != nil {
-		return nil, http.StatusInternalServerError, err
+		if errors.Is(err, speech.ErrNotConfigured) {
+			return nil, 503, fmt.Errorf("voice is not configured on this environment")
+		}
+		return nil, 502, err
 	}
-	req.Header.Set("api-subscription-key", s.sarvamKey)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, http.StatusBadGateway, err
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	return raw, resp.StatusCode, err
+	return res.Audio, 200, nil
 }
 
-// Transcribe sends recorded audio to Sarvam speech-to-text (auto language
-// detection, so every supported Indian language + English works) and returns
-// the plain transcript.
+// Transcribe sends recorded audio to the speech seam's STT (Sarvam saarika with
+// auto language detection today; Transcribe when SPEECH_PROVIDER=aws) and
+// returns the plain transcript.
 func (s *RMChatService) Transcribe(ctx context.Context, audio []byte, filename string) (string, error) {
-	if s.sarvamKey == "" {
+	if s.speech == nil {
 		return "", fmt.Errorf("voice is not configured on this environment")
 	}
 	if len(audio) == 0 {
 		return "", fmt.Errorf("empty audio")
 	}
-	if filename == "" {
-		filename = "speech.webm"
-	}
-
-	var buf bytes.Buffer
-	mw := multipart.NewWriter(&buf)
-	fw, err := mw.CreateFormFile("file", filename)
+	res, err := s.speech.SpeechToText(ctx, speech.STTRequest{Audio: audio, Filename: filename})
 	if err != nil {
+		if errors.Is(err, speech.ErrNotConfigured) {
+			return "", fmt.Errorf("voice is not configured on this environment")
+		}
 		return "", err
 	}
-	if _, err := fw.Write(audio); err != nil {
-		return "", err
-	}
-	_ = mw.WriteField("model", "saarika:v2.5")
-	_ = mw.WriteField("language_code", "unknown") // auto-detect
-	if err := mw.Close(); err != nil {
-		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.sarvam.ai/speech-to-text", &buf)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("api-subscription-key", s.sarvamKey)
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("contacting speech-to-text: %w", err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("speech-to-text returned %d: %s", resp.StatusCode, truncate(string(raw), 300))
-	}
-	var parsed struct {
-		Transcript string `json:"transcript"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return "", fmt.Errorf("could not parse transcript")
-	}
-	return strings.TrimSpace(parsed.Transcript), nil
+	return strings.TrimSpace(res.Text), nil
 }

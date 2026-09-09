@@ -579,7 +579,7 @@ CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what
 	messagesWithContext := append([]map[string]interface{}{systemPrompt}, cleanIncoming...)
 
 	// 5. Get the AI response
-	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, messagesWithContext)
+	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, messagesWithContext, chatReq.IsNavPill)
 	if err != nil {
 		log.Printf("[DEBUG] AI Service Network Error: %v", err)
 		respondWithError(w, statusCode, "Error processing chat request")

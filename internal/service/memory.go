@@ -1,19 +1,18 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 
+	"github.com/yourusername/astra-backend/internal/ai/agents"
+	"github.com/yourusername/astra-backend/internal/provider/llm"
 	"github.com/yourusername/astra-backend/internal/repository"
 )
 
@@ -29,19 +28,13 @@ import (
 // Writes are extracted by a cheap model call after the reply is already sent, so
 // they add no user-facing latency. Reads are one indexed query.
 type MemoryService struct {
-	repo    repository.ChatMemoryRepository
-	groqKey string
-	client  *http.Client
-	model   string
+	repo   repository.ChatMemoryRepository
+	llm    llm.Provider
+	agents *agents.Catalog
 }
 
-func NewMemoryService(repo repository.ChatMemoryRepository, groqKey string) *MemoryService {
-	return &MemoryService{
-		repo:    repo,
-		groqKey: groqKey,
-		client:  &http.Client{Timeout: 25 * time.Second},
-		model:   "openai/gpt-oss-20b", // small/cheap — extraction is a classify-and-condense job
-	}
+func NewMemoryService(repo repository.ChatMemoryRepository, llmProvider llm.Provider, cat *agents.Catalog) *MemoryService {
+	return &MemoryService{repo: repo, llm: llmProvider, agents: cat}
 }
 
 // ---- read path -------------------------------------------------------------
@@ -145,7 +138,7 @@ func (s *MemoryService) AddUserMemory(ctx context.Context, userID uuid.UUID, con
 // and refreshes the rolling summary. Safe to call in a goroutine with a
 // background context.
 func (s *MemoryService) Observe(ctx context.Context, userID uuid.UUID, userMsg, assistantMsg, priorSummary string) {
-	if s == nil || s.repo == nil || s.groqKey == "" {
+	if s == nil || s.repo == nil || s.llm == nil {
 		return
 	}
 	userMsg = strings.TrimSpace(userMsg)
@@ -236,44 +229,21 @@ func (s *MemoryService) extract(ctx context.Context, userMsg, assistantMsg, prio
 	}
 	fmt.Fprintf(&exchange, "USER: %s\n\nASSISTANT: %s", truncateForExtract(userMsg, 1500), truncateForExtract(assistantMsg, 1500))
 
-	payload := map[string]any{
-		"model":       s.model,
-		"temperature": 0,
-		"messages": []map[string]any{
-			{"role": "system", "content": memoryExtractSystemPrompt},
-			{"role": "user", "content": exchange.String()},
-		},
-	}
-	body, _ := json.Marshal(payload)
+	callCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, groqAPIURL, bytes.NewReader(body))
+	req := s.agents.Get(agents.KeyMemory).Request(
+		memoryExtractSystemPrompt,
+		[]llm.Message{{Role: llm.RoleUser, Content: exchange.String()}},
+	)
+	resp, err := s.llm.Complete(callCtx, req)
 	if err != nil {
 		return extraction{}, err
 	}
-	req.Header.Set("Authorization", "Bearer "+s.groqKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return extraction{}, err
+	if resp == nil {
+		return extraction{}, fmt.Errorf("extract model: nil response")
 	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	if resp.StatusCode != http.StatusOK {
-		return extraction{}, fmt.Errorf("extract model status %d: %s", resp.StatusCode, truncateForExtract(string(raw), 200))
-	}
-
-	var chat struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-	}
-	if err := json.Unmarshal(raw, &chat); err != nil || len(chat.Choices) == 0 {
-		return extraction{}, fmt.Errorf("extract model: unreadable response")
-	}
-	return parseExtraction(chat.Choices[0].Message.Content)
+	return parseExtraction(resp.Text)
 }
 
 // ---- pure helpers (unit-tested) -------------------------------------

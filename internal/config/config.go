@@ -31,6 +31,35 @@ type Config struct {
 	BudgetMLBaseURL string
 	BudgetMLToken   string
 
+	// LLM provider seam (internal/provider/llm). "groq" today; "bedrock" is
+	// provisioned and switched on after the AWS review. Bedrock creds come
+	// from the default AWS chain, not from here.
+	LLMProvider         string // LLM_PROVIDER: "groq" | "bedrock"
+	LLMGroqModels       string // LLM_GROQ_MODELS: comma-separated fallback list (optional)
+	BedrockRegion       string // BEDROCK_REGION
+	BedrockModelID      string // BEDROCK_MODEL_ID
+	BedrockAgentID      string // BEDROCK_AGENT_ID (default agent for agent-routed calls)
+	BedrockAgentAliasID string // BEDROCK_AGENT_ALIAS_ID
+	// BedrockTipAgentIDs: per-tip-topic agent id overrides, keyed by topic
+	// string ("allocation"/"discipline"/"performance"/"fund_profile").
+	BedrockTipAgentIDs map[string]string
+	// BedrockChatAgentIDs: per-surface agent id overrides for the chat /
+	// copilot / narrator / memory agents, keyed by agent key ("app_chat",
+	// "app_quickchat", "rm_copilot", "admin_copilot", "rm_narrator",
+	// "memory"). Empty entries leave that agent on its model list.
+	BedrockChatAgentIDs map[string]string
+
+	// Speech provider seam (internal/provider/speech). "sarvam" today; "aws"
+	// (Polly + Transcribe) is provisioned.
+	SpeechProvider   string // SPEECH_PROVIDER: "sarvam" | "aws"
+	SpeechAWSRegion  string // SPEECH_AWS_REGION
+	SpeechPollyVoice string // AWS_POLLY_VOICE
+	SpeechSTTLang    string // AWS_TRANSCRIBE_LANGUAGE
+
+	// AITipsEnabled gates the portfolio-analysis /tip routes. Default on when
+	// an LLM provider is usable.
+	AITipsEnabled bool
+
 	// IDBI Atlas gateway integration. IDBIBaseURL defaults to the sandbox; the
 	// gateway allow-lists the caller's egress IP, so no key/token is sent.
 	// Each feature is gated by its own flag — all default OFF, meaning the app
@@ -105,6 +134,33 @@ func Load() *Config {
 	cfg.IDBILeadSolID = os.Getenv("IDBI_LEAD_SOL_ID")
 	cfg.IDBILeadChannel = envOr("IDBI_LEAD_CHANNEL", "Online")
 	cfg.IDBILeadSource = envOr("IDBI_LEAD_SOURCE", "Website")
+
+	// LLM / speech provider seams.
+	cfg.LLMProvider = envOr("LLM_PROVIDER", "groq")
+	cfg.LLMGroqModels = os.Getenv("LLM_GROQ_MODELS")
+	cfg.BedrockRegion = os.Getenv("BEDROCK_REGION")
+	cfg.BedrockModelID = os.Getenv("BEDROCK_MODEL_ID")
+	cfg.BedrockAgentID = os.Getenv("BEDROCK_AGENT_ID")
+	cfg.BedrockAgentAliasID = os.Getenv("BEDROCK_AGENT_ALIAS_ID")
+	cfg.BedrockTipAgentIDs = map[string]string{
+		"allocation":   os.Getenv("BEDROCK_AGENT_ALLOCATION_ID"),
+		"discipline":   os.Getenv("BEDROCK_AGENT_DISCIPLINE_ID"),
+		"performance":  os.Getenv("BEDROCK_AGENT_PERFORMANCE_ID"),
+		"fund_profile": os.Getenv("BEDROCK_AGENT_FUND_PROFILE_ID"),
+	}
+	cfg.BedrockChatAgentIDs = map[string]string{
+		"app_chat":      os.Getenv("BEDROCK_AGENT_APP_CHAT_ID"),
+		"app_quickchat": os.Getenv("BEDROCK_AGENT_QUICKCHAT_ID"),
+		"rm_copilot":    os.Getenv("BEDROCK_AGENT_RM_COPILOT_ID"),
+		"admin_copilot": os.Getenv("BEDROCK_AGENT_ADMIN_COPILOT_ID"),
+		"rm_narrator":   os.Getenv("BEDROCK_AGENT_RM_NARRATOR_ID"),
+		"memory":        os.Getenv("BEDROCK_AGENT_MEMORY_ID"),
+	}
+	cfg.SpeechProvider = envOr("SPEECH_PROVIDER", "sarvam")
+	cfg.SpeechAWSRegion = os.Getenv("SPEECH_AWS_REGION")
+	cfg.SpeechPollyVoice = os.Getenv("AWS_POLLY_VOICE")
+	cfg.SpeechSTTLang = os.Getenv("AWS_TRANSCRIBE_LANGUAGE")
+	cfg.AITipsEnabled = os.Getenv("AI_TIPS_ENABLED") != "false" // default on
 	cfg.IDBIAARedirectMode = envOr("IDBI_AA_REDIRECT_MODE", "stub")
 	cfg.IDBIAACallbackURL = os.Getenv("IDBI_AA_CALLBACK_URL") // only used in "live" mode
 	cfg.IDBIAAProductID = envOr("IDBI_AA_PRODUCT_ID", "TEST")

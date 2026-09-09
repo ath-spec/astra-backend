@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	"github.com/yourusername/astra-backend/internal/apitime"
 	dashboarddomain "github.com/yourusername/astra-backend/internal/domain/dashboard"
@@ -21,6 +22,7 @@ import (
 	stocksdomain "github.com/yourusername/astra-backend/internal/domain/stocks"
 	fdprovider "github.com/yourusername/astra-backend/internal/provider/fd"
 	goalsprovider "github.com/yourusername/astra-backend/internal/provider/goals"
+	"github.com/yourusername/astra-backend/internal/provider/llm"
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
@@ -31,17 +33,18 @@ import (
 // providers/services by userID — it never mutates user data and never
 // calls the user HTTP layer.
 type RMService struct {
-	dashboard *DashboardService
-	analysis  *PortfolioAnalysisService
-	stocks    stocksprovider.Provider
-	mf        mfprovider.Provider
-	fd        fdprovider.Provider
-	goals     goalsprovider.Provider
+	dashboard    *DashboardService
+	analysis     *PortfolioAnalysisService
+	stocks       stocksprovider.Provider
+	mf           mfprovider.Provider
+	fd           fdprovider.Provider
+	goals        goalsprovider.Provider
 	userRepo     repository.UserRepository
 	assign       repository.AssignmentRepository
 	rmRepo       repository.RMUserRepository
 	interactions repository.RMInteractionRepository
-	groqKey      string
+	llm          llm.Provider
+	agents       *agents.Catalog
 	pool         *pgxpool.Pool
 }
 
@@ -56,13 +59,14 @@ func NewRMService(
 	assign repository.AssignmentRepository,
 	rmRepo repository.RMUserRepository,
 	interactions repository.RMInteractionRepository,
-	groqKey string,
+	llmProvider llm.Provider,
+	cat *agents.Catalog,
 	pool *pgxpool.Pool,
 ) *RMService {
 	return &RMService{
 		dashboard: dashboard, analysis: analysis, stocks: stocks, mf: mf, fd: fd, goals: goals,
 		userRepo: userRepo, assign: assign, rmRepo: rmRepo, interactions: interactions,
-		groqKey: groqKey, pool: pool,
+		llm: llmProvider, agents: cat, pool: pool,
 	}
 }
 
