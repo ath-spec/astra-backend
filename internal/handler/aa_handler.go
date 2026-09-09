@@ -15,7 +15,12 @@ import (
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/provider/idbi"
 	"github.com/yourusername/astra-backend/internal/service/idbiaa"
+	"github.com/yourusername/astra-backend/internal/service/idbiaccounts"
 )
+
+// idbiAcctNamespace derives a stable UUID for an IDBI account number so it can
+// occupy the "id" field the accounts screen already expects.
+var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
 
 // aaWebhookProcessTimeout bounds the detached processing of an inbound AA
 // notification (which itself makes an outbound IDBI call). The webhook is
@@ -23,8 +28,9 @@ import (
 const aaWebhookProcessTimeout = 30 * time.Second
 
 type AAHandler struct {
-	pool *pgxpool.Pool
-	aa   *idbiaa.Service // nil unless IDBI_AA_ENABLED — then the consent flow is real
+	pool         *pgxpool.Pool
+	aa           *idbiaa.Service       // nil unless IDBI_AA_ENABLED — then the consent flow is real
+	idbiAccounts *idbiaccounts.Service // nil unless IDBI_ACCOUNTS_ENABLED — then GET /accounts serves real IDBI accounts
 }
 
 func NewAAHandler(pool *pgxpool.Pool) *AAHandler {
@@ -36,6 +42,16 @@ func NewAAHandler(pool *pgxpool.Pool) *AAHandler {
 // behaviour, so the app is unchanged with the flag off.
 func (h *AAHandler) WithIDBI(svc *idbiaa.Service) *AAHandler {
 	h.aa = svc
+	return h
+}
+
+// WithIDBIAccounts folds the customer's real IDBI deposit accounts (feature 1)
+// into GET /api/v1/aa/accounts, so the existing accounts screens show them with
+// no frontend change. When the user has synced IDBI accounts they replace the
+// seeded bank_accounts rows in the response; otherwise the bank_accounts rows
+// are returned exactly as before.
+func (h *AAHandler) WithIDBIAccounts(svc *idbiaccounts.Service) *AAHandler {
+	h.idbiAccounts = svc
 	return h
 }
 
@@ -69,6 +85,7 @@ func (h *AAHandler) Routes() chi.Router {
 	// routes above are untouched.
 	if h.aa != nil {
 		r.Get("/consents", h.ListConsents)
+		r.Post("/consents/callback", h.ConsentCallback) // "live" mode redirect return (593)
 		r.Get("/consents/{consentHandle}", h.GetConsent)
 		r.Post("/consents/{consentHandle}/refresh", h.RefreshConsent)
 		r.Post("/consents/{consentHandle}/fetch", h.FetchConsentData)
@@ -95,6 +112,34 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		apiresponse.Error(w, apiresponse.ErrUnauthorized)
 		return
+	}
+
+	// Feature 1: when the user has synced IDBI accounts, serve those in the
+	// same shape the screen already reads. Falls through to bank_accounts
+	// when IDBI is off or the user has none linked yet.
+	if h.idbiAccounts != nil {
+		if idbiAccs, ierr := h.idbiAccounts.List(r.Context(), userID); ierr == nil && len(idbiAccs) > 0 {
+			out := make([]BankAccountResponse, 0, len(idbiAccs))
+			for _, a := range idbiAccs {
+				bal := a.LedgerBalance
+				if bal == 0 {
+					bal = a.AvailableBalance
+				}
+				name := "IDBI Bank"
+				if a.BranchName != "" {
+					name = "IDBI Bank — " + a.BranchName
+				}
+				out = append(out, BankAccountResponse{
+					ID:          uuid.NewSHA1(idbiAcctNamespace, []byte(a.AccountNumber)),
+					BankName:    name,
+					AccountType: a.AccountType,
+					Balance:     bal,
+					CreatedAt:   a.SyncedAt,
+				})
+			}
+			apiresponse.OK(w, map[string]any{"accounts": out, "count": len(out)})
+			return
+		}
 	}
 
 	rows, err := h.pool.Query(r.Context(), `
@@ -277,6 +322,37 @@ func (h *AAHandler) refreshOrGet(w http.ResponseWriter, r *http.Request, _ bool)
 	}
 	handle := chi.URLParam(r, "consentHandle")
 	view, err := h.aa.Refresh(r.Context(), userID, handle)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, view)
+}
+
+// consentCallbackRequest carries the encrypted blob the AA app hands back to
+// our redirect URL in "live" mode.
+type consentCallbackRequest struct {
+	Ecres   string `json:"ecres"`
+	Resdate string `json:"resdate"`
+	Fi      string `json:"fi"`
+}
+
+func (h *AAHandler) ConsentCallback(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	var req consentCallbackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiresponse.Error(w, apiresponse.Validation("invalid request body: %v", err))
+		return
+	}
+	if req.Ecres == "" {
+		apiresponse.Error(w, apiresponse.Validation("ecres is required"))
+		return
+	}
+	view, err := h.aa.CompleteRedirect(r.Context(), userID, req.Ecres, req.Resdate, req.Fi)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

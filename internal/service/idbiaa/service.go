@@ -38,7 +38,9 @@ type Provider interface {
 	RequestConsent(ctx context.Context, req idbi.RequestConsentRequest) (*idbi.RequestConsentResponse, error)
 	GetConsentList(ctx context.Context, req idbi.GetConsentListRequest) (*idbi.GetConsentListResponse, error)
 	GetWebRedirectionURL(ctx context.Context, req idbi.GetWebRedirectionURLRequest) (*idbi.GetWebRedirectionURLResponse, error)
+	GenerateDecryptedResponse(ctx context.Context, req idbi.GenerateDecryptedResponseRequest) (*idbi.GenerateDecryptedResponse, error)
 	GetAAStatement(ctx context.Context, req idbi.GetAAStatementRequest) (*idbi.GetAAStatementResponse, error)
+	GetAAStatementFromFinPro(ctx context.Context, req idbi.GetAAStatementRequest) (*idbi.GetAAStatementResponse, error)
 }
 
 // Repo is the AA mirror-table repository.
@@ -68,6 +70,10 @@ type Config struct {
 	VUASuffix    string // appended to the mobile to form the VUA, e.g. "@onemoney"
 	ProductID    string // AA productID, e.g. "TEST"
 	CallbackURL  string // redirectUrl handed to 592 (only used in "live" mode)
+	// StatementSource picks which statement API FetchStatements calls:
+	// "" / "default" -> 595 getAccountStatement; "finpro" -> 739
+	// getAccountStatementFromFinPro (richer profile block, same envelope).
+	StatementSource string
 }
 
 type Service struct {
@@ -279,6 +285,47 @@ func (s *Service) Refresh(ctx context.Context, userID uuid.UUID, handle string) 
 	return viewOf(row, linked), nil
 }
 
+// CompleteRedirect finishes the "live" AA flow: the browser comes back from
+// the AA app to our callback URL with an encrypted blob; we hand that to 593
+// generateDecryptedResponse, and on a success decode (errorcode "0", status
+// "S") we flip the consent (identified by data.srcref = consent handle) to
+// ACTIVE and pull its linked accounts. In "stub" mode this is never called.
+func (s *Service) CompleteRedirect(ctx context.Context, userID uuid.UUID, ecres, resdate, fi string) (ConsentView, error) {
+	var req idbi.GenerateDecryptedResponseRequest
+	req.WebRedirectionURL.Ecres = ecres
+	req.WebRedirectionURL.Resdate = resdate
+	req.WebRedirectionURL.Fi = fi
+
+	dec, err := s.prov.GenerateDecryptedResponse(ctx, req)
+	if err != nil {
+		return ConsentView{}, fmt.Errorf("idbiaa: 593 generateDecryptedResponse: %w", err)
+	}
+	handle := dec.Data.Srcref
+	if handle == "" {
+		return ConsentView{}, fmt.Errorf("idbiaa: 593 decode carried no srcref (consent handle)")
+	}
+	row, ok, err := s.repo.GetConsent(ctx, handle)
+	if err != nil {
+		return ConsentView{}, err
+	}
+	if !ok || row.UserID != userID {
+		return ConsentView{}, repository.ErrNoConsent
+	}
+
+	approved := dec.Data.Errorcode == "0" && strings.EqualFold(dec.Data.Status, "S")
+	if !approved {
+		if err := s.repo.UpdateConsentStatus(ctx, handle, "REJECTED", "", nil); err != nil {
+			return ConsentView{}, err
+		}
+		s.log.Info("idbiaa: redirect completed — consent rejected", "handle", handle, "errorcode", dec.Data.Errorcode)
+		row, _, _ = s.repo.GetConsent(ctx, handle)
+		return viewOf(row, nil), nil
+	}
+
+	s.log.Info("idbiaa: redirect completed — consent approved", "handle", handle)
+	return s.Refresh(ctx, userID, handle)
+}
+
 // HandleConsentNotification processes an inbound 497 pushConsentNotification.
 // It is best-effort: an unknown handle is ignored (logged), never an error,
 // so the webhook can always ack 200.
@@ -370,12 +417,18 @@ func (s *Service) FetchStatements(ctx context.Context, userID uuid.UUID, handle 
 		return 0, fmt.Errorf("idbiaa: consent %s has no consent_id yet — refresh it first", handle)
 	}
 
-	stmt, err := s.prov.GetAAStatement(ctx, idbi.GetAAStatementRequest{
-		ConsentID:     row.ConsentID,
-		LinkRefNumber: refs,
-	})
-	if err != nil {
-		return 0, fmt.Errorf("idbiaa: 595 getAccountStatement: %w", err)
+	req := idbi.GetAAStatementRequest{ConsentID: row.ConsentID, LinkRefNumber: refs}
+	var stmt *idbi.GetAAStatementResponse
+	if strings.EqualFold(s.cfg.StatementSource, "finpro") {
+		stmt, err = s.prov.GetAAStatementFromFinPro(ctx, req)
+		if err != nil {
+			return 0, fmt.Errorf("idbiaa: 739 getAccountStatementFromFinPro: %w", err)
+		}
+	} else {
+		stmt, err = s.prov.GetAAStatement(ctx, req)
+		if err != nil {
+			return 0, fmt.Errorf("idbiaa: 595 getAccountStatement: %w", err)
+		}
 	}
 
 	rows := idbimap.AAStatementAllSpendRows(stmt)

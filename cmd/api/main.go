@@ -40,6 +40,7 @@ import (
 	idbiaccountsservice "github.com/yourusername/astra-backend/internal/service/idbiaccounts"
 	idbihrmsservice "github.com/yourusername/astra-backend/internal/service/idbihrms"
 	idbikycservice "github.com/yourusername/astra-backend/internal/service/idbikyc"
+	idbileadsservice "github.com/yourusername/astra-backend/internal/service/idbileads"
 	idbiloansservice "github.com/yourusername/astra-backend/internal/service/idbiloans"
 	rmcreditriskservice "github.com/yourusername/astra-backend/internal/service/rmcreditrisk"
 	statementsyncservice "github.com/yourusername/astra-backend/internal/service/statementsync"
@@ -162,6 +163,7 @@ func main() {
 			APIToken:      cfg.IDBICKYCAPIToken,
 			BranchCode:    cfg.IDBICKYCBranchCode,
 			SourceSystem:  cfg.IDBICKYCSourceSystem,
+			AppFormNo:     cfg.IDBICKYCAppFormNo,
 		})
 		slog.Info("IDBI feature enabled: CKYC verification (415)")
 	}
@@ -172,7 +174,16 @@ func main() {
 		creditScoreSvc = creditscoreservice.New(creditscoreservice.MockSource{}, 24*time.Hour)
 		slog.Info("IDBI feature enabled: credit score (mock source — 408 unavailable in sandbox)")
 	}
-	idbiHandler := handler.NewIDBIHandler(idbiAccountsSvc, idbiSpendSvc, idbiLoansSvc, creditScoreSvc)
+	var idbiLeadsSvc *idbileadsservice.Service
+	if cfg.IDBILeadsEnabled {
+		idbiLeadsSvc = idbileadsservice.New(idbiClient, idbileadsservice.Config{
+			DefaultSolID: cfg.IDBILeadSolID,
+			LeadChannel:  cfg.IDBILeadChannel,
+			LeadSource:   cfg.IDBILeadSource,
+		})
+		slog.Info("IDBI feature enabled: product-interest leads (362 createLead)")
+	}
+	idbiHandler := handler.NewIDBIHandler(idbiAccountsSvc, idbiSpendSvc, idbiLoansSvc, creditScoreSvc, idbiLeadsSvc)
 
 	// Feature 4: Account Aggregator consent flow. Off => aa_handler keeps its
 	// original stub behaviour (fake CONSENT-xxxx, no state).
@@ -180,10 +191,11 @@ func main() {
 	if cfg.IDBIAAEnabled {
 		idbiAARepo := repository.NewIDBIAARepository(db.Pool)
 		idbiAASvc = idbiaaservice.New(idbiClient, idbiAARepo, idbiRepo, idbiaaservice.Config{
-			RedirectMode: cfg.IDBIAARedirectMode,
-			CallbackURL:  cfg.IDBIAACallbackURL,
-			ProductID:    cfg.IDBIAAProductID,
-			VUASuffix:    cfg.IDBIAAVUASuffix,
+			RedirectMode:    cfg.IDBIAARedirectMode,
+			CallbackURL:     cfg.IDBIAACallbackURL,
+			ProductID:       cfg.IDBIAAProductID,
+			VUASuffix:       cfg.IDBIAAVUASuffix,
+			StatementSource: cfg.IDBIAAStatementSrc,
 		}, slog.Default())
 		slog.Info("IDBI feature enabled: Account Aggregator consent flow (idbi_aa_consents)", "redirect_mode", cfg.IDBIAARedirectMode)
 	}
@@ -234,6 +246,9 @@ func main() {
 	aaHandler := handler.NewAAHandler(db.Pool)
 	if idbiAASvc != nil {
 		aaHandler.WithIDBI(idbiAASvc)
+	}
+	if idbiAccountsSvc != nil {
+		aaHandler.WithIDBIAccounts(idbiAccountsSvc)
 	}
 	kycHandler := handler.NewKYCHandler(idbiKYCSvc)
 	mfHandler := handler.NewMFHandler(mfService)

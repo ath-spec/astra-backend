@@ -45,6 +45,7 @@ type Config struct {
 	IDBIRMRiskEnabled      bool // feature 5: RM credit-risk view (442/402)
 	IDBIAAEnabled          bool // feature 4: Account Aggregator consent flow (590/591/592/497/498/595)
 	IDBIHRMSLoginEnabled   bool // feature 7: verify staff EIN against HRMS (508) before issuing an RM login code
+	IDBILeadsEnabled       bool // product-interest leads to IDBI CRM (362 createLead)
 
 	// AA-flow tuning (only read when IDBIAAEnabled). Load() fills the blanks
 	// from IDBI_AA_* — there are no literals buried in the service layer.
@@ -52,12 +53,20 @@ type Config struct {
 	IDBIAACallbackURL  string // IDBI_AA_CALLBACK_URL: redirectUrl handed to 592 in "live" mode
 	IDBIAAProductID    string // IDBI_AA_PRODUCT_ID
 	IDBIAAVUASuffix    string // IDBI_AA_VUA_SUFFIX: appended to the mobile to form the VUA
+	IDBIAAStatementSrc string // IDBI_AA_STATEMENT_SOURCE: "" / "default" (595) | "finpro" (739)
 
-	// CKYC caller identity (only read when IDBIKYCEnabled). All from IDBI_CKYC_*.
+	// CKYC caller identity (only read when IDBIKYCEnabled). All from IDBI_CKYC_*,
+	// no code fallbacks — set them once IDBI issues the values.
 	IDBICKYCParentCompany string // IDBI_CKYC_PARENT_COMPANY
 	IDBICKYCAPIToken      string // IDBI_CKYC_API_TOKEN
 	IDBICKYCBranchCode    string // IDBI_CKYC_BRANCH_CODE
 	IDBICKYCSourceSystem  string // IDBI_CKYC_SOURCE_SYSTEM
+	IDBICKYCAppFormNo     string // IDBI_CKYC_APP_FORM_NO
+
+	// Lead capture (only read when IDBILeadsEnabled). All from IDBI_LEAD_*.
+	IDBILeadSolID   string // IDBI_LEAD_SOL_ID: originating branch SOL id
+	IDBILeadChannel string // IDBI_LEAD_CHANNEL
+	IDBILeadSource  string // IDBI_LEAD_SOURCE
 }
 
 func Load() *Config {
@@ -92,14 +101,22 @@ func Load() *Config {
 	cfg.IDBIRMRiskEnabled = os.Getenv("IDBI_RM_RISK_ENABLED") == "true"
 	cfg.IDBIAAEnabled = os.Getenv("IDBI_AA_ENABLED") == "true"
 	cfg.IDBIHRMSLoginEnabled = os.Getenv("IDBI_HRMS_LOGIN_ENABLED") == "true"
+	cfg.IDBILeadsEnabled = os.Getenv("IDBI_LEADS_ENABLED") == "true"
+	cfg.IDBILeadSolID = os.Getenv("IDBI_LEAD_SOL_ID")
+	cfg.IDBILeadChannel = envOr("IDBI_LEAD_CHANNEL", "Online")
+	cfg.IDBILeadSource = envOr("IDBI_LEAD_SOURCE", "Website")
 	cfg.IDBIAARedirectMode = envOr("IDBI_AA_REDIRECT_MODE", "stub")
 	cfg.IDBIAACallbackURL = os.Getenv("IDBI_AA_CALLBACK_URL") // only used in "live" mode
 	cfg.IDBIAAProductID = envOr("IDBI_AA_PRODUCT_ID", "TEST")
 	cfg.IDBIAAVUASuffix = envOr("IDBI_AA_VUA_SUFFIX", "@onemoney")
+	cfg.IDBIAAStatementSrc = os.Getenv("IDBI_AA_STATEMENT_SOURCE")
+	// CKYC caller identity — no baked-in values; supply via env once IDBI
+	// issues them (the sandbox's own example values are in the 415 fixture).
 	cfg.IDBICKYCParentCompany = os.Getenv("IDBI_CKYC_PARENT_COMPANY")
 	cfg.IDBICKYCAPIToken = os.Getenv("IDBI_CKYC_API_TOKEN")
 	cfg.IDBICKYCBranchCode = os.Getenv("IDBI_CKYC_BRANCH_CODE")
-	cfg.IDBICKYCSourceSystem = envOr("IDBI_CKYC_SOURCE_SYSTEM", "Finacle")
+	cfg.IDBICKYCSourceSystem = os.Getenv("IDBI_CKYC_SOURCE_SYSTEM")
+	cfg.IDBICKYCAppFormNo = os.Getenv("IDBI_CKYC_APP_FORM_NO")
 
 	// If MASTER_INTERNAL_KEY is provided and is 32 characters, we attempt decryption
 	if len(masterKey) == 32 {

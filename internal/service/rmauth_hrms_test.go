@@ -42,6 +42,7 @@ func activeStaff() *rmdomain.StaffUser {
 		ID:           uuid.New(),
 		EmployeeCode: "137075",
 		Email:        "rm@bank.com",
+		Role:         rmdomain.RoleRM,
 		Status:       rmdomain.StatusActive,
 		PhoneNumber:  &phone,
 	}
@@ -94,6 +95,21 @@ func TestSendOTP_HRMSRejects_NoCode(t *testing.T) {
 	}
 	if repo.createdOTPs != 0 {
 		t.Errorf("HRMS-rejected staff must not get a code, got %d", repo.createdOTPs)
+	}
+}
+
+func TestSendOTP_HRMSRejects_AdminBypasses(t *testing.T) {
+	staff := activeStaff()
+	staff.Role = rmdomain.RoleAdmin
+	repo := &stubRMRepo{staff: staff}
+	s := NewRMAuthService("secret", "123456", repo)
+	s.UseHRMSVerifier(stubHRMS{ok: false}) // HRMS would reject
+
+	if _, err := s.SendOTP(context.Background(), "AD001"); err != nil {
+		t.Fatalf("SendOTP: %v", err)
+	}
+	if repo.createdOTPs != 1 {
+		t.Errorf("admin login must skip the HRMS check, got %d otps", repo.createdOTPs)
 	}
 }
 

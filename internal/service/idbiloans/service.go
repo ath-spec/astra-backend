@@ -21,6 +21,9 @@ type Provider interface {
 	GetLoanOverdueDetails(ctx context.Context, req idbi.GetLoanOverdueDetailsRequest) (*idbi.GetLoanOverdueDetailsResponse, error)
 	GetLoanAccountDetails(ctx context.Context, req idbi.GetLoanAccountDetailsRequest) (*idbi.GetLoanAccountDetailsResponse, error)
 	InquireHPPayoff(ctx context.Context, req idbi.InquireHPPayoffRequest) (*idbi.InquireHPPayoffResponse, error)
+	FetchLoanAccountLimits(ctx context.Context, req idbi.FetchLoanAccountLimitsRequest) (*idbi.FetchLoanAccountLimitsResponse, error)
+	GetLoanOverduePosition(ctx context.Context, req idbi.GetLoanOverduePositionRequest) (*idbi.GetLoanOverduePositionResponse, error)
+	GenerateRepaymentSchedule(ctx context.Context, req idbi.GenerateRepaymentScheduleRequest) (*idbi.GenerateRepaymentScheduleResponse, error)
 }
 
 type Repo interface {
@@ -198,6 +201,83 @@ func (s *Service) PayoffQuote(ctx context.Context, userID uuid.UUID, loanAccount
 		PendingOverdueInterest: q.PendingOverdueInterest,
 		InterestRate:           q.InterestRate,
 	}, nil
+}
+
+// LoanLimits returns the sanctioned limit / drawing power for one loan
+// (441, on demand — not stored).
+func (s *Service) LoanLimits(ctx context.Context, loanAccountID string) (idbimap.LoanLimits, error) {
+	resp, err := s.prov.FetchLoanAccountLimits(ctx, idbi.FetchLoanAccountLimitsRequest{Foracid: loanAccountID})
+	if err != nil {
+		return idbimap.LoanLimits{}, fmt.Errorf("idbiloans: 441 for %s: %w", loanAccountID, err)
+	}
+	return idbimap.LoanLimitsFromResponse(resp), nil
+}
+
+// OverduePosition returns the principal-vs-interest overdue breakdown for one
+// loan (404, on demand — not stored). Needs the user's custId.
+func (s *Service) OverduePosition(ctx context.Context, userID uuid.UUID, loanAccountID string) (idbimap.LoanOverduePosition, error) {
+	link, err := s.repo.GetCustomerLink(ctx, userID)
+	if err != nil {
+		return idbimap.LoanOverduePosition{}, err
+	}
+	if link.CustID == "" {
+		return idbimap.LoanOverduePosition{}, fmt.Errorf("idbiloans: user %s has no custId — cannot call 404", userID)
+	}
+
+	var req idbi.GetLoanOverduePositionRequest
+	req.Input.AsOnDate = time.Now().Format("2006-01-02T15:04:05.000")
+	req.Input.CustID.CustID = link.CustID
+	req.Input.CurCode = "INR"
+	req.Input.SelRangeLoanAcctID.LowAcctID.AcctID = loanAccountID
+	req.Input.SelRangeLoanAcctID.HighAcctID.AcctID = loanAccountID
+
+	resp, err := s.prov.GetLoanOverduePosition(ctx, req)
+	if err != nil {
+		return idbimap.LoanOverduePosition{}, fmt.Errorf("idbiloans: 404 for %s: %w", loanAccountID, err)
+	}
+	byAcct := idbimap.OverduePositionByAccount(resp)
+	if pos, ok := byAcct[loanAccountID]; ok {
+		return pos, nil
+	}
+	// Sandbox sometimes keys the record differently; fall back to the first.
+	for _, pos := range byAcct {
+		return pos, nil
+	}
+	return idbimap.LoanOverduePosition{LoanAccountID: loanAccountID}, nil
+}
+
+// RepaymentSchedule models an amortisation schedule for one loan (473, on
+// demand). Parameters are taken from the loan's own 391 master record so the
+// schedule reflects the real sanctioned amount / rate / tenure.
+func (s *Service) RepaymentSchedule(ctx context.Context, userID uuid.UUID, loanAccountID string) (idbimap.RepaymentSchedule, error) {
+	link, err := s.repo.GetCustomerLink(ctx, userID)
+	if err != nil {
+		return idbimap.RepaymentSchedule{}, err
+	}
+
+	var dReq idbi.GetLoanAccountDetailsRequest
+	dReq.Input.LoanAcctID.AcctID = loanAccountID
+	dReq.Input.CustID.CustID = link.CustID
+	dReq.Input.Channel = "API"
+	det, err := s.prov.GetLoanAccountDetails(ctx, dReq)
+	if err != nil {
+		return idbimap.RepaymentSchedule{}, fmt.Errorf("idbiloans: 391 for schedule of %s: %w", loanAccountID, err)
+	}
+	res := det.Result
+
+	var req idbi.GenerateRepaymentScheduleRequest
+	req.LoanModellingMsgInputVO.MandatoryParameters.CrncyCode = "INR"
+	req.LoanModellingMsgInputVO.MandatoryParameters.OriginationDate = res.AcctOpenDt
+	req.LoanModellingMsgInputVO.MandatoryParameters.SchmCode.SchmCode = res.LoanAcctID.AcctType.SchmCode
+	req.LoanModellingMsgInputVO.Variables.LoanAmount = res.LoanGenDetails.LoanAmt
+	req.LoanModellingMsgInputVO.Variables.IntRate.Value = res.NetIntRate.Value
+	req.LoanModellingMsgInputVO.Variables.NoOfInstalmnts = res.LoanGenDetails.LoanPeriodMonths
+
+	resp, err := s.prov.GenerateRepaymentSchedule(ctx, req)
+	if err != nil {
+		return idbimap.RepaymentSchedule{}, fmt.Errorf("idbiloans: 473 for %s: %w", loanAccountID, err)
+	}
+	return idbimap.RepaymentScheduleFromResponse(resp), nil
 }
 
 func (s *Service) refreshBG(userID uuid.UUID) {

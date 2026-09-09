@@ -182,10 +182,11 @@ func (s *RMAuthService) SendOTP(ctx context.Context, identifier string) (*rmdoma
 		return resp, nil
 	}
 
-	// Optional HRMS active-employee check (feature 7). Only a positive
-	// "not an active employee" from HRMS blocks the code; a lookup error
-	// falls through so an HRMS outage cannot lock staff out.
-	if s.hrms != nil {
+	// Optional HRMS active-employee check (feature 7). Applies to field RMs
+	// only — the platform admin is not in bank HRMS. Only a positive "not an
+	// active employee" from HRMS blocks the code; a lookup error falls
+	// through so an HRMS outage cannot lock staff out.
+	if s.hrms != nil && staff.Role == rmdomain.RoleRM {
 		ok, herr := s.hrms.VerifyActiveEmployee(ctx, staff.EmployeeCode)
 		if herr != nil {
 			log.Printf("RM OTP: HRMS check errored for %s (%v) — proceeding", staff.EmployeeCode, herr)

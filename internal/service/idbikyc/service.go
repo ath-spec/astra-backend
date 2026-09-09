@@ -28,6 +28,7 @@ type Config struct {
 	ParentCompany string // input.parentCompany (e.g. "AAAAA8597P")
 	BranchCode    string // searchInCkycRequestDetails[].branchCode
 	SourceSystem  string // e.g. "Finacle"
+	AppFormNo     string // searchInCkycRequestDetails[].applicationFormNo (e.g. "FF01")
 }
 
 type Service struct {
@@ -64,12 +65,13 @@ func (s *Service) VerifyPAN(ctx context.Context, userID uuid.UUID, pan string) (
 	req.Input.ParentCompany = s.cfg.ParentCompany
 	qid := uuid.NewString()
 	req.Input.SearchInCkycRequestDetails = append(req.Input.SearchInCkycRequestDetails, idbi.CkycRequestDetail{
-		QueryID:          qid,
-		RecordIdentifier: qid,
-		BranchCode:       s.cfg.BranchCode,
-		InputIDType:      "C", // PAN
-		InputIDNo:        pan,
-		SourceSystem:     s.cfg.SourceSystem,
+		QueryID:           qid,
+		RecordIdentifier:  qid,
+		ApplicationFormNo: s.cfg.AppFormNo,
+		BranchCode:        s.cfg.BranchCode,
+		InputIDType:       "C", // PAN
+		InputIDNo:         pan,
+		SourceSystem:      s.cfg.SourceSystem,
 	})
 
 	resp, err := s.prov.SearchCkycDetails(ctx, req)

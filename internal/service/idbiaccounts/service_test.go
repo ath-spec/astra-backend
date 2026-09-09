@@ -39,8 +39,10 @@ func loadResp(t *testing.T, name string, dst any) {
 type fakeProvider struct {
 	list         *idbi.GetCustomerAccountsByCustIDResponse
 	enquiryByAcc map[string]*idbi.PerformAccountEnquiryResponse
+	lien         *idbi.LienEnquiryResponse
 	listCalls    int
 	enqCalls     int
+	lienCalls    int
 }
 
 func (f *fakeProvider) GetCustomerAccountsByCustID(_ context.Context, _ idbi.GetCustomerAccountsByCustIDRequest) (*idbi.GetCustomerAccountsByCustIDResponse, error) {
@@ -54,6 +56,11 @@ func (f *fakeProvider) PerformAccountEnquiry(_ context.Context, req idbi.Perform
 		return r, nil
 	}
 	return &idbi.PerformAccountEnquiryResponse{AcctID: req.AcctID}, nil
+}
+
+func (f *fakeProvider) AccountLienEnquiry(_ context.Context, _ idbi.LienEnquiryRequest) (*idbi.LienEnquiryResponse, error) {
+	f.lienCalls++
+	return f.lien, nil
 }
 
 type fakeRepo struct {
@@ -216,5 +223,44 @@ func TestSeedLink_RequiresCif(t *testing.T) {
 	s := New(fp, fr, Config{}, nil)
 	if err := s.SeedLink(context.Background(), uuid.New(), "", "68453002"); err == nil {
 		t.Fatal("expected error for empty cifId")
+	}
+}
+
+func TestAccountLien(t *testing.T) {
+	fp, fr := newFakes(t)
+	var lien idbi.LienEnquiryResponse
+	loadResp(t, "Development_accountLienEnquirytest__Sample1", &lien)
+	fp.lien = &lien
+
+	s := New(fp, fr, Config{CacheTTL: time.Minute, StaleAfter: 0}, nil)
+	uid := uuid.New()
+	_ = s.SeedLink(context.Background(), uid, "98655854", "68453002")
+	if err := s.Refresh(context.Background(), uid); err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+
+	info, err := s.AccountLien(context.Background(), uid, "660100100003")
+	if err != nil {
+		t.Fatalf("AccountLien: %v", err)
+	}
+	if info.LienAmount != 5000 {
+		t.Errorf("LienAmount = %v, want 5000", info.LienAmount)
+	}
+	if !info.Active {
+		t.Error("lien should be active (isDeleted=N)")
+	}
+	if info.ReasonCode != "ACCOUNT_LIEN" || info.LienID != "LIEN660100100003" {
+		t.Errorf("lien meta = %+v", info)
+	}
+	if fp.lienCalls != 1 {
+		t.Errorf("lienCalls = %d, want 1", fp.lienCalls)
+	}
+}
+
+func TestAccountLien_AccountNotSynced(t *testing.T) {
+	fp, fr := newFakes(t)
+	s := New(fp, fr, Config{}, nil)
+	if _, err := s.AccountLien(context.Background(), uuid.New(), "999999999999"); err == nil {
+		t.Fatal("expected error for an account that was never synced")
 	}
 }

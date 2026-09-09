@@ -33,6 +33,7 @@ import (
 type Provider interface {
 	GetCustomerAccountsByCustID(ctx context.Context, req idbi.GetCustomerAccountsByCustIDRequest) (*idbi.GetCustomerAccountsByCustIDResponse, error)
 	PerformAccountEnquiry(ctx context.Context, req idbi.PerformAccountEnquiryRequest) (*idbi.PerformAccountEnquiryResponse, error)
+	AccountLienEnquiry(ctx context.Context, req idbi.LienEnquiryRequest) (*idbi.LienEnquiryResponse, error)
 }
 
 // Repo is the subset of *repository.IDBIRepository this service needs.
@@ -209,6 +210,47 @@ func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]Account, error)
 		s.refreshInBackground(userID)
 	}
 	return out, nil
+}
+
+// AccountLien returns the current lien/hold detail for one account (428, on
+// demand). Branch / type / currency are taken from the mirrored account, so
+// the account must have been synced first.
+func (s *Service) AccountLien(ctx context.Context, userID uuid.UUID, accountNumber string) (idbimap.LienInfo, error) {
+	rows, err := s.repo.ListAccounts(ctx, userID)
+	if err != nil {
+		return idbimap.LienInfo{}, err
+	}
+	var acc *repository.MirroredAccount
+	for i := range rows {
+		if rows[i].AccountNumber == accountNumber {
+			acc = &rows[i]
+			break
+		}
+	}
+	if acc == nil {
+		return idbimap.LienInfo{}, fmt.Errorf("idbiaccounts: account %s not synced for user %s", accountNumber, userID)
+	}
+
+	var req idbi.LienEnquiryRequest
+	req.Input.AcctID = accountNumber
+	req.Input.ModuleType = "DEPOSIT"
+	req.Input.AcctCurr = defaultStr(acc.Currency, "INR")
+	req.Input.AcctType.SchmType = acc.AccountType
+	req.Input.BankInfo.BranchID = acc.BranchID
+	req.Input.BankInfo.BranchName = acc.BranchName
+
+	resp, err := s.prov.AccountLienEnquiry(ctx, req)
+	if err != nil {
+		return idbimap.LienInfo{}, fmt.Errorf("idbiaccounts: 428 for %s: %w", accountNumber, err)
+	}
+	return idbimap.LienFromResponse(resp), nil
+}
+
+func defaultStr(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }
 
 func (s *Service) refreshInBackground(userID uuid.UUID) {

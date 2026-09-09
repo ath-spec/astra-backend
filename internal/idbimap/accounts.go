@@ -126,6 +126,38 @@ func MergeAccount(base, enrich Account) Account {
 	return out
 }
 
+// LienInfo is the normalised 428 accountLienEnquiry result for one account.
+type LienInfo struct {
+	AccountNumber string  `json:"account_number"`
+	Active        bool    `json:"active"` // isDeleted == "N"
+	LienAmount    float64 `json:"lien_amount"`
+	PreviousLien  float64 `json:"previous_lien,omitempty"`
+	ReasonCode    string  `json:"reason_code,omitempty"`
+	Remarks       string  `json:"remarks,omitempty"`
+	LienID        string  `json:"lien_id,omitempty"`
+	StartDate     string  `json:"start_date,omitempty"`
+	EndDate       string  `json:"end_date,omitempty"`
+}
+
+// LienFromResponse maps a 428 response.
+func LienFromResponse(r *idbi.LienEnquiryResponse) LienInfo {
+	if r == nil {
+		return LienInfo{}
+	}
+	d := r.Result.BankInfo.LienDetails
+	return LienInfo{
+		AccountNumber: r.Result.AcctID,
+		Active:        strings.EqualFold(strings.TrimSpace(d.IsDeleted), "N"),
+		LienAmount:    MoneyF(d.NewLienAmt),
+		PreviousLien:  MoneyF(d.OldLienAmt),
+		ReasonCode:    d.ReasonCode,
+		Remarks:       d.Remarks,
+		LienID:        d.LienID,
+		StartDate:     string(d.LienDate.StartDate),
+		EndDate:       string(d.LienDate.EndDate),
+	}
+}
+
 func displayName(n idbi.PersonName) string {
 	parts := make([]string, 0, 3)
 	for _, p := range []string{n.FirstName, n.MiddleName, n.LastName} {

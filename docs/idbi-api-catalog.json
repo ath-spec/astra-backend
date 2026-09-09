@@ -24,7 +24,7 @@
     "gateway": {
       "sandbox_base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
       "doc_portal": "https://innobox.idbi.bank.in",
-      "path_shape": "POST /Development/<name>test  — dev/sandbox stage; production path prefix and the 'test' suffix will differ",
+      "path_shape": "POST /Development/<name>test  \u00e2\u20ac\u201d dev/sandbox stage; production path prefix and the 'test' suffix will differ",
       "auth": "NONE at the app layer. The gateway allow-lists the caller's egress IP (sandbox: 43.205.52.148). No API key, client id/secret, or bearer token is sent. Confirmed with ACC. Production may differ.",
       "error_envelope": {
         "errors": [
@@ -36,12 +36,12 @@
         ]
       },
       "specs_dir": "docs/idbireposne/",
-      "note_456": "API 456 performCustomerMasterDedupeCheck has NO OpenAPI spec in idbireposne/ — endpoint unknown, only the xlsx skeleton is available"
+      "note_456": "API 456 performCustomerMasterDedupeCheck has NO OpenAPI spec in idbireposne/ \u00e2\u20ac\u201d endpoint unknown, only the xlsx skeleton is available"
     },
     "data_source_values": {
-      "idbi": "real populated data from the sandbox — wire directly",
+      "idbi": "real populated data from the sandbox \u00e2\u20ac\u201d wire directly",
       "simulated": "call succeeds and the response shape is real, but there is no live counterparty (AA chain); build the flow, expect fixture/canned data",
-      "mock": "unusable in the sandbox — the app must supply its own value (see finding)"
+      "mock": "unusable in the sandbox \u00e2\u20ac\u201d the app must supply its own value (see finding)"
     },
     "capture": {
       "script": "scripts/idbi-capture-fixtures.py",
@@ -50,16 +50,17 @@
       "method": "live POST through the SOCKS proxy (egress 43.205.52.148) using the OpenAPI 'sample 1' request bodies",
       "result": "42 calls / 24 of 25 APIs (456 has no spec); 39x200, 3x400 (real field validation)"
     },
-    "provider_pkg": "internal/provider/idbi (client + typed structs, one method per op)"
+    "provider_pkg": "internal/provider/idbi (client + typed structs, one method per op)",
+    "status_refreshed": "2026-09-09: all APIs wired except 3 sandbox-dead (mock)"
   },
   "apis": [
     {
       "id": "393",
       "name": "getFullAccountStatementWithPagination",
       "surface": "both",
-      "status": "wire",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "Spend analytics + budget diagnosis (astra-backend /analytics/spend, /analytics/budgets) — currently on analyticsprovider.NewMockSource",
+      "feature": "Spend analytics + budget diagnosis (astra-backend /analytics/spend, /analytics/budgets) \u00e2\u20ac\u201d currently on analyticsprovider.NewMockSource",
       "work": "Replace the mock transaction source with a sync worker that pages this API into spend_transactions.",
       "key_fields": [
         "transactionDetails[].transactionSummary.{txnAmt,txnDate,txnDesc,txnType}",
@@ -87,13 +88,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_getFullAccountStatementWithPaginationtest.json",
         "sandbox_status": 200,
         "finding": "result{} envelope. Per-txn fields nested under transactionSummary; txnType 'D'/'C'. Page while result.hasMoreData=='Y'. Sandbox narrations are generic ('S1 TXN 1')."
-      }
+      },
+      "wired_as": "statementsync -> spend_transactions (POST /api/v1/idbi/spend/refresh)"
     },
     {
       "id": "365",
       "name": "performAccountEnquiry",
       "surface": "both",
-      "status": "wire",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
       "feature": "Balance shown on the home dashboard (/dashboard/summary exists; real balance not wired)",
       "work": "Call on dashboard open with a short TTL cache; map acctBal[] rows by balType.",
@@ -106,7 +108,7 @@
         "bankInfo.postAddr",
         "GL sub-head codes"
       ],
-      "notes": "acctBal[] has multiple balType rows — select, don't index.",
+      "notes": "acctBal[] has multiple balType rows \u00e2\u20ac\u201d select, don't index.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -119,14 +121,15 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_performAccountEnquirytest__Sample1.json",
         "sandbox_status": 200,
-        "finding": "Flat envelope. 7 balType rows in acctBal[]. Returns custId + personName + registered postAddr — the identity-resolution entry point."
-      }
+        "finding": "Flat envelope. 7 balType rows in acctBal[]. Returns custId + personName + registered postAddr \u00e2\u20ac\u201d the identity-resolution entry point."
+      },
+      "wired_as": "idbiaccounts.Refresh (GET /api/v1/idbi/accounts)"
     },
     {
       "id": "394",
       "name": "getCustomerAccountsByCustId",
       "surface": "both",
-      "status": "wire",
+      "status": "wired",
       "call_pattern": "sync",
       "feature": "Consolidated IDBI holdings view (portfolio/dashboard exists for investments; bank accounts not listed)",
       "work": "Sync into an accounts table; render Savings/Current/FD/Loan list. RM: 360 view.",
@@ -151,15 +154,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_getCustomerAccountsByCustIdtest.json",
         "sandbox_status": 200,
         "finding": "Flat envelope. customerAccountInfo[] with acctType (SAVINGS/CURRENT/TERM_DEPOSIT/SALARY on test01). Keyed by cifId."
-      }
+      },
+      "wired_as": "idbiaccounts.Refresh (GET /api/v1/idbi/accounts)"
     },
     {
       "id": "362",
       "name": "accountLienEnquiry",
       "surface": "both",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "Investible-vs-locked balance (NEW — astra shows only a flat balance today)",
+      "feature": "Investible-vs-locked balance (NEW \u00e2\u20ac\u201d astra shows only a flat balance today)",
       "work": "New: subtract active liens from balance; surface a 'locked' figure with reason. RM: stress signal.",
       "key_fields": [
         "bankInfo.lienDetails.{newLienAmt,reasonCode,remarks,isDeleted,lienId}",
@@ -182,16 +186,17 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_accountLienEnquirytest__Sample1.json",
         "sandbox_status": 200,
-        "finding": "result{} envelope, errors:[]. lienDetails nested INSIDE result.bankInfo. Sample2 -> 400 'addr does not match' — the API cross-validates bankInfo.postAddr against the account's registered address; source it from a prior 365."
-      }
+        "finding": "result{} envelope, errors:[]. lienDetails nested INSIDE result.bankInfo. Sample2 -> 400 'addr does not match' \u00e2\u20ac\u201d the API cross-validates bankInfo.postAddr against the account's registered address; source it from a prior 365."
+      },
+      "wired_as": "idbiaccounts.AccountLien (GET /api/v1/idbi/accounts/{n}/lien)"
     },
     {
       "id": "739",
       "name": "getAccountStatementFromFinPro",
       "surface": "both",
-      "status": "extend",
+      "status": "wired",
       "call_pattern": "interactive",
-      "feature": "Multi-bank statements via Account Aggregator (/aa handler has /accounts, /consent, /accounts/{id}/transactions — likely mock)",
+      "feature": "Multi-bank statements via Account Aggregator (/aa handler has /accounts, /consent, /accounts/{id}/transactions \u00e2\u20ac\u201d likely mock)",
       "work": "Wire the real AA statement fetch behind /accounts/{id}/transactions once consent + data-ready webhook land.",
       "key_fields": [
         "data.Summary.{currentBalance,accountType,drawingLimit}",
@@ -204,7 +209,7 @@
         "micrCode",
         "protocol wrappers"
       ],
-      "notes": "Source JSON in the sheet is missing commas between blocks — see payloads doc for the cleaned shape.",
+      "notes": "Source JSON in the sheet is missing commas between blocks \u00e2\u20ac\u201d see payloads doc for the cleaned shape.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -218,13 +223,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_getAccountStatementFromFinProtest.json",
         "sandbox_status": 200,
         "finding": "data[] envelope. Richest statement: Profile.Holders.Holder[] (dob/pan/mobile/address/ckyc), Summary (ifsc/micrCode/currentBalance), Transactions.Transaction[] (mode/type DEBIT|CREDIT/narration/reference)."
-      }
+      },
+      "wired_as": "idbiaa.FetchStatements when IDBI_AA_STATEMENT_SOURCE=finpro"
     },
     {
       "id": "595",
       "name": "MoneyOneFIU_GetAccountStatement",
       "surface": "both",
-      "status": "extend",
+      "status": "wired",
       "call_pattern": "event",
       "feature": "Same AA statement data as 739; the ingestion-side shape",
       "work": "Backend calls this after the 498 data-ready webhook; upsert into spend_transactions tagged by source bank.",
@@ -250,16 +256,17 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_getAccountStatementtest.json",
         "sandbox_status": 200,
-        "finding": "data[] envelope, has pageDetails. Same shape as 739. Some test01 samples use 'transactionalBalance' instead of 'currentBalance' — accept both."
-      }
+        "finding": "data[] envelope, has pageDetails. Same shape as 739. Some test01 samples use 'transactionalBalance' instead of 'currentBalance' \u00e2\u20ac\u201d accept both."
+      },
+      "wired_as": "idbiaa.FetchStatements -> spend_transactions source='aa'"
     },
     {
       "id": "590",
       "name": "requestConsentFromFinPro",
       "surface": "app",
-      "status": "extend",
+      "status": "wired",
       "call_pattern": "interactive",
-      "feature": "'Link other bank accounts' — astra /aa has POST /consent (h.CreateConsent)",
+      "feature": "'Link other bank accounts' \u00e2\u20ac\u201d astra /aa has POST /consent (h.CreateConsent)",
       "work": "Point CreateConsent at this API; store the returned consent handle.",
       "key_fields": [
         "data[].consent_handle",
@@ -269,7 +276,7 @@
         "ver",
         "timestamps"
       ],
-      "notes": "Source key is literally 'consent_handle: ' (trailing colon+space) — trim it.",
+      "notes": "Source key is literally 'consent_handle: ' (trailing colon+space) \u00e2\u20ac\u201d trim it.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -282,16 +289,17 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_requestConsentFromFinProtest.json",
         "sandbox_status": 200,
-        "finding": "data{status:'PENDING', consent_handle}. No real consent created — fixed handle. Build the flow; there is no live counterparty."
-      }
+        "finding": "data{status:'PENDING', consent_handle}. No real consent created \u00e2\u20ac\u201d fixed handle. Build the flow; there is no live counterparty."
+      },
+      "wired_as": "idbiaa.RequestConsent (POST /api/v1/aa/consent)"
     },
     {
       "id": "591",
       "name": "getConsentListFromFinPro",
       "surface": "both",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
-      "feature": "'Manage connected accounts' screen (NEW — no consent-list endpoint in /aa today)",
+      "feature": "'Manage connected accounts' screen (NEW \u00e2\u20ac\u201d no consent-list endpoint in /aa today)",
       "work": "New endpoint + screen: list active/expired consents and their linked FIP accounts; support revoke.",
       "key_fields": [
         "data[].{consentID,status}",
@@ -315,13 +323,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_getConsentListFromFinProtest.json",
         "sandbox_status": 200,
         "finding": "data[] envelope. Real consent list with linked accounts[] (accountType/linkReferenceNumber/maskedAccountNumber/fiType). accountID is comma-joined on the test01 variant."
-      }
+      },
+      "wired_as": "idbiaa.Refresh (POST /api/v1/aa/consents/{h}/refresh)"
     },
     {
       "id": "592",
       "name": "getWebRedirectionEncryptedURL",
       "surface": "app",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "interactive",
       "feature": "Redirect step of AA linking (NEW)",
       "work": "New: exchange consent handle for the OneMoney webview URL; open it in-app.",
@@ -346,13 +355,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_getWebRedirectionEncryptedURLtest.json",
         "sandbox_status": 200,
         "finding": "data[].webRedirectionUrl is a DUMMY webrd.onemoney.in/uat link that renders nothing. Gate opening it behind IDBI_AA_REDIRECT_MODE=stub|live."
-      }
+      },
+      "wired_as": "idbiaa.RequestConsent live mode"
     },
     {
       "id": "593",
       "name": "generateDecryptedResponseFromFinPro",
       "surface": "app",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "interactive",
       "feature": "Read the AA approve/reject result on return (NEW)",
       "work": "New: decrypt the redirect callback; branch on errorCode (0=approved, 1=rejected).",
@@ -363,7 +373,7 @@
         "srcref",
         "redirect"
       ],
-      "notes": "Every key inside data[0] has a leading space in the source. SPEC: Spec request wraps args: {webRedirectionURL:{ecres,resdate,fi}} — not flat as the xlsx showed. ecres is the long encrypted blob from the redirect return.",
+      "notes": "Every key inside data[0] has a leading space in the source. SPEC: Spec request wraps args: {webRedirectionURL:{ecres,resdate,fi}} \u00e2\u20ac\u201d not flat as the xlsx showed. ecres is the long encrypted blob from the redirect return.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -377,13 +387,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_generateDecryptedResponseFromFinProtest.json",
         "sandbox_status": 200,
         "finding": "data{status:'S', errorcode:'0', sessionid, txnid, userid}. Canned decode. errorcode=='0' => approved."
-      }
+      },
+      "wired_as": "idbiaa.CompleteRedirect (POST /api/v1/aa/consents/callback)"
     },
     {
       "id": "497",
       "name": "pushConsentNotification",
       "surface": "plumbing",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "webhook-in",
       "feature": "Inbound AA webhook: consent approved/rejected (NEW)",
       "work": "New hosted endpoint; update consent status, return HTTP 200 with empty body.",
@@ -408,13 +419,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_pushConsentNotificationtest.json",
         "sandbox_status": 200,
         "finding": "INBOUND webhook we host. Body decodes to {consentHandle,consentId,eventType:'CONSENT',eventStatus}. We ack HTTP 200 empty. Sandbox POST returns {message:'Success'}."
-      }
+      },
+      "wired_as": "aa_handler webhook POST /webhooks/idbi-aa/consent-notification"
     },
     {
       "id": "498",
       "name": "pushDataNotification",
       "surface": "plumbing",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "webhook-in",
       "feature": "Inbound AA webhook: financial data ready (NEW)",
       "work": "New hosted endpoint; on receipt call 595 to pull statements. Return HTTP 200 empty.",
@@ -438,15 +450,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_pushDataNotificationtest.json",
         "sandbox_status": 200,
         "finding": "INBOUND webhook we host. Body has sessionId + linkRefNumbers[]. On receipt we call 595. Ack HTTP 200 empty."
-      }
+      },
+      "wired_as": "aa_handler webhook POST /webhooks/idbi-aa/data-notification"
     },
     {
       "id": "408",
       "name": "fetchCibilScore",
       "surface": "both",
-      "status": "build",
+      "status": "mock",
       "call_pattern": "on-demand-cache",
-      "feature": "'Check credit health' (NEW — no credit-score feature in astra)",
+      "feature": "'Check credit health' (NEW \u00e2\u20ac\u201d no credit-score feature in astra)",
       "work": "New screen + endpoint. Bureau rules forbid speculative/bulk pulls: user/RM-initiated, consent-logged, cache ~30 days.",
       "key_fields": [
         "body.dcResponse.decision",
@@ -458,7 +471,7 @@
         "dcRequest.authentication",
         "session tokens"
       ],
-      "notes": "Sample response has NO raw numeric score field — you get 'decision' + bureauResponse. The number, if any, is inside 'document' (formattedReport). Confirm on a live call before promising a score in the UI.",
+      "notes": "Sample response has NO raw numeric score field \u00e2\u20ac\u201d you get 'decision' + bureauResponse. The number, if any, is inside 'document' (formattedReport). Confirm on a live call before promising a score in the UI.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -472,15 +485,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_fetchCibilScoretest.json",
         "sandbox_status": 200,
         "finding": "DEAD: HTTP 200 but body.dcResponse.bureauResponse.isSuccess=false, idVision IDVErr001 'InvalidUserIdOrPassword'. NO score field anywhere. Bureau credentials in the shipped sample are rejected. Fails identically in ACC's own portal 'Try' console. Mock the score until ACC supplies working credentials."
-      }
+      },
+      "wired_as": "dead in sandbox - falls back to mock/ErrNotAvailable"
     },
     {
       "id": "433",
       "name": "fetchLoanInterestRates",
       "surface": "both",
-      "status": "build",
+      "status": "mock",
       "call_pattern": "on-demand-cache",
-      "feature": "Loan calculator / 'check your rate' (NEW — astra has no loans area)",
+      "feature": "Loan calculator / 'check your rate' (NEW \u00e2\u20ac\u201d astra has no loans area)",
       "work": "New: part of a Loans section. RM: rate quoting during conversion.",
       "key_fields": [
         "result.{baseIntRate.value,effctIntRate.value,penalIntRate.value}",
@@ -491,7 +505,7 @@
         "laVerSlabSrlNum",
         "key.serial_num"
       ],
-      "notes": "SPEC: Spec request has NO 'input' wrapper — flat: {crncyCode,intTblCode:{tblCode},loanAmt:{amountValue,currencyCode},loanPerdDays,loanPerdMnths,originationDate}. tblCode example 'LY001'.",
+      "notes": "SPEC: Spec request has NO 'input' wrapper \u00e2\u20ac\u201d flat: {crncyCode,intTblCode:{tblCode},loanAmt:{amountValue,currencyCode},loanPerdDays,loanPerdMnths,originationDate}. tblCode example 'LY001'.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -504,14 +518,15 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_fetchLoanInterestRatestest.json",
         "sandbox_status": 200,
-        "finding": "BROKEN: sandbox returns an unrelated kitchen-sink object (webRedirectInfo, drivingLicence, ckycDob, workPermit, hpPayoffInfo...) — NOT a rate table. Mock or hardcode a rate card."
-      }
+        "finding": "BROKEN: sandbox returns an unrelated kitchen-sink object (webRedirectInfo, drivingLicence, ckycDob, workPermit, hpPayoffInfo...) \u00e2\u20ac\u201d NOT a rate table. Mock or hardcode a rate card."
+      },
+      "wired_as": "dead in sandbox - falls back to mock/ErrNotAvailable"
     },
     {
       "id": "473",
       "name": "generateLoanRepaymentSchedule",
       "surface": "both",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
       "feature": "EMI schedule / amortization visualizer (NEW)",
       "work": "New: render oamortLL[] as a month-by-month principal/interest table.",
@@ -536,13 +551,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_generateLoanRepaymentScheduletest.json",
         "sandbox_status": 200,
         "finding": "Flat: loanModellingSchOutputVO{lamodRepaymentLL[EMI summary], oamortLL[{cummPrincAmt,cummIntAmt,princOutStanding,instlAmt,intAmt,flowDate}]}. Full amortization."
-      }
+      },
+      "wired_as": "idbiloans.RepaymentSchedule (GET /api/v1/idbi/loans/{id}/schedule)"
     },
     {
       "id": "391",
       "name": "getLoanAccountDetails",
       "surface": "both",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
       "feature": "'My Loans' detail screen (App) + credit-risk view (RM). NEW.",
       "work": "New. RM primary consumer: restructuring history is a risk signal.",
@@ -574,13 +590,14 @@
         "fixture": "internal/provider/idbi/testdata/Development_getLoanAccountDetailstest.json",
         "sandbox_status": 200,
         "finding": "result{} envelope. netIntRate.value, loanGenDetails{loanAmt,loanPeriodMonths,rePmtMethod}, amtAlreadyDisb/amtAvailForDisb/disbAmt, drIntMethodInd. Address-validated like 362 (Sample2 -> 400)."
-      }
+      },
+      "wired_as": "idbiloans.Refresh master enrich (GET /api/v1/idbi/loans)"
     },
     {
       "id": "538",
       "name": "inquireHPPayoff",
       "surface": "both",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
       "feature": "'Foreclose my loan' quote (NEW)",
       "work": "New: show netPayofamt + the pending* breakup.",
@@ -604,15 +621,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_InquireHPAyofftest.json",
         "sandbox_status": 200,
         "finding": "Flat: executeFinacleScriptCustomData{netPayofamt (one 'f'), pendingPrincipal, pendingNormal/Penal/OverdueInterest, interestRate}. Gateway path is 'InquireHPAyoff' (IDBI typo). No errors array."
-      }
+      },
+      "wired_as": "idbiloans.PayoffQuote (GET /api/v1/idbi/loans/{id}/payoff)"
     },
     {
       "id": "404",
       "name": "getLoanOverduePositionEnquiry",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "Default-prediction / Early Warning (PS4) — RM portal. NEW.",
+      "feature": "Default-prediction / Early Warning (PS4) \u00e2\u20ac\u201d RM portal. NEW.",
       "work": "New RM module: batch across the book; feed the interest-vs-principal overdue split into a risk model. App: at most an EMI-overdue nudge.",
       "key_fields": [
         "result.loanOvduRec[].{totalIntDmd,totalIntColl,totalIntOvdu,pTotalDmd,pTotalColl,pTotalOvdu}",
@@ -635,15 +653,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_getLoanOverduePositionEnquirytest.json",
         "sandbox_status": 200,
         "finding": "Flat: loanOvduRec[{totalIntDmd/Coll/Ovdu, pTotalDmd/Coll/Ovdu}], recCtrlOut{isLastSet:'Y'}. Paginated. Demands cumulative across instalments."
-      }
+      },
+      "wired_as": "idbiloans.OverduePosition (GET /api/v1/idbi/loans/{id}/overdue-position)"
     },
     {
       "id": "402",
       "name": "getLoanOverdueDetails",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "NPA / DPD tracking (PS4) — RM portal. NEW.",
+      "feature": "NPA / DPD tracking (PS4) \u00e2\u20ac\u201d RM portal. NEW.",
       "work": "New RM module: primary feed for default models. App: overdue nudge only.",
       "key_fields": [
         "result.overdueDetails[].{dpd,npaStatus,npaDate,outstandingBal,totalOverdueAmt,overdueDate}"
@@ -665,15 +684,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_getLoanOverdueDetailstest.json",
         "sandbox_status": 200,
         "finding": "Flat: overdueDetails[{accountId, outstandingBal, dpd, npaStatus:'SA'|SMA-0/1/2|NPA, totalOverdueAmt, npaDate}]. Multiple loan accts per customerId. Empty dates are literal 'NULL'."
-      }
+      },
+      "wired_as": "idbiloans.Refresh + rmcreditrisk.Refresh"
     },
     {
       "id": "441",
       "name": "fetchLoanAccountLimits",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "MSME working-capital health / drawing-power erosion (PS3/PS4) — RM. NEW.",
+      "feature": "MSME working-capital health / drawing-power erosion (PS3/PS4) \u00e2\u20ac\u201d RM. NEW.",
       "work": "New RM module: track drawing power vs sanction limit over time.",
       "key_fields": [
         "result.accountLimitDetails.acctDrwngPowerLimitHistMsgInq.olimitLL[].{drwngPower,drwngPowerPcnt,applicableDate}",
@@ -695,16 +715,17 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_fetchLoanAccountLimitstest.json",
         "sandbox_status": 200,
-        "finding": "Flat: accountLimitDetails{acctDrwngPowerLimitHistMsgInq.olimitLL[], acctSanctLimitHistMsg.olimitLL[]}. Both are dated history — sort by applicableDate."
-      }
+        "finding": "Flat: accountLimitDetails{acctDrwngPowerLimitHistMsgInq.olimitLL[], acctSanctLimitHistMsg.olimitLL[]}. Both are dated history \u00e2\u20ac\u201d sort by applicableDate."
+      },
+      "wired_as": "idbiloans.LoanLimits (GET /api/v1/idbi/loans/{id}/limits)"
     },
     {
       "id": "442",
       "name": "fetchCustomerLimitDetails",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "sync",
-      "feature": "CIF-level credit exposure / leverage scoring (PS3/PS4) — RM. NEW.",
+      "feature": "CIF-level credit exposure / leverage scoring (PS3/PS4) \u00e2\u20ac\u201d RM. NEW.",
       "work": "New RM module: funded vs non-funded mix, utilisation, rating drift.",
       "key_fields": [
         "result.customerLimitDetailsResponse.{totalLimit,totalOutstanding,fundedLimit,nonFundedLimit}",
@@ -729,15 +750,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_fetchCustomerLimitDetailstest.json",
         "sandbox_status": 200,
         "finding": "Flat. USES {amount,currency} NOT {amountValue,currencyCode}. customerSummary + exposureSummary{totalLimit,fundedLimit,totalOutstanding} + customerLimits[] (dd-mm-yyyy dates)."
-      }
+      },
+      "wired_as": "rmcreditrisk.Refresh (GET /api/rm/idbi/clients/{id}/credit-risk)"
     },
     {
       "id": "428",
       "name": "createLead",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "event",
-      "feature": "Lead pipeline (PS2) — RM has /clients/{id}/interactions (follow-ups) but not CRM lead creation. NEW.",
+      "feature": "Lead pipeline (PS2) \u00e2\u20ac\u201d RM has /clients/{id}/interactions (follow-ups) but not CRM lead creation. NEW.",
       "work": "New: when an AI insight flags propensity, POST a lead to the IDBI CRM; track the returned leadId.",
       "key_fields": [
         "result.leadId",
@@ -746,7 +768,7 @@
       "ignore": [
         "telemetry headers"
       ],
-      "notes": "Request keys 'dob ', 'mobileNo ', 'preferedTime ' have trailing spaces in the source. SPEC: Spec sample uses clean keys (mobileNo, not 'mobileNo ') — the trailing spaces in the xlsx were an artifact. Real sample fields: leadType,customerType,firstName,lastName,mobileNo,emailId,pancard,addressLine1,pincode,state,product,prodCategory,prodSubCategory,estimatedAmount,solid,leadChannel,leadSource,leadId.",
+      "notes": "Request keys 'dob ', 'mobileNo ', 'preferedTime ' have trailing spaces in the source. SPEC: Spec sample uses clean keys (mobileNo, not 'mobileNo ') \u00e2\u20ac\u201d the trailing spaces in the xlsx were an artifact. Real sample fields: leadType,customerType,firstName,lastName,mobileNo,emailId,pancard,addressLine1,pincode,state,product,prodCategory,prodSubCategory,estimatedAmount,solid,leadChannel,leadSource,leadId.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -760,15 +782,16 @@
         "fixture": "internal/provider/idbi/testdata/Development_createLeadtest__sample1alreadyexitlead.json",
         "sandbox_status": 200,
         "finding": "result{message,errors:[]}. 'Lead already created' / created. Sample3 -> 400 'pancard is not valid: must be AAAAA9999A' (spec's sample PAN is malformed, not an API bug)."
-      }
+      },
+      "wired_as": "idbileads.Submit (POST /api/v1/idbi/leads)"
     },
     {
       "id": "456",
       "name": "performCustomerMasterDedupeCheck",
       "surface": "rm",
-      "status": "build",
+      "status": "mock",
       "call_pattern": "on-demand-cache",
-      "feature": "Prospecting / duplicate-CIF check (PS2) — RM. NEW.",
+      "feature": "Prospecting / duplicate-CIF check (PS2) \u00e2\u20ac\u201d RM. NEW.",
       "work": "New: on lead entry, search by PAN/mobile/GSTIN; surface existing relationship if any.",
       "key_fields": [
         "result.allMasterRecords[].{customerCount,custId,custName,dateOfBirth,panGirNum,ckycNo,customerType,kycDueDate}"
@@ -777,7 +800,7 @@
         "NREGA/PIO/OIC/workPermit tags",
         "freeText15"
       ],
-      "notes": "customerCount on record 0 = match / no-match / multi-match. SPEC: NO OpenAPI spec in idbireposne/ — endpoint unknown. Only the xlsx skeleton is available. Ask ACC/IDBI for the spec or check the portal catalogue.",
+      "notes": "customerCount on record 0 = match / no-match / multi-match. SPEC: NO OpenAPI spec in idbireposne/ \u00e2\u20ac\u201d endpoint unknown. Only the xlsx skeleton is available. Ask ACC/IDBI for the spec or check the portal catalogue.",
       "endpoint": {
         "method": "POST",
         "base_url": null,
@@ -791,16 +814,17 @@
         "verified": false,
         "fixture": null,
         "sandbox_status": null,
-        "finding": "No OpenAPI spec in idbireposne/ and not in the capture. Portal lists it as 'performCustomerMasterDedupeCheck' / category 'Customer Onboarding' — 'takes Name, DOB, PAN to query the customer record'. Get the spec from the portal 'API Subscribed' tab, then wire."
-      }
+        "finding": "No OpenAPI spec in idbireposne/ and not in the capture. Portal lists it as 'performCustomerMasterDedupeCheck' / category 'Customer Onboarding' \u00e2\u20ac\u201d 'takes Name, DOB, PAN to query the customer record'. Get the spec from the portal 'API Subscribed' tab, then wire."
+      },
+      "wired_as": "dead in sandbox - falls back to mock/ErrNotAvailable"
     },
     {
       "id": "415",
       "name": "searchCkycDetails",
       "surface": "rm",
-      "status": "extend",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
-      "feature": "CKYC verification — astra /kyc handler exists but POST /pan/verify returns notConfigured (stub)",
+      "feature": "CKYC verification \u00e2\u20ac\u201d astra /kyc handler exists but POST /pan/verify returns notConfigured (stub)",
       "work": "Fill in the KYC handler: XML request/response, by ID or name+DOB, batch-capable.",
       "key_fields": [
         "searchInCkycResponseDetails.{ckycAvailable,ckycId,ckycName,ckycAccType,ckycFatherName,ckycGenDate}",
@@ -810,7 +834,7 @@
         "ckycPhoto",
         "ckycPhotoBytes"
       ],
-      "notes": "XML, not JSON. Content-Type: application/xml. SPEC: OpenAPI spec shows the gateway takes a JSON body: {input:{apiToken,parentCompany,searchInCkycRequestDetails:[{queryId,recordIdentifier,applicationFormNo,branchCode,inputIdType,inputIdNo,sourceSystem,...}]}}. The xlsx skeleton showed XML — use the JSON shape from the spec. Response may still be XML-structured; confirm live. ckycPhotoBytes = image blob, ignore.",
+      "notes": "XML, not JSON. Content-Type: application/xml. SPEC: OpenAPI spec shows the gateway takes a JSON body: {input:{apiToken,parentCompany,searchInCkycRequestDetails:[{queryId,recordIdentifier,applicationFormNo,branchCode,inputIdType,inputIdNo,sourceSystem,...}]}}. The xlsx skeleton showed XML \u00e2\u20ac\u201d use the JSON shape from the spec. Response may still be XML-structured; confirm live. ckycPhotoBytes = image blob, ignore.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -823,16 +847,17 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_searchCkycDetailstest.json",
         "sandbox_status": 200,
-        "finding": "result{} envelope. JSON in, JSON out (not XML). details.searchInCkycResponseDetails{ckycAvailable:'Yes', ckycId, ckycName, ckycIdDetails.id[]}. Carries a base64 ckycPhoto/ckycPhotoBytes — ignore those."
-      }
+        "finding": "result{} envelope. JSON in, JSON out (not XML). details.searchInCkycResponseDetails{ckycAvailable:'Yes', ckycId, ckycName, ckycIdDetails.id[]}. Carries a base64 ckycPhoto/ckycPhotoBytes \u00e2\u20ac\u201d ignore those."
+      },
+      "wired_as": "idbikyc.VerifyPAN (POST /api/v1/kyc/pan/verify)"
     },
     {
       "id": "508",
       "name": "fetchHRMSEmployeeDetails",
       "surface": "rm",
-      "status": "build",
+      "status": "wired",
       "call_pattern": "on-demand-cache",
-      "feature": "Staff directory / lead routing — RM auth exists (OTP) but no HRMS org lookup. NEW.",
+      "feature": "Staff directory / lead routing \u00e2\u20ac\u201d RM auth exists (OTP) but no HRMS org lookup. NEW.",
       "work": "New: resolve an EIN to name/grade/branch/region and the reporting chain for lead assignment.",
       "key_fields": [
         "getHRMSEmployeeDetails.{ein,fullNameTitle,grade,position,location,region,email,sol,zone}",
@@ -842,7 +867,7 @@
         "empClass",
         "internal classification codes"
       ],
-      "notes": "otpRequired in request / otpId in response — the call can be OTP-gated.",
+      "notes": "otpRequired in request / otpId in response \u00e2\u20ac\u201d the call can be OTP-gated.",
       "endpoint": {
         "method": "POST",
         "base_url": "https://sandboxpocgatewayprod.idbi.bank.in",
@@ -855,8 +880,9 @@
         "verified": true,
         "fixture": "internal/provider/idbi/testdata/Development_fetchHRMSEmployeeDetailstest.json",
         "sandbox_status": 200,
-        "finding": "Flat: otpId (OTP 'sent' — simulated in sandbox), getHRMSEmployeeDetails{ein,grade,position,vertical,organization,sol,zone,supEin,supEmail}, errors:[]. Backs RM/staff login."
-      }
+        "finding": "Flat: otpId (OTP 'sent' \u00e2\u20ac\u201d simulated in sandbox), getHRMSEmployeeDetails{ein,grade,position,vertical,organization,sol,zone,supEin,supEmail}, errors:[]. Backs RM/staff login."
+      },
+      "wired_as": "idbihrms.VerifyActiveEmployee (RM login pre-check)"
     }
   ]
 }

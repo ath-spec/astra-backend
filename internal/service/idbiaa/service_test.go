@@ -20,11 +20,15 @@ type fakeProvider struct {
 	list          *idbi.GetConsentListResponse
 	redirect      *idbi.GetWebRedirectionURLResponse
 	stmt          *idbi.GetAAStatementResponse
+	stmtFinPro    *idbi.GetAAStatementResponse
+	decrypted     *idbi.GenerateDecryptedResponse
 
 	reqConsentCalls int
 	listCalls       int
 	redirectCalls   int
 	stmtCalls       int
+	stmtFinProCalls int
+	decryptedCalls  int
 }
 
 func (f *fakeProvider) RequestConsent(_ context.Context, _ idbi.RequestConsentRequest) (*idbi.RequestConsentResponse, error) {
@@ -45,6 +49,17 @@ func (f *fakeProvider) GetWebRedirectionURL(_ context.Context, _ idbi.GetWebRedi
 func (f *fakeProvider) GetAAStatement(_ context.Context, _ idbi.GetAAStatementRequest) (*idbi.GetAAStatementResponse, error) {
 	f.stmtCalls++
 	return f.stmt, nil
+}
+func (f *fakeProvider) GetAAStatementFromFinPro(_ context.Context, _ idbi.GetAAStatementRequest) (*idbi.GetAAStatementResponse, error) {
+	f.stmtFinProCalls++
+	if f.stmtFinPro != nil {
+		return f.stmtFinPro, nil
+	}
+	return f.stmt, nil
+}
+func (f *fakeProvider) GenerateDecryptedResponse(_ context.Context, _ idbi.GenerateDecryptedResponseRequest) (*idbi.GenerateDecryptedResponse, error) {
+	f.decryptedCalls++
+	return f.decrypted, nil
 }
 
 type fakeRepo struct {
@@ -301,5 +316,84 @@ func TestHandleDataNotification_NonReadyIgnored(t *testing.T) {
 	}
 	if len(spend.rows) != 0 {
 		t.Error("non-ready data event must not fetch")
+	}
+}
+
+func TestCompleteRedirect_Approved(t *testing.T) {
+	prov := &fakeProvider{consentHandle: handle, consentStatus: "PENDING", list: activeList()}
+	dec := &idbi.GenerateDecryptedResponse{}
+	dec.Data.Srcref = handle
+	dec.Data.Errorcode = "0"
+	dec.Data.Status = "S"
+	prov.decrypted = dec
+	repo := newFakeRepo()
+	s := New(prov, repo, &fakeSpend{}, Config{RedirectMode: "live"}, nil)
+
+	uid := uuid.New()
+	_ = repo.CreateConsent(context.Background(), repository.AAConsentRow{
+		ConsentHandle: handle, UserID: uid, Status: "PENDING", PartyIDValue: "9988776655", VUA: "9988776655@onemoney",
+	})
+
+	view, err := s.CompleteRedirect(context.Background(), uid, "ecres-blob", "250220261248050", "fi-blob")
+	if err != nil {
+		t.Fatalf("CompleteRedirect: %v", err)
+	}
+	if prov.decryptedCalls != 1 {
+		t.Errorf("593 called %d times, want 1", prov.decryptedCalls)
+	}
+	if view.Status != "ACTIVE" {
+		t.Errorf("status = %q, want ACTIVE", view.Status)
+	}
+	if len(view.LinkedAccounts) != 1 {
+		t.Errorf("linked accounts pulled after approval: %+v", view.LinkedAccounts)
+	}
+}
+
+func TestCompleteRedirect_Rejected(t *testing.T) {
+	prov := &fakeProvider{consentHandle: handle}
+	dec := &idbi.GenerateDecryptedResponse{}
+	dec.Data.Srcref = handle
+	dec.Data.Errorcode = "1"
+	dec.Data.Status = "F"
+	prov.decrypted = dec
+	repo := newFakeRepo()
+	s := New(prov, repo, &fakeSpend{}, Config{RedirectMode: "live"}, nil)
+
+	uid := uuid.New()
+	_ = repo.CreateConsent(context.Background(), repository.AAConsentRow{ConsentHandle: handle, UserID: uid, Status: "PENDING"})
+
+	view, err := s.CompleteRedirect(context.Background(), uid, "ecres", "d", "fi")
+	if err != nil {
+		t.Fatalf("CompleteRedirect: %v", err)
+	}
+	if view.Status != "REJECTED" {
+		t.Errorf("status = %q, want REJECTED", view.Status)
+	}
+	if prov.listCalls != 0 {
+		t.Error("rejected consent must not pull the account list")
+	}
+}
+
+func TestFetchStatements_FinProSource(t *testing.T) {
+	prov := &fakeProvider{consentHandle: handle, consentStatus: "PENDING", list: activeList(), stmt: stmtResp()}
+	repo := newFakeRepo()
+	spend := &fakeSpend{}
+	s := New(prov, repo, spend, Config{RedirectMode: "stub", StatementSource: "finpro"}, nil)
+
+	uid := uuid.New()
+	if _, err := s.RequestConsent(context.Background(), uid, "9988776655", "660100100003"); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	if _, err := s.FetchStatements(context.Background(), uid, handle); err != nil {
+		t.Fatalf("FetchStatements: %v", err)
+	}
+	if prov.stmtFinProCalls != 1 {
+		t.Errorf("739 called %d times, want 1", prov.stmtFinProCalls)
+	}
+	if prov.stmtCalls != 0 {
+		t.Errorf("595 called %d times, want 0 (finpro selected)", prov.stmtCalls)
+	}
+	if len(spend.rows) != 2 {
+		t.Errorf("spend rows = %d, want 2", len(spend.rows))
 	}
 }

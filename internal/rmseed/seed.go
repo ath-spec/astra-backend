@@ -55,10 +55,13 @@ type staffRow struct {
 func Run(ctx context.Context, pool *pgxpool.Pool, cfg Config) (Result, error) {
 	res := Result{StaffIDs: make(map[string]uuid.UUID)}
 
+	// An RM's employee_code IS its HRMS EIN for feature 7. Override any of
+	// these with RM_SEED_RM{1,2}_EMPLOYEE_CODE once the real EINs are known;
+	// the defaults are neutral placeholders, not IDBI values.
 	staff := []staffRow{
-		{EmployeeCode: "AD001", Email: "admin@astra.in", Name: "Astra Admin", Role: "admin", Phone: cfg.AdminPhone},
-		{EmployeeCode: "EMP002", Email: "rm1@astra.in", Name: "Priya Nair", Role: "rm", Phone: cfg.RM1Phone},
-		{EmployeeCode: "EMP003", Email: "rm2@astra.in", Name: "Arjun Mehta", Role: "rm", Phone: cfg.RM2Phone},
+		{EmployeeCode: envOr("RM_SEED_ADMIN_EMPLOYEE_CODE", "AD001"), Email: "admin@astra.in", Name: "Astra Admin", Role: "admin", Phone: cfg.AdminPhone},
+		{EmployeeCode: envOr("RM_SEED_RM1_EMPLOYEE_CODE", "EMP002"), Email: "rm1@astra.in", Name: "Priya Nair", Role: "rm", Phone: cfg.RM1Phone},
+		{EmployeeCode: envOr("RM_SEED_RM2_EMPLOYEE_CODE", "EMP003"), Email: "rm2@astra.in", Name: "Arjun Mehta", Role: "rm", Phone: cfg.RM2Phone},
 	}
 
 	for _, s := range staff {
