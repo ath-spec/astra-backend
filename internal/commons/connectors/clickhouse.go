@@ -1,24 +1,27 @@
 package connectors
 
-// ClickHouse connector — PROVISION FOR LATER, not yet wired.
-//
-// (In z-backend this connector was itself commented out — kept here only so the
-// package has a placeholder for a columnar analytics store.)
-//
-// Postgres serves every read Astra has today. ClickHouse becomes interesting only
-// for high-volume append-only analytics that are painful on OLTP Postgres:
-//
-//   - per-tick / per-event market and price history
-//   - clickstream / product analytics
-//   - large time-range portfolio aggregations across the whole book
-//
-// Before adding it, check whether Postgres + partitioning + a read replica, or
-// Timescale, covers the need — a second database is real operational weight. On
-// AWS there is no managed ClickHouse; it would be ClickHouse Cloud or self-hosted
-// on EC2/EKS.
-//
-// To activate: `go get github.com/ClickHouse/clickhouse-go/v2`, add a connector
-// here with the same bounded-retry shape as CreatePostgresPool, and a
-// CLICKHOUSE_DSN config knob.
-//
-// Ported (as a stub) from z-backend server/common/connectors/clickhouse.go.
+// Infinite iterator that returns the Clickhouse session
+// func CreateClickhouseConn(host []string, username, password, database string) clickhouse.Client {
+// 	count := 0
+// 	config := clickhouse.Config{
+// 		Host:     host,
+// 		Username: username,
+// 		Password: password,
+// 		Database: database,
+// 	}
+// 	for {
+// 		conn, err := clickhouse.CreateClickhouseConn(config)
+// 		if err != nil {
+// 			count++
+// 		} else {
+// 			logger.Info("clickhouse connection created!")
+// 			return conn
+// 		}
+// 		if count == 5 {
+// 			logger.Error("unable to connect to clickhouse: %s", err)
+// 			logger.Info("retrying in 5 seconds...")
+// 			count = 0
+// 			time.Sleep(time.Second * 5)
+// 		}
+// 	}
+// }

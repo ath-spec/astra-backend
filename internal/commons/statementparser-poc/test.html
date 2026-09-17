@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bank Statement RAG System</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .section h2 {
+            color: #34495e;
+            margin-top: 0;
+        }
+        input[type="file"] {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border-left: 4px solid #3498db;
+        }
+        .error {
+            border-left-color: #e74c3c;
+            background-color: #fdf2f2;
+        }
+        .success {
+            border-left-color: #27ae60;
+            background-color: #f0f9f0;
+        }
+        pre {
+            background-color: #2c3e50;
+            color: #ecf0f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            color: #7f8c8d;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.healthy {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .status.unhealthy {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Bank Statement RAG System</h1>
+        
+        <div class="section">
+            <h2>📊 System Status</h2>
+            <div id="status" class="status">Checking...</div>
+            <button onclick="checkHealth()">Refresh Status</button>
+        </div>
+
+        <div class="section">
+            <h2>📄 Upload PDF</h2>
+            <input type="file" id="pdfFile" accept=".pdf">
+            <button onclick="uploadPDF()" id="uploadBtn">Upload PDF</button>
+            <div id="uploadResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>🔍 Extract Transactions</h2>
+            <input type="text" id="filePath" placeholder="Enter file path (e.g., tmp/sample.pdf)" style="width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px;">
+            <button onclick="extractTransactions()" id="extractBtn">Extract Transactions</button>
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <p>Processing PDF and extracting transactions...</p>
+            </div>
+            <div id="extractResult" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="section">
+            <h2>📋 Instructions</h2>
+            <ol>
+                <li>Make sure the backend server is running: <code>cd backend && ./fast_ocr_server</code></li>
+                <li>Set your Gemini API key: <code>export GEMINI_API_KEY="your_key_here"</code></li>
+                <li>Upload a PDF bank statement using the upload form above</li>
+                <li>Use the file path returned from upload in the extraction form</li>
+                <li>Click "Extract Transactions" to get structured JSON data using enhanced OCR parser</li>
+            </ol>
+            <p><strong>Note:</strong> This UI now uses the enhanced fast-extract method that can extract 99+ transactions from complex bank statements!</p>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8080';
+
+        // Check system health on page load
+        window.onload = function() {
+            checkHealth();
+        };
+
+        async function checkHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                const statusDiv = document.getElementById('status');
+                if (data.status === 'healthy') {
+                    statusDiv.textContent = '✅ System is healthy and running';
+                    statusDiv.className = 'status healthy';
+                } else {
+                    statusDiv.textContent = '❌ System is unhealthy';
+                    statusDiv.className = 'status unhealthy';
+                }
+            } catch (error) {
+                const statusDiv = document.getElementById('status');
+                statusDiv.textContent = '❌ Cannot connect to server';
+                statusDiv.className = 'status unhealthy';
+            }
+        }
+
+        async function uploadPDF() {
+            const fileInput = document.getElementById('pdfFile');
+            const resultDiv = document.getElementById('uploadResult');
+            
+            if (!fileInput.files[0]) {
+                showResult(resultDiv, 'Please select a PDF file first', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('pdf', fileInput.files[0]);
+
+            try {
+                const response = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult(resultDiv, `✅ ${data.message}`, 'success');
+                    // Auto-fill the file path for extraction
+                    document.getElementById('filePath').value = `tmp/${data.message.split(': ')[1]}`;
+                } else {
+                    showResult(resultDiv, `❌ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultDiv, `❌ Upload failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function extractTransactions() {
+            const filePath = document.getElementById('filePath').value;
+            const resultDiv = document.getElementById('extractResult');
+            const loadingDiv = document.getElementById('loading');
+            const extractBtn = document.getElementById('extractBtn');
+
+            if (!filePath) {
+                showResult(resultDiv, 'Please enter a file path', 'error');
+                return;
+            }
+
+            // Show loading state
+            loadingDiv.style.display = 'block';
+            extractBtn.disabled = true;
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch(`${API_BASE}/fast-extract?file=${encodeURIComponent(filePath)}`);
+                const data = await response.json();
+
+                if (data.success) {
+                    const transactions = data.statement?.transactions || [];
+                    let resultHtml = `<h3>✅ ${data.message}</h3>`;
+                    
+                    if (transactions.length > 0) {
+                        resultHtml += `<h4>📊 Extracted Transactions (${transactions.length}):</h4>`;
+                        resultHtml += `<pre>${JSON.stringify(transactions, null, 2)}</pre>`;
+                    } else {
+                        resultHtml += '<p>No transactions found in the document.</p>';
+                    }
+                    
+                    showResult(resultDiv, resultHtml, 'success');
+                } else {
+                    showResult(resultDiv, `❌ Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                showResult(resultDiv, `❌ Extraction failed: ${error.message}`, 'error');
+            } finally {
+                // Hide loading state
+                loadingDiv.style.display = 'none';
+                extractBtn.disabled = false;
+            }
+        }
+
+        function showResult(element, content, type) {
+            element.innerHTML = content;
+            element.className = `result ${type}`;
+            element.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
