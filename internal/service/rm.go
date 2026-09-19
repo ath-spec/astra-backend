@@ -26,6 +26,8 @@ import (
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
+	analyticsservice "github.com/yourusername/astra-backend/internal/service/analytics"
+	budgetservice "github.com/yourusername/astra-backend/internal/service/budget"
 )
 
 // RMService backs the RM-facing console: the book dashboard and the
@@ -45,6 +47,8 @@ type RMService struct {
 	interactions repository.RMInteractionRepository
 	llm          llm.Provider
 	agents       *agents.Catalog
+	spend        *analyticsservice.Service
+	budget       *budgetservice.Service
 	pool         *pgxpool.Pool
 }
 
@@ -61,12 +65,14 @@ func NewRMService(
 	interactions repository.RMInteractionRepository,
 	llmProvider llm.Provider,
 	cat *agents.Catalog,
+	spend *analyticsservice.Service,
+	budget *budgetservice.Service,
 	pool *pgxpool.Pool,
 ) *RMService {
 	return &RMService{
 		dashboard: dashboard, analysis: analysis, stocks: stocks, mf: mf, fd: fd, goals: goals,
 		userRepo: userRepo, assign: assign, rmRepo: rmRepo, interactions: interactions,
-		llm: llmProvider, agents: cat, pool: pool,
+		llm: llmProvider, agents: cat, spend: spend, budget: budget, pool: pool,
 	}
 }
 

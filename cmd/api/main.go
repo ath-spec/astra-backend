@@ -284,7 +284,7 @@ func main() {
 		rmAuthService.UseHRMSVerifier(idbihrmsservice.New(idbiClient, ""))
 		slog.Info("IDBI feature enabled: HRMS active-employee check on RM login (508)")
 	}
-	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, llmProvider, agentCatalog, db.Pool)
+	rmService := service.NewRMService(dashboardService, portfolioAnalysisService, stocksProvider, mfProvider, fdProvider, goalsProvider, userRepo, assignmentRepo, rmUserRepo, rmInteractionRepo, llmProvider, agentCatalog, spendAnalyticsService, budgetService, db.Pool)
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 	rmChatService := service.NewRMChatService(llmProvider, speechProvider, agentCatalog, rmChatRepo, rmService, rmAdminService)
 

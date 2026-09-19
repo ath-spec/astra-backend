@@ -20,6 +20,7 @@ import (
 var narrativeTopics = []string{
 	"allocation", "genome", "discipline", "performance",
 	"risk", "cost", "concentration", "cohort", "drift", "tax",
+	"spend_overview", "spend_categories", "spend_habits", "spend_income", "budget_health",
 }
 
 // narrativeMaxAge forces a refresh of an otherwise-unchanged narrative after
@@ -71,16 +72,25 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		pa  *rmdomain.ClientPortfolioAnalysis
 		an  *rmdomain.ClientAnalytics
 		adv *rmdomain.ClientAdvisory
+		si  *rmdomain.ClientSpendIntelligence
 	)
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID); pa = v; return e })
 	g.Go(func() error { v, e := s.ClientAnalytics(gctx, callerRMID, isAdmin, userID); an = v; return e })
 	g.Go(func() error { v, e := s.ClientAdvisory(gctx, callerRMID, isAdmin, userID); adv = v; return e })
+	g.Go(func() error {
+		// Spend intelligence is supplementary to the review, not central to
+		// it — a failure here (e.g. no spend source configured) must not
+		// block the rest of the narrative.
+		v, _ := s.SpendIntelligence(gctx, callerRMID, isAdmin, userID)
+		si = v
+		return nil
+	})
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
-	blob := buildFiguresBlob(pa, an, adv)
+	blob := buildFiguresBlob(pa, an, adv, si)
 	if strings.TrimSpace(blob) == "" {
 		return map[string]string{}, nil
 	}
@@ -113,7 +123,7 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	}
 
 	// 3. Compute dynamic deterministic fallback on the fly (NOT cached, always live)
-	return buildDeterministicNarratives(pa, an, adv), nil
+	return buildDeterministicNarratives(pa, an, adv, si), nil
 }
 
 // narrativeFingerprint is a single round-trip digest of the client's material
@@ -122,13 +132,16 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 // risk-level change, or meaningful value shift.
 func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) (string, error) {
 	var (
-		snapDate    *time.Time
-		dnaLevel    string
-		mfTxns      int
-		stockOrders int
-		mfValue     float64
-		bankBal     float64
-		activeGoals int
+		snapDate     *time.Time
+		dnaLevel     string
+		mfTxns       int
+		stockOrders  int
+		mfValue      float64
+		bankBal      float64
+		activeGoals  int
+		spendTxns    int
+		lastSpendAt  *time.Time
+		activeBudget int
 	)
 	err := s.pool.QueryRow(ctx, `
 		SELECT
@@ -138,8 +151,12 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 			(SELECT count(*) FROM stock_orders WHERE user_id = $1),
 			COALESCE((SELECT sum(units_held * COALESCE(nav, 0)) FROM mf_folios WHERE user_id = $1), 0),
 			COALESCE((SELECT sum(balance) FROM bank_accounts WHERE user_id = $1), 0),
-			(SELECT count(*) FROM goals WHERE user_id = $1 AND status = 'ACTIVE')
-	`, userID).Scan(&snapDate, &dnaLevel, &mfTxns, &stockOrders, &mfValue, &bankBal, &activeGoals)
+			(SELECT count(*) FROM goals WHERE user_id = $1 AND status = 'ACTIVE'),
+			COALESCE((SELECT count(*) FROM spend_transactions WHERE user_id = $1), 0),
+			(SELECT max(occurred_at) FROM spend_transactions WHERE user_id = $1),
+			(SELECT count(*) FROM budgets WHERE user_id = $1 AND is_active)
+	`, userID).Scan(&snapDate, &dnaLevel, &mfTxns, &stockOrders, &mfValue, &bankBal, &activeGoals,
+		&spendTxns, &lastSpendAt, &activeBudget)
 	if err != nil {
 		return "", fmt.Errorf("narrative fingerprint: %w", err)
 	}
@@ -147,9 +164,14 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 	if snapDate != nil {
 		day = snapDate.Format("20060102")
 	}
-	return fmt.Sprintf("%s|%s|%d|%d|%.0f|%.0f|%d",
+	lastSpendDay := ""
+	if lastSpendAt != nil {
+		lastSpendDay = lastSpendAt.Format("20060102")
+	}
+	return fmt.Sprintf("%s|%s|%d|%d|%.0f|%.0f|%d|%d|%s|%d",
 		day, dnaLevel, mfTxns, stockOrders,
-		math.Round(mfValue/1000)*1000, math.Round(bankBal/1000)*1000, activeGoals), nil
+		math.Round(mfValue/1000)*1000, math.Round(bankBal/1000)*1000, activeGoals,
+		spendTxns, lastSpendDay, activeBudget), nil
 }
 
 func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[string]string, error) {
@@ -197,7 +219,7 @@ func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[
 }
 
 // buildDeterministicNarratives provides figure-grounded fallback narratives when the LLM is unreachable.
-func buildDeterministicNarratives(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientAnalytics, adv *rmdomain.ClientAdvisory) map[string]string {
+func buildDeterministicNarratives(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientAnalytics, adv *rmdomain.ClientAdvisory, si *rmdomain.ClientSpendIntelligence) map[string]string {
 	out := make(map[string]string)
 
 	if pa != nil && pa.Allocation != nil {
@@ -263,13 +285,89 @@ func buildDeterministicNarratives(pa *rmdomain.ClientPortfolioAnalysis, an *rmdo
 		}
 	}
 
+	if si != nil {
+		if wd, tr := si.WeekdayWeekend, si.Trend; wd != nil || tr != nil {
+			var parts []string
+			if wd != nil {
+				parts = append(parts, fmt.Sprintf("weekend spend runs %.0f%% of weekday spend (peak day %s)", wd.WeekendVsWeekdayRatio*100, titleCaseWords(wd.PeakDay)))
+			}
+			if tr != nil {
+				parts = append(parts, fmt.Sprintf("the %s spend trend is %s, projecting %s over the next 30 days", tr.Period, strings.ToLower(titleCaseWords(tr.Direction)), inr(tr.Projected30Day)))
+			}
+			out["spend_overview"] = "Day-to-day spending: " + strings.Join(parts, "; ") + "."
+		}
+
+		if ct := si.CategoryTrend; ct != nil && len(ct.Categories) > 0 {
+			top := ct.Categories[0]
+			risingNote := ""
+			if si.CategoryMomentum != nil && len(si.CategoryMomentum.Rising) > 0 {
+				risingNote = fmt.Sprintf(" %s is accelerating fastest.", si.CategoryMomentum.Rising[0].Category)
+			}
+			out["spend_categories"] = fmt.Sprintf(
+				"%s leads spend at %.0f%% of the total (%s), %s vs the prior period.%s",
+				top.Category, top.SharePct, inr(top.CurrentTotal), strings.ToLower(titleCaseWords(top.Direction)), risingNote,
+			)
+		}
+
+		if rec, ni, bnpl := si.Recurring, si.NightImpulse, si.BNPLExposure; rec != nil || ni != nil || bnpl != nil {
+			var parts []string
+			if rec != nil && len(rec.Recurring) > 0 {
+				parts = append(parts, fmt.Sprintf("%d recurring charges totalling ~%s/month", len(rec.Recurring), inr(rec.TotalMonthlyEstimate)))
+			}
+			if ni != nil && ni.ImpulseScore > 0 {
+				parts = append(parts, fmt.Sprintf("an impulse score of %.0f/100", ni.ImpulseScore))
+			}
+			if bnpl != nil && bnpl.Last30DayTotal > 0 {
+				riskNote := ""
+				if bnpl.IsDangerZone {
+					riskNote = " (elevated relative to income)"
+				}
+				parts = append(parts, fmt.Sprintf("BNPL usage of %s in the last 30 days%s", inr(bnpl.Last30DayTotal), riskNote))
+			}
+			if len(parts) > 0 {
+				out["spend_habits"] = "Spending habits: " + strings.Join(parts, "; ") + "."
+			}
+		}
+
+		if inc := si.Income; inc != nil && inc.CreditCount > 0 {
+			paydayNote := "no clear next payday detected"
+			if inc.NextPredictedPayday != nil {
+				paydayNote = "next payday predicted at " + inc.NextPredictedPayday.Time().Format("Jan 2")
+			}
+			out["spend_income"] = fmt.Sprintf(
+				"Income is %s and %s, averaging %s per credit; %s.",
+				strings.ToLower(titleCaseWords(inc.StabilityLabel)), strings.ToLower(titleCaseWords(inc.FrequencyLabel)), inr(inc.AvgCreditAmount), paydayNote,
+			)
+		}
+	}
+
+	if si != nil && si.Budget != nil {
+		b := si.Budget
+		if b.HasBudget {
+			out["budget_health"] = fmt.Sprintf(
+				"The %s budget is %s at %s of %s spent (%.0f%% used), projected to land at %s with %d days remaining.",
+				b.ActiveMonth, strings.ToLower(titleCaseWords(b.Status)), inr(b.TotalSpent), inr(b.TotalBudget),
+				safePct(b.TotalSpent, b.TotalBudget), inr(b.ProjectedSpend), b.DaysRemaining,
+			)
+		} else {
+			out["budget_health"] = "This client has not set up a monthly budget yet — spend is tracked but not benchmarked against a plan."
+		}
+	}
+
 	return out
+}
+
+func safePct(part, whole float64) float64 {
+	if whole == 0 {
+		return 0
+	}
+	return part / whole * 100
 }
 
 // buildFiguresBlob renders the client's computed analytics as a compact,
 // deterministic, one-line-per-topic block — the sole input the model may use.
 // Topics with no meaningful data are omitted entirely.
-func buildFiguresBlob(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientAnalytics, adv *rmdomain.ClientAdvisory) string {
+func buildFiguresBlob(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientAnalytics, adv *rmdomain.ClientAdvisory, si *rmdomain.ClientSpendIntelligence) string {
 	var b strings.Builder
 	line := func(f string, args ...interface{}) { fmt.Fprintf(&b, f+"\n", args...) }
 
@@ -365,6 +463,47 @@ func buildFiguresBlob(pa *rmdomain.ClientPortfolioAnalysis, an *rmdomain.ClientA
 		}
 		if ctx != "" {
 			line("ctx:%s", ctx)
+		}
+	}
+
+	if si != nil {
+		if wd := si.WeekdayWeekend; wd != nil {
+			line("wkdwknd: weekday=%.0f weekend=%.0f ratio=%.2f peak=%s",
+				wd.WeekdayTotal, wd.WeekendTotal, wd.WeekendVsWeekdayRatio, wd.PeakDay)
+		}
+		if tr := si.Trend; tr != nil {
+			line("trend: period=%s dir=%s vol=%s proj30d=%.0f changepct=%.1f",
+				tr.Period, tr.Direction, tr.VolatilityLevel, tr.Projected30Day, tr.OverallTrendChangePct)
+		}
+		if ct := si.CategoryTrend; ct != nil && len(ct.Categories) > 0 {
+			cats := ""
+			for i, c := range ct.Categories {
+				if i >= 5 {
+					break
+				}
+				if i > 0 {
+					cats += ", "
+				}
+				cats += fmt.Sprintf("%s %.0f(%s)", c.Category, c.SharePct, c.Direction)
+			}
+			line("spendcats: top=%s topshare=%.0f cats=[%s]", ct.TopCategory, ct.TopCategorySharePct, cats)
+		}
+		if rec := si.Recurring; rec != nil && len(rec.Recurring) > 0 {
+			line("recurring: count=%d monthlyest=%.0f", len(rec.Recurring), rec.TotalMonthlyEstimate)
+		}
+		if ni := si.NightImpulse; ni != nil {
+			line("impulse: score=%.0f nightsharepct=%.0f nighttotal=%.0f",
+				ni.ImpulseScore, ni.NightSpendSharePct, ni.NightSpendTotal)
+		}
+		if bnpl := si.BNPLExposure; bnpl != nil && bnpl.Last30DayTotal > 0 {
+			line("bnpl: last30d=%.0f incomeratio=%.1f danger=%t", bnpl.Last30DayTotal, bnpl.IncomeRatioPct, bnpl.IsDangerZone)
+		}
+		if inc := si.Income; inc != nil {
+			line("income: avgcredit=%.0f stability=%s frequency=%s", inc.AvgCreditAmount, inc.StabilityLabel, inc.FrequencyLabel)
+		}
+		if b := si.Budget; b != nil && b.HasBudget {
+			line("budget: month=%s total=%.0f spent=%.0f status=%s health=%.0f daysleft=%d",
+				b.ActiveMonth, b.TotalBudget, b.TotalSpent, b.Status, b.HealthScore, b.DaysRemaining)
 		}
 	}
 

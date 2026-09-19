@@ -9,6 +9,7 @@ package analytics
 import (
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/yourusername/astra-backend/internal/apitime"
@@ -933,14 +934,126 @@ func VerifiedSubscriptionLoad(txns []txn, now time.Time) analyticsdomain.Subscri
 
 const incomeWindowDays = 180
 
+// rentLikeCategories are the category strings a credit's matching outgoing
+// debit must fall under to count as rent/bill pass-through evidence. Sourced
+// from the same "utilities" bucket the budget category taxonomy already
+// groups rent/housing/mortgage/electricity/internet under (000025_budget.up.sql).
+var rentLikeCategories = map[string]bool{
+	"rent": true, "utilities": true, "bills & utilities": true,
+	"housing": true, "mortgage": true,
+}
+
+func isRentLikeCategory(cat string) bool {
+	return rentLikeCategories[strings.ToLower(strings.TrimSpace(cat))]
+}
+
+const (
+	rentPassthroughWindowDays   = 5    // credit -> matching debit must land within this many days
+	rentPassthroughAmountTolPct = 0.10 // debit amount must be within 10% of the credit
+	rentPassthroughMinMatches   = 2    // needs to repeat, so one coincidence never triggers it
+)
+
+// ClassifyIncomeStreams groups a user's credits by counterparty and flags any
+// stream that looks like a rent/bill pass-through: a credit reliably followed
+// within a few days by a matching-amount debit in a rent/utilities category
+// (e.g. a flatmate transferring their share of the rent to whoever pays the
+// landlord). This is the ONLY exclusion signal used anywhere in income
+// calculation — matched, checkable evidence that the money round-trips back
+// out. Recurring or similarly-sized credits alone are never treated as
+// suspect, because that pattern also describes legitimate income: a cab
+// driver's fares, a delivery worker's payouts, or a freelancer's retainer
+// invoices, all commonly paid via P2P/UPI and easily mistaken for "shared
+// rent" if judged on shape alone.
+func ClassifyIncomeStreams(txns []txn, from, to time.Time) []analyticsdomain.IncomeStream {
+	credits := creditsInRange(txns, from, to)
+
+	var rentDebits []txn
+	for _, t := range debitsInRange(txns, from, to) {
+		if isRentLikeCategory(t.Category) {
+			rentDebits = append(rentDebits, t)
+		}
+	}
+
+	byMerchant := map[string][]txn{}
+	for _, c := range credits {
+		byMerchant[c.Merchant] = append(byMerchant[c.Merchant], c)
+	}
+
+	streams := make([]analyticsdomain.IncomeStream, 0, len(byMerchant))
+	for merchant, occ := range byMerchant {
+		var total float64
+		for _, o := range occ {
+			total += o.Amount
+		}
+
+		matches := 0
+		for _, c := range occ {
+			for _, d := range rentDebits {
+				days := d.OccurredAt.Sub(c.OccurredAt).Hours() / 24
+				if days < 0 || days > rentPassthroughWindowDays {
+					continue
+				}
+				if math.Abs(d.Amount-c.Amount) <= c.Amount*rentPassthroughAmountTolPct {
+					matches++
+					break
+				}
+			}
+		}
+
+		s := analyticsdomain.IncomeStream{
+			Merchant: merchant, CreditCount: len(occ),
+			AvgAmount: round2(total / float64(len(occ))), TotalAmount: round2(total),
+			Classification: "OTHER",
+		}
+		if matches >= rentPassthroughMinMatches && matches*2 >= len(occ) {
+			s.Classification = "EXCLUDED_RENT_PASSTHROUGH"
+			s.ExclusionReason = "recurring credit consistently followed by a matching rent/utilities debit"
+		}
+		streams = append(streams, s)
+	}
+
+	sort.Slice(streams, func(i, j int) bool { return streams[i].TotalAmount > streams[j].TotalAmount })
+	return streams
+}
+
 // IncomeAnalysis looks at CREDIT transactions to predict the next payday and
 // classify income stability/frequency, mirroring z-backend's
-// income_analyzer.go and insight_service.go payday-prediction logic.
+// income_analyzer.go and insight_service.go payday-prediction logic. Credits
+// from a stream ClassifyIncomeStreams identifies as a rent pass-through are
+// excluded from every figure below (never averaged into AvgCreditAmount,
+// never used for the stability/frequency labels) — see ClassifyIncomeStreams
+// for why that's the only exclusion applied.
 func IncomeAnalysis(txns []txn, now time.Time) analyticsdomain.IncomeResult {
-	credits := creditsInRange(txns, now.AddDate(0, 0, -incomeWindowDays), now)
+	from := now.AddDate(0, 0, -incomeWindowDays)
+
+	streams := ClassifyIncomeStreams(txns, from, now)
+	excludedMerchant := map[string]bool{}
+	var excludedStreams []analyticsdomain.IncomeStream
+	for _, s := range streams {
+		if s.Classification == "EXCLUDED_RENT_PASSTHROUGH" {
+			excludedMerchant[s.Merchant] = true
+			excludedStreams = append(excludedStreams, s)
+		}
+	}
+
+	allCredits := creditsInRange(txns, from, now)
+	credits := make([]txn, 0, len(allCredits))
+	for _, c := range allCredits {
+		if !excludedMerchant[c.Merchant] {
+			credits = append(credits, c)
+		}
+	}
+	// Safety net: never let exclusion zero out all income — if every stream
+	// somehow got flagged, fall back to the unfiltered set rather than
+	// reporting a user has no income at all.
+	if len(credits) == 0 && len(allCredits) > 0 {
+		credits = allCredits
+		excludedStreams = nil
+	}
+
 	sort.Slice(credits, func(i, j int) bool { return credits[i].OccurredAt.Before(credits[j].OccurredAt) })
 
-	res := analyticsdomain.IncomeResult{CreditCount: len(credits)}
+	res := analyticsdomain.IncomeResult{CreditCount: len(credits), ExcludedStreams: excludedStreams}
 	if len(credits) == 0 {
 		res.StabilityLabel, res.FrequencyLabel = "IRREGULAR", "IRREGULAR"
 		return res

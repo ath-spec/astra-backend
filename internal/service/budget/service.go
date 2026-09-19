@@ -22,6 +22,7 @@ import (
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
 	budgetprovider "github.com/yourusername/astra-backend/internal/provider/budget"
 	"github.com/yourusername/astra-backend/internal/repository"
+	analyticsengine "github.com/yourusername/astra-backend/internal/service/analytics"
 )
 
 const (
@@ -828,6 +829,34 @@ func buildHistory(txns []analyticsdomain.Transaction, target time.Time, canon fu
 
 	cutoff := time.Date(target.Year(), target.Month(), 1, 0, 0, 0, 0, time.UTC)
 
+	// Exclude rent/bill pass-through streams (e.g. a flatmate transferring
+	// their share of the rent) from what counts as income — see
+	// analytics.ClassifyIncomeStreams for the exclusion rule. A credit only
+	// gets excluded when it's checkably followed by a matching rent-category
+	// debit; recurring/similar-amount credits alone (gig-economy P2P income
+	// included) are never excluded. If every stream somehow gets excluded,
+	// excludedIncomeMerchants ends up covering everyone and the safety net
+	// below falls back to counting all credits, matching prior behavior.
+	excludedIncomeMerchants := map[string]bool{}
+	for _, s := range analyticsengine.ClassifyIncomeStreams(txns, time.Time{}, cutoff) {
+		if s.Classification == "EXCLUDED_RENT_PASSTHROUGH" {
+			excludedIncomeMerchants[s.Merchant] = true
+		}
+	}
+	var totalCreditAmount, excludedCreditAmount float64
+	for _, t := range txns {
+		if t.OccurredAt.Before(cutoff) && t.Type == analyticsdomain.TxnCredit {
+			totalCreditAmount += t.Amount
+			if excludedIncomeMerchants[t.Merchant] {
+				excludedCreditAmount += t.Amount
+			}
+		}
+	}
+	// Safety net: never let exclusion zero out all income for a user.
+	if totalCreditAmount > 0 && excludedCreditAmount >= totalCreditAmount {
+		excludedIncomeMerchants = map[string]bool{}
+	}
+
 	for _, t := range txns {
 		if !t.OccurredAt.Before(cutoff) {
 			continue
@@ -835,6 +864,9 @@ func buildHistory(txns []analyticsdomain.Transaction, target time.Time, canon fu
 		key := mk{t.OccurredAt.Year(), int(t.OccurredAt.Month())}
 		switch t.Type {
 		case analyticsdomain.TxnCredit:
+			if excludedIncomeMerchants[t.Merchant] {
+				continue
+			}
 			incomeByMonth[key] += t.Amount
 		case analyticsdomain.TxnDebit:
 			expenseByMonth[key] += t.Amount
