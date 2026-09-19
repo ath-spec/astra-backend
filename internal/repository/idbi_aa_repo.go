@@ -8,19 +8,26 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/yourusername/astra-backend/internal/db"
 )
 
-// IDBIAARepository owns the Account Aggregator mirror tables (migration
-// 000032): idbi_aa_consents and idbi_aa_linked_accounts. Statement
-// transactions pulled for a consent are written into spend_transactions
-// via IDBIRepository.UpsertSpendTransactions with source='aa'.
+// IDBIAARepository owns the Account Aggregator mirror tables using
+// SQLC-generated queries (internal/db). Tables:
+//   - idbi_aa_consents        (migration 000032)
+//   - idbi_aa_linked_accounts (migration 000032)
+//
+// AA statement transactions are written into spend_transactions via
+// IDBIRepository.UpsertSpendTransactions with source='aa'.
 type IDBIAARepository struct {
-	pool *pgxpool.Pool
+	pool    *pgxpool.Pool
+	queries *db.Queries
 }
 
 func NewIDBIAARepository(pool *pgxpool.Pool) *IDBIAARepository {
-	return &IDBIAARepository{pool: pool}
+	return &IDBIAARepository{pool: pool, queries: db.New(pool)}
 }
 
 // ErrNoConsent means no AA consent row exists for the given handle.
@@ -58,9 +65,69 @@ type AALinkedAccountRow struct {
 	LinkedAt            time.Time
 }
 
-// CreateConsent inserts a freshly requested consent (590). The handle is the
-// primary key; a repeat request for the same handle refreshes the mutable
-// fields.
+func rowToConsent(row db.IdbiAaConsent) AAConsentRow {
+	c := AAConsentRow{
+		ConsentHandle:  row.ConsentHandle,
+		UserID:         row.UserID,
+		ConsentID:      row.ConsentID,
+		Status:         row.Status,
+		PartyIDType:    row.PartyIDType,
+		PartyIDValue:   row.PartyIDValue,
+		VUA:            row.Vua,
+		ProductID:      row.ProductID,
+		AccountID:      row.AccountID,
+		RedirectURL:    row.RedirectUrl,
+		WebRedirectURL: row.WebRedirectUrl,
+		CreatedAt:      row.CreatedAt.Time,
+		UpdatedAt:      row.UpdatedAt.Time,
+	}
+	if row.ApprovedAt.Valid {
+		t := row.ApprovedAt.Time
+		c.ApprovedAt = &t
+	}
+	if row.ExpiresAt.Valid {
+		t := row.ExpiresAt.Time
+		c.ExpiresAt = &t
+	}
+	if row.LastFetchedAt.Valid {
+		t := row.LastFetchedAt.Time
+		c.LastFetchedAt = &t
+	}
+	return c
+}
+
+func listRowToConsent(row db.IdbiAaConsent) AAConsentRow {
+	c := AAConsentRow{
+		ConsentHandle:  row.ConsentHandle,
+		UserID:         row.UserID,
+		ConsentID:      row.ConsentID,
+		Status:         row.Status,
+		PartyIDType:    row.PartyIDType,
+		PartyIDValue:   row.PartyIDValue,
+		VUA:            row.Vua,
+		ProductID:      row.ProductID,
+		AccountID:      row.AccountID,
+		RedirectURL:    row.RedirectUrl,
+		WebRedirectURL: row.WebRedirectUrl,
+		CreatedAt:      row.CreatedAt.Time,
+		UpdatedAt:      row.UpdatedAt.Time,
+	}
+	if row.ApprovedAt.Valid {
+		t := row.ApprovedAt.Time
+		c.ApprovedAt = &t
+	}
+	if row.ExpiresAt.Valid {
+		t := row.ExpiresAt.Time
+		c.ExpiresAt = &t
+	}
+	if row.LastFetchedAt.Valid {
+		t := row.LastFetchedAt.Time
+		c.LastFetchedAt = &t
+	}
+	return c
+}
+
+// CreateConsent inserts a freshly requested consent (590). Idempotent on handle.
 func (r *IDBIAARepository) CreateConsent(ctx context.Context, row AAConsentRow) error {
 	if row.PartyIDType == "" {
 		row.PartyIDType = "MOBILE"
@@ -68,44 +135,41 @@ func (r *IDBIAARepository) CreateConsent(ctx context.Context, row AAConsentRow) 
 	if row.Status == "" {
 		row.Status = "PENDING"
 	}
-	_, err := r.pool.Exec(ctx, `
-		INSERT INTO idbi_aa_consents
-			(consent_handle, user_id, consent_id, status, party_id_type, party_id_value,
-			 vua, product_id, account_id, redirect_url, web_redirect_url, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now(), now())
-		ON CONFLICT (consent_handle) DO UPDATE SET
-			consent_id       = COALESCE(NULLIF(EXCLUDED.consent_id, ''), idbi_aa_consents.consent_id),
-			-- A repeat 590 (the sandbox reuses one fixed handle) must never
-			-- drag an already-advanced consent back to PENDING; the lifecycle
-			-- only moves forward, driven by 591 / the 497 webhook.
-			status           = CASE WHEN idbi_aa_consents.status = 'PENDING'
-			                        THEN EXCLUDED.status ELSE idbi_aa_consents.status END,
-			redirect_url     = COALESCE(NULLIF(EXCLUDED.redirect_url, ''), idbi_aa_consents.redirect_url),
-			web_redirect_url = COALESCE(NULLIF(EXCLUDED.web_redirect_url, ''), idbi_aa_consents.web_redirect_url),
-			updated_at       = now()
-	`, row.ConsentHandle, row.UserID, row.ConsentID, row.Status, row.PartyIDType, row.PartyIDValue,
-		row.VUA, row.ProductID, row.AccountID, row.RedirectURL, row.WebRedirectURL)
+	err := r.queries.CreateConsent(ctx, db.CreateConsentParams{
+		ConsentHandle:  row.ConsentHandle,
+		UserID:         row.UserID,
+		ConsentID:      row.ConsentID,
+		Status:         row.Status,
+		PartyIDType:    row.PartyIDType,
+		PartyIDValue:   row.PartyIDValue,
+		Vua:            row.VUA,
+		ProductID:      row.ProductID,
+		AccountID:      row.AccountID,
+		RedirectUrl:    row.RedirectURL,
+		WebRedirectUrl: row.WebRedirectURL,
+	})
 	if err != nil {
 		return fmt.Errorf("aa create consent: %w", err)
 	}
 	return nil
 }
 
-// UpdateConsentStatus updates status (and consent_id / approved_at when
-// supplied) for a handle.
+// UpdateConsentStatus updates status (and consent_id / approved_at when supplied).
 func (r *IDBIAARepository) UpdateConsentStatus(ctx context.Context, handle, status, consentID string, approvedAt *time.Time) error {
-	ct, err := r.pool.Exec(ctx, `
-		UPDATE idbi_aa_consents SET
-			status      = $2,
-			consent_id  = COALESCE(NULLIF($3, ''), consent_id),
-			approved_at = COALESCE($4, approved_at),
-			updated_at  = now()
-		WHERE consent_handle = $1
-	`, handle, status, consentID, approvedAt)
+	var pgApprovedAt pgtype.Timestamptz
+	if approvedAt != nil {
+		pgApprovedAt = pgtype.Timestamptz{Time: *approvedAt, Valid: true}
+	}
+	n, err := r.queries.UpdateConsentStatus(ctx, db.UpdateConsentStatusParams{
+		ConsentHandle: handle,
+		Status:        status,
+		Column3:       consentID,
+		ApprovedAt:    pgApprovedAt,
+	})
 	if err != nil {
 		return fmt.Errorf("aa update consent status: %w", err)
 	}
-	if ct.RowsAffected() == 0 {
+	if n == 0 {
 		return ErrNoConsent
 	}
 	return nil
@@ -113,59 +177,35 @@ func (r *IDBIAARepository) UpdateConsentStatus(ctx context.Context, handle, stat
 
 // MarkFetched stamps last_fetched_at = now() for a handle.
 func (r *IDBIAARepository) MarkFetched(ctx context.Context, handle string) error {
-	_, err := r.pool.Exec(ctx,
-		`UPDATE idbi_aa_consents SET last_fetched_at = now(), updated_at = now() WHERE consent_handle = $1`, handle)
-	if err != nil {
+	if err := r.queries.MarkConsentFetched(ctx, handle); err != nil {
 		return fmt.Errorf("aa mark fetched: %w", err)
 	}
 	return nil
 }
 
-func scanConsent(row pgx.Row) (AAConsentRow, error) {
-	var c AAConsentRow
-	err := row.Scan(
-		&c.ConsentHandle, &c.UserID, &c.ConsentID, &c.Status, &c.PartyIDType, &c.PartyIDValue,
-		&c.VUA, &c.ProductID, &c.AccountID, &c.RedirectURL, &c.WebRedirectURL,
-		&c.ApprovedAt, &c.ExpiresAt, &c.LastFetchedAt, &c.CreatedAt, &c.UpdatedAt,
-	)
-	return c, err
-}
-
-const aaConsentCols = `consent_handle, user_id, consent_id, status, party_id_type, party_id_value,
-	vua, product_id, account_id, redirect_url, web_redirect_url,
-	approved_at, expires_at, last_fetched_at, created_at, updated_at`
-
 // GetConsent returns one consent by handle. ok=false means no such row.
 func (r *IDBIAARepository) GetConsent(ctx context.Context, handle string) (AAConsentRow, bool, error) {
-	c, err := scanConsent(r.pool.QueryRow(ctx,
-		`SELECT `+aaConsentCols+` FROM idbi_aa_consents WHERE consent_handle = $1`, handle))
+	row, err := r.queries.GetConsent(ctx, handle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return AAConsentRow{}, false, nil
 	}
 	if err != nil {
 		return AAConsentRow{}, false, fmt.Errorf("aa get consent: %w", err)
 	}
-	return c, true, nil
+	return rowToConsent(row), true, nil
 }
 
 // ListConsents returns every consent for a user, newest first.
 func (r *IDBIAARepository) ListConsents(ctx context.Context, userID uuid.UUID) ([]AAConsentRow, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT `+aaConsentCols+` FROM idbi_aa_consents WHERE user_id = $1 ORDER BY created_at DESC`, userID)
+	rows, err := r.queries.ListConsentsByUser(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("aa list consents: %w", err)
 	}
-	defer rows.Close()
-
-	var out []AAConsentRow
-	for rows.Next() {
-		c, err := scanConsent(rows)
-		if err != nil {
-			return nil, fmt.Errorf("aa list consents scan: %w", err)
-		}
-		out = append(out, c)
+	out := make([]AAConsentRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, listRowToConsent(row))
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 // ReplaceLinkedAccounts sets the linked-account set for a handle to exactly
@@ -177,33 +217,35 @@ func (r *IDBIAARepository) ReplaceLinkedAccounts(ctx context.Context, handle str
 	}
 	defer tx.Rollback(ctx)
 
+	qtx := db.New(tx)
 	keep := make([]string, 0, len(accs))
+
 	for _, a := range accs {
 		if a.LinkRefNumber == "" {
 			continue
 		}
 		keep = append(keep, a.LinkRefNumber)
-		_, err = tx.Exec(ctx, `
-			INSERT INTO idbi_aa_linked_accounts
-				(consent_handle, link_ref_number, fip_id, fip_name, account_type, fi_type, masked_account_number, linked_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7, now())
-			ON CONFLICT (consent_handle, link_ref_number) DO UPDATE SET
-				fip_id                = EXCLUDED.fip_id,
-				fip_name              = EXCLUDED.fip_name,
-				account_type          = EXCLUDED.account_type,
-				fi_type               = EXCLUDED.fi_type,
-				masked_account_number = EXCLUDED.masked_account_number
-		`, handle, a.LinkRefNumber, a.FipID, a.FipName, a.AccountType, a.FiType, a.MaskedAccountNumber)
+		err = qtx.UpsertLinkedAccount(ctx, db.UpsertLinkedAccountParams{
+			ConsentHandle:       handle,
+			LinkRefNumber:       a.LinkRefNumber,
+			FipID:               a.FipID,
+			FipName:             a.FipName,
+			AccountType:         a.AccountType,
+			FiType:              a.FiType,
+			MaskedAccountNumber: a.MaskedAccountNumber,
+		})
 		if err != nil {
 			return fmt.Errorf("aa replace linked: upsert %s: %w", a.LinkRefNumber, err)
 		}
 	}
 
 	if len(keep) == 0 {
-		_, err = tx.Exec(ctx, `DELETE FROM idbi_aa_linked_accounts WHERE consent_handle = $1`, handle)
+		err = qtx.DeleteAllLinkedAccounts(ctx, handle)
 	} else {
-		_, err = tx.Exec(ctx,
-			`DELETE FROM idbi_aa_linked_accounts WHERE consent_handle = $1 AND link_ref_number <> ALL($2)`, handle, keep)
+		err = qtx.DeleteLinkedAccountsExcept(ctx, db.DeleteLinkedAccountsExceptParams{
+			ConsentHandle: handle,
+			Column2:       keep,
+		})
 	}
 	if err != nil {
 		return fmt.Errorf("aa replace linked: prune: %w", err)
@@ -213,23 +255,22 @@ func (r *IDBIAARepository) ReplaceLinkedAccounts(ctx context.Context, handle str
 
 // ListLinkedAccounts returns the linked accounts for a handle.
 func (r *IDBIAARepository) ListLinkedAccounts(ctx context.Context, handle string) ([]AALinkedAccountRow, error) {
-	rows, err := r.pool.Query(ctx, `
-		SELECT consent_handle, link_ref_number, fip_id, fip_name, account_type, fi_type, masked_account_number, linked_at
-		FROM idbi_aa_linked_accounts WHERE consent_handle = $1 ORDER BY link_ref_number
-	`, handle)
+	rows, err := r.queries.ListLinkedAccounts(ctx, handle)
 	if err != nil {
 		return nil, fmt.Errorf("aa list linked: %w", err)
 	}
-	defer rows.Close()
-
-	var out []AALinkedAccountRow
-	for rows.Next() {
-		var a AALinkedAccountRow
-		if err := rows.Scan(&a.ConsentHandle, &a.LinkRefNumber, &a.FipID, &a.FipName,
-			&a.AccountType, &a.FiType, &a.MaskedAccountNumber, &a.LinkedAt); err != nil {
-			return nil, fmt.Errorf("aa list linked scan: %w", err)
-		}
-		out = append(out, a)
+	out := make([]AALinkedAccountRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, AALinkedAccountRow{
+			ConsentHandle:       row.ConsentHandle,
+			LinkRefNumber:       row.LinkRefNumber,
+			FipID:               row.FipID,
+			FipName:             row.FipName,
+			AccountType:         row.AccountType,
+			FiType:              row.FiType,
+			MaskedAccountNumber: row.MaskedAccountNumber,
+			LinkedAt:            row.LinkedAt.Time,
+		})
 	}
-	return out, rows.Err()
+	return out, nil
 }
