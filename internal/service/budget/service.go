@@ -138,10 +138,18 @@ func (s *Service) Diagnosis(ctx context.Context, userID uuid.UUID, req budgetdom
 	var insights []budgetdomain.DiagnosisInsight
 
 	if len(hist.categoryHistory) == 0 {
-		// New user, no history: skip the ML round-trip entirely.
-		suggestedBudget = 5000.0
-		suggestedCats = computeFallbackCategories(suggestedBudget, hist.categoryHistory)
-		insights = buildFallbackInsights(hist.avgExpenses, hist.avgIncome, hist.avgSavings)
+		// No accounts connected / no spend history at all: report the true
+		// state (zeros, no insights) rather than fabricating a generic
+		// ₹5000/7-category "recommendation" that looks personalized but
+		// isn't. This is what the reference Flutter screen actually checks
+		// for (zeyro_new_ui's budget_intro_diagnosis_screen.dart:51-55) —
+		// averageIncome/averageExpenses/averageSavings == 0 AND
+		// diagnosisInsights empty — to show its own "no data available,
+		// please connect your accounts" card instead of any numbers. Skip
+		// the ML round-trip entirely; there's nothing to diagnose yet.
+		suggestedBudget = 0
+		suggestedCats = nil
+		insights = []budgetdomain.DiagnosisInsight{}
 	} else {
 		// Ridge-weight persistence: if we hold weights trained on this user's
 		// latest data month, pass them so the stateless model skips retraining

@@ -25,11 +25,20 @@ type Config struct {
 	RedisURL string
 
 	// BudgetMLBaseURL / BudgetMLToken point at the budget-bloc ML service
-	// (Hugging Face Space). Only two endpoints are called — POST /ml/diagnosis
-	// and POST /suggest/categories. When unreachable the budget service falls
-	// back to local heuristics, so the token is optional.
-	BudgetMLBaseURL string
-	BudgetMLToken   string
+	// (Hugging Face Space; the token gets past the Space's own private-space
+	// gate). Three endpoints are wired: POST /ml/diagnosis, POST
+	// /suggest/categories (both stateless, need only the HF token above), and
+	// GET /analytics/recommendations, which additionally requires
+	// BudgetMLInternalSecret — the Space's get_current_user_id dependency
+	// accepts an X-Internal-Token matching its own INTERNAL_SECRET as a
+	// service-to-service bypass in place of a real login session (see
+	// z-backend's budget-manager-client.go for the reference pattern; same
+	// env var name, INTERNAL_SECRET, on both sides). When unreachable or the
+	// secret's unset/wrong, the budget service falls back to local
+	// heuristics, so all three of these are optional for local dev.
+	BudgetMLBaseURL        string
+	BudgetMLToken          string
+	BudgetMLInternalSecret string
 
 	// LLM provider seam (internal/provider/llm). "groq" today; "bedrock" is
 	// provisioned and switched on after the AWS review. Bedrock creds come
@@ -113,12 +122,9 @@ func Load() *Config {
 		RMJWTSecret:  os.Getenv("RM_JWT_SECRET"),
 		SarvamAPIKey: os.Getenv("SARVAM_API_KEY"),
 
-		BudgetMLBaseURL: os.Getenv("BUDGET_ML_BASE_URL"),
-		BudgetMLToken:   os.Getenv("BUDGET_ML_TOKEN"),
-	}
-
-	if cfg.BudgetMLBaseURL == "" {
-		cfg.BudgetMLBaseURL = "https://zeyro87-budget-bloc.hf.space/api/v1"
+		BudgetMLBaseURL:        os.Getenv("BUDGET_ML_BASE_URL"),
+		BudgetMLToken:          os.Getenv("BUDGET_ML_TOKEN"),
+		BudgetMLInternalSecret: os.Getenv("INTERNAL_SECRET"),
 	}
 
 	cfg.IDBIBaseURL = envOr("IDBI_BASE_URL", "https://sandboxpocgatewayprod.idbi.bank.in")

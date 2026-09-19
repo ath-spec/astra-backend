@@ -1,17 +1,17 @@
-// Package budget holds the HTTP client for the budget-bloc ML service (the
-// Hugging Face Space at zeyro87-budget-bloc). Wired endpoints — the set
-// the budget flow calls:
+// Package budget holds the HTTP client for the budget-bloc ML service (a
+// privately-hosted Hugging Face Space — base URL/token/internal secret all
+// come from env, nothing about the endpoint is baked in here). Client
+// methods exist for six endpoints; only three are actually called by a wired
+// feature today (internal/service/budget/service.go):
 //
-//	POST {base}/ml/diagnosis              -> initial budget + insights
-//	POST {base}/suggest/categories        -> per-category split for a chosen total
-//	GET  {base}/analytics/recommendations -> dashboard insights
-//	POST {base}/reallocation/run          -> Smart Rebalance proposal
-//	POST {base}/reallocation/apply        -> apply an accepted rebalance
-//	POST {base}/ml/learn                  -> feed accept/reject feedback back
+//	POST {base}/ml/diagnosis              -> initial budget + insights (stateless)
+//	POST {base}/suggest/categories        -> per-category split for a chosen total (stateless)
+//	GET  {base}/analytics/recommendations -> dashboard insights (needs X-Internal-Token; see Client.internalSecret)
 //
-// budget-bloc's remaining endpoints (/budget/create, /analytics/spending-summary,
-// /ml/validate, /ml/optimize, /transactions, /export, /import, /statistics)
-// are not used by any wired feature and are deliberately omitted.
+// RunReallocation / ApplyReallocation / Learn are implemented but not
+// currently called from any handler. budget-bloc's remaining endpoints
+// (/budget/create, /analytics/spending-summary, /ml/validate, /ml/optimize,
+// /transactions, /export, /import, /statistics) aren't used at all.
 package budget
 
 import (
@@ -30,8 +30,6 @@ import (
 	budgetdomain "github.com/yourusername/astra-backend/internal/domain/budget"
 )
 
-const DefaultBaseURL = "https://zeyro87-budget-bloc.hf.space/api/v1"
-
 // ErrUnavailable means the ML service could not be reached or returned a
 // non-conflict error. Callers fall back to local heuristics.
 var ErrUnavailable = errors.New("budget ML service unavailable")
@@ -46,23 +44,31 @@ func (e *ConflictError) Error() string { return "budget ML returned 409 conflict
 
 // Client talks to budget-bloc. The zero value is not usable; use NewClient.
 type Client struct {
-	baseURL string
-	token   string
-	http    *http.Client
+	baseURL        string
+	token          string
+	internalSecret string
+	http           *http.Client
 }
 
-func NewClient(baseURL, token string) *Client {
+// internalSecret is the Space's own X-Internal-Token / INTERNAL_SECRET
+// service-to-service bypass — needed for GET /analytics/recommendations,
+// which requires a login session otherwise. Optional: blank means requests
+// go out exactly as before (HF token only), so this is safe to leave unset.
+//
+// baseURL has no built-in default — it must come from config/env (see
+// internal/config.Config.BudgetMLBaseURL). A blank baseURL makes every
+// request fail closed (invalid URL -> ErrUnavailable), which the budget
+// service already treats as "ML unreachable, use local heuristics."
+func NewClient(baseURL, token, internalSecret string) *Client {
 	baseURL = strings.TrimSuffix(strings.TrimSpace(baseURL), "/")
-	if baseURL == "" {
-		baseURL = DefaultBaseURL
-	}
-	if !strings.HasSuffix(baseURL, "/api/v1") {
+	if baseURL != "" && !strings.HasSuffix(baseURL, "/api/v1") {
 		baseURL += "/api/v1"
 	}
 	return &Client{
-		baseURL: baseURL,
-		token:   strings.TrimSpace(token),
-		http:    &http.Client{Timeout: 30 * time.Second},
+		baseURL:        baseURL,
+		token:          strings.TrimSpace(token),
+		internalSecret: strings.TrimSpace(internalSecret),
+		http:           &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -154,6 +160,9 @@ func (c *Client) do(ctx context.Context, method, path, userID string, body []byt
 	}
 	if c.token != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	if c.internalSecret != "" {
+		httpReq.Header.Set("X-Internal-Token", c.internalSecret)
 	}
 	if userID != "" {
 		httpReq.Header.Set("X-User-Id", userID)

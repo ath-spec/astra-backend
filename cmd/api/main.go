@@ -194,7 +194,7 @@ func main() {
 	// budget-bloc (POST /ml/diagnosis, POST /suggest/categories) with local
 	// heuristic fallbacks.
 	budgetRepo := repository.NewBudgetRepository(db.Pool)
-	budgetMLClient := budgetprovider.NewClient(cfg.BudgetMLBaseURL, cfg.BudgetMLToken)
+	budgetMLClient := budgetprovider.NewClient(cfg.BudgetMLBaseURL, cfg.BudgetMLToken, cfg.BudgetMLInternalSecret)
 	budgetService := budgetservice.NewService(budgetRepo, spendSource, budgetMLClient)
 
 	// IDBI Atlas integration. The client always exists (cheap); each feature
