@@ -200,7 +200,12 @@ func main() {
 	// IDBI Atlas integration. The client always exists (cheap); each feature
 	// service is only constructed + routed when its flag is on. Flag off =>
 	// the app reads its existing mock/seeded data, unchanged.
-	idbiClient := idbiprovider.NewClient(idbiprovider.Config{BaseURL: cfg.IDBIBaseURL})
+	idbiHTTPClient := &http.Client{Timeout: 30 * time.Second}
+	if cfg.IDBIBaseURL == "mock://sandbox" {
+		slog.Info("IDBI mock mode enabled (using testdata)")
+		idbiHTTPClient.Transport = &idbiprovider.MockTransport{BaseDir: "internal/provider/idbi/testdata"}
+	}
+	idbiClient := idbiprovider.NewClient(idbiprovider.Config{BaseURL: "https://sandboxpocgatewayprod.idbi.bank.in", HTTP: idbiHTTPClient})
 	idbiRepo := repository.NewIDBIRepository(db.Pool)
 	var idbiAccountsSvc *idbiaccountsservice.Service
 	var idbiSpendSvc *statementsyncservice.Service

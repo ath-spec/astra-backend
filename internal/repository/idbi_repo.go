@@ -425,7 +425,7 @@ func defStr(s, def string) string {
 // numericFromFloat converts a float64 to pgtype.Numeric for SQLC params.
 func numericFromFloat(f float64) pgtype.Numeric {
 	var n pgtype.Numeric
-	_ = n.Scan(f)
+	_ = n.Scan(fmt.Sprintf("%f", f))
 	return n
 }
 
