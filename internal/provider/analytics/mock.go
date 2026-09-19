@@ -128,7 +128,7 @@ func (s *MockSource) ensureSeeded(ctx context.Context, userID uuid.UUID) error {
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	lockKey := userSeed(userID)
-	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1::text))`, lockKey); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
 		return fmt.Errorf("acquire seed lock: %w", err)
 	}
 

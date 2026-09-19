@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: astra_db_prod
+    environment:
+      POSTGRES_USER: astra_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-securepassword123} # Change this via .env on EC2
+      POSTGRES_DB: astra_prod
+    ports:
+      # Optional: Bind to localhost only so it's not exposed to the public internet
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U astra_admin -d astra_prod"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: astra_api_prod
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Exposes API to the public internet on port 80 (requires EC2 Security Group to allow inbound port 80)
+      - "0.0.0.0:80:8080"
+    environment:
+      - DATABASE_URL=postgres://astra_admin:${POSTGRES_PASSWORD:-securepassword123}@db:5432/astra_prod?sslmode=disable
+      - JWT_SECRET=${JWT_SECRET:-changeme-production-jwt-secret}
+      - RM_JWT_SECRET=${RM_JWT_SECRET:-changeme-production-rm-jwt-secret}
+      - PORT=8080
+      - LLM_PROVIDER=groq
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - SARVAM_API_KEY=${SARVAM_API_KEY}
+      # Production IDBI / Mocks
+      - IDBI_BASE_URL=mock://sandbox
+      - IDBI_ACCOUNTS_ENABLED=true
+      - IDBI_SPEND_ENABLED=true
+      - IDBI_LOANS_ENABLED=true
+      - IDBI_KYC_ENABLED=true
+      - IDBI_CREDIT_SCORE_ENABLED=true
+      - IDBI_LEADS_ENABLED=true
+      - IDBI_AA_ENABLED=true
+      - IDBI_RM_RISK_ENABLED=true
+      - IDBI_CKYC_API_TOKEN=3420c172-fba9-44ac-ba95-2a9bb66f788f
+      - IDBI_CKYC_PARENT_COMPANY=AAAAA8597P
+      - IDBI_CKYC_BRANCH_CODE=HOBRANCH
+      - IDBI_CKYC_SOURCE_SYSTEM=Finacle
+      - IDBI_CKYC_APP_FORM_NO=FF01
+      - IDBI_LEAD_CHANNEL=Online
+      - IDBI_LEAD_SOURCE=Website
+      - IDBI_AA_REDIRECT_MODE=stub
+      - IDBI_AA_PRODUCT_ID=TEST
+      - IDBI_AA_VUA_SUFFIX=@onemoney
+    restart: unless-stopped
+
+volumes:
+  postgres_data_prod:
