@@ -118,3 +118,26 @@ deploy:
 	@ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no $(EC2_USER)@$(EC2_IP) \
 		"cd $(DEPLOY_DIR) && docker compose -f docker-compose.prod.yml up -d --build"
 	@echo "Deployment successful! API is now running on http://$(EC2_IP)"
+
+# --- SSM Deployment Commands ---
+# EC2 SSM Configuration
+EC2_INSTANCE_ID ?= i-0123456789abcdef0
+
+deploy-ssm:
+	@echo "1. Building Linux binaries locally..."
+	@mkdir -p bin-prod
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin-prod/main ./cmd/api/main.go
+	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin-prod/seed_idbi_customers ./scripts/seed_idbi_customers.go
+	@echo "2. Deploying to $(EC2_INSTANCE_ID) via AWS SSM..."
+	@echo "3. Syncing files via rsync over SSM tunnel..."
+	@rsync -avz --delete \
+		--exclude '.git' \
+		--exclude 'bin' \
+		--exclude '.env' \
+		--exclude '.DS_Store' \
+		-e "ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no -o ProxyCommand='aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p'" \
+		. $(EC2_USER)@$(EC2_INSTANCE_ID):$(DEPLOY_DIR)
+	@echo "4. Rebuilding and starting Docker containers on EC2..."
+	@ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no -o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p" $(EC2_USER)@$(EC2_INSTANCE_ID) \
+		"cd $(DEPLOY_DIR) && docker compose -f docker-compose.prod.yml up -d --build"
+	@echo "SSM Deployment successful!"
