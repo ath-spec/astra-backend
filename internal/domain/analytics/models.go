@@ -283,12 +283,31 @@ type SubscriptionLoadResult struct {
 
 // --- O: Income analysis ---
 
+// IncomeStream is one counterparty's credit history, classified as either
+// genuine income ("OTHER" — the label is intentionally non-committal, since
+// stability/frequency are judged separately in IncomeResult) or excluded as a
+// rent/bill pass-through. The only exclusion signal is a checkable one: the
+// same money visibly leaving again as a matching rent/utilities debit a few
+// days later. Frequency or amount-regularity alone never excludes a stream,
+// because gig-economy income (cab, delivery, freelance client payments via
+// P2P/UPI) can look just as "recurring" as a flatmate's rent share — the
+// difference is whether it round-trips back out as rent, not how it looks.
+type IncomeStream struct {
+	Merchant        string  `json:"merchant"`
+	CreditCount     int     `json:"credit_count"`
+	AvgAmount       float64 `json:"avg_amount"`
+	TotalAmount     float64 `json:"total_amount"`
+	Classification  string  `json:"classification"` // OTHER / EXCLUDED_RENT_PASSTHROUGH
+	ExclusionReason string  `json:"exclusion_reason,omitempty"`
+}
+
 type IncomeResult struct {
-	AvgCreditAmount     float64       `json:"avg_credit_amount"`
-	TypicalIntervalDays float64       `json:"typical_interval_days"`
-	NextPredictedPayday *apitime.Time `json:"next_predicted_payday,omitempty"`
-	StabilityLabel      string        `json:"stability_label"` // STABLE / VARIABLE / IRREGULAR
-	FrequencyLabel      string        `json:"frequency_label"` // MONTHLY / OCCASIONAL / IRREGULAR
-	PrimarySource       string        `json:"primary_source,omitempty"`
-	CreditCount         int           `json:"credit_count"`
+	AvgCreditAmount     float64        `json:"avg_credit_amount"`
+	TypicalIntervalDays float64        `json:"typical_interval_days"`
+	NextPredictedPayday *apitime.Time  `json:"next_predicted_payday,omitempty"`
+	StabilityLabel      string         `json:"stability_label"` // STABLE / VARIABLE / IRREGULAR
+	FrequencyLabel      string         `json:"frequency_label"` // MONTHLY / OCCASIONAL / IRREGULAR
+	PrimarySource       string         `json:"primary_source,omitempty"`
+	CreditCount         int            `json:"credit_count"`
+	ExcludedStreams     []IncomeStream `json:"excluded_streams,omitempty"`
 }

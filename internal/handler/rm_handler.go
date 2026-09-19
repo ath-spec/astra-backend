@@ -41,6 +41,7 @@ func (h *RMHandler) Register(r chi.Router) {
 	r.Get("/clients/{userID}/advisory", h.clientAdvisory)
 	r.Get("/clients/{userID}/analytics", h.clientAnalytics)
 	r.Get("/clients/{userID}/analytics/narrative", h.clientNarrative)
+	r.Get("/clients/{userID}/spend-intelligence", h.clientSpendIntelligence)
 	r.Get("/clients/{userID}/interactions", h.listInteractions)
 	r.Post("/clients/{userID}/interactions", h.addInteraction)
 	r.Post("/clients/{userID}/interactions/{id}/complete", h.completeInteraction)
@@ -196,6 +197,25 @@ func (h *RMHandler) bookInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := h.svc.BookInsights(r.Context(), rmID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, res)
+}
+
+func (h *RMHandler) clientSpendIntelligence(w http.ResponseWriter, r *http.Request) {
+	rmID, ok := middleware.GetRMID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
+	if err != nil {
+		apiresponse.Error(w, apiresponse.Validation("invalid user id"))
+		return
+	}
+	res, err := h.svc.SpendIntelligence(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
