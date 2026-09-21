@@ -335,7 +335,7 @@ func main() {
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
 	rmHandler := handler.NewRMHandler(rmService)
-	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService)
+	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService).WithEvents(eventsPublisher, assignmentRepo)
 	rmChatHandler := handler.NewRMChatHandler(rmChatService)
 
 	// 6. Setup Router

@@ -24,6 +24,7 @@ const (
 	TypePortfolioChanged    = "portfolio_changed"
 	TypeSubscriptionChanged = "subscription_changed"
 	TypeBankAccountChanged  = "bank_account_changed"
+	TypeClientAssigned      = "client_assigned"
 )
 
 // Event is the JSON frame pushed down an RM's WebSocket connection.
@@ -134,4 +135,30 @@ func (p *Publisher) UserChanged(ctx context.Context, userID uuid.UUID, eventType
 	rmEv := ev
 	rmEv.RMID = *rmID
 	p.hub.Publish(TopicRM(*rmID), rmEv)
+}
+
+// AssignmentChanged publishes TypeClientAssigned to every book affected by
+// an assign/transfer/remove: the new owner (their book gained a client), the
+// old owner if any (their book lost one), and admins. Unlike UserChanged
+// this never needs the OwnerLookup — the caller already knows both RM ids
+// directly from the request, and by the time this fires the DB write has
+// already committed the NEW assignment, so looking it up again would only
+// ever reconfirm newRMID and could never recover oldRMID (already gone).
+func (p *Publisher) AssignmentChanged(userID uuid.UUID, oldRMID, newRMID *uuid.UUID) {
+	if p == nil || p.hub == nil {
+		return
+	}
+	ev := Event{Type: TypeClientAssigned, UserID: userID, At: time.Now().Unix()}
+	p.hub.Publish(TopicAdmin, ev)
+	if oldRMID != nil {
+		oldEv := ev
+		oldEv.RMID = *oldRMID
+		p.hub.Publish(TopicRM(*oldRMID), oldEv)
+	}
+	if newRMID != nil {
+		newEv := ev
+		newEv.RMID = *newRMID
+		p.hub.Publish(TopicRM(*newRMID), newEv)
+	}
+	p.hub.Publish(TopicUser(userID), ev)
 }

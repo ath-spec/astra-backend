@@ -103,6 +103,15 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")
 		return
 	}
+	// FindOrCreateUser auto-assigns a new signup to an RM internally (see
+	// PostgresUserRepository.assigner) when the user opted in — there's no
+	// separate "assign" call here to hook a publish onto, so push the event
+	// from the one place that knows a brand-new user just came through.
+	// UserChanged does its own OwnerOf lookup, so this is a no-op push if
+	// the user didn't opt into an RM (no owner found) or no RM had capacity.
+	if isNewUser && h.events != nil {
+		go h.events.UserChanged(context.Background(), user.ID, events.TypeClientAssigned)
+	}
 
 	// 2. Generate JWT for the verified user
 	tokenString, err := h.authService.GenerateToken(user.ID)
