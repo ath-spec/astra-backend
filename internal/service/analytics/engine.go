@@ -371,9 +371,17 @@ func CategoryMomentum(catTrend analyticsdomain.CategoryTrendResult) analyticsdom
 	}
 }
 
+// topN never returns nil, even for a nil/empty input: CategoryMomentum below
+// includes Rising or Falling in its response as soon as *either* one is
+// non-empty, so the other can independently reach the RM portal as a bare
+// nil slice (JSON `null`) while its sibling has entries — and the frontend
+// calls .length on both once the card renders at all.
 func topN(stats []analyticsdomain.CategoryStat, n int) []analyticsdomain.CategoryStat {
 	if len(stats) > n {
 		return stats[:n]
+	}
+	if stats == nil {
+		return []analyticsdomain.CategoryStat{}
 	}
 	return stats
 }
@@ -492,6 +500,22 @@ func MerchantAnalysis(txns []txn, now time.Time) analyticsdomain.MerchantAnalysi
 				Merchant: name, RecentTotal: round2(a.total), PriorVisitCount: olderVisits[name],
 			})
 		}
+	}
+
+	// FrequencySpikes/MoMSpikes/ReactivatedMerchants are only ever appended
+	// to above, so any of them staying at their nil zero-value (no spikes or
+	// reactivations found) serializes as JSON `null` instead of `[]`. The RM
+	// portal calls .length on these unconditionally once MerchantAnalysis
+	// itself is present (which only requires TopMerchants to be non-empty,
+	// not these siblings), so a null here crashes that screen.
+	if res.FrequencySpikes == nil {
+		res.FrequencySpikes = []analyticsdomain.MerchantStat{}
+	}
+	if res.MoMSpikes == nil {
+		res.MoMSpikes = []analyticsdomain.MerchantStat{}
+	}
+	if res.ReactivatedMerchants == nil {
+		res.ReactivatedMerchants = []analyticsdomain.ReactivatedMerchant{}
 	}
 
 	return res
