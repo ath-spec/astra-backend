@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: astra-backend
-          image: 070443470895.dkr.ecr.ap-south-1.amazonaws.com/abhimanyu-gupta-ecr:latest
+          image: fieryice24/astra-backend-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
