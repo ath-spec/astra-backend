@@ -42,7 +42,12 @@ type RefreshToken struct {
 }
 
 type UserRepository interface {
-	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (user *User, isNew bool, err error)
+	// wantsRM is a pointer so a caller that omits the field (e.g. a re-auth
+	// call that isn't the signup form) leaves the user's existing opt-in
+	// untouched instead of silently resetting it to false and unassigning
+	// their RM. nil means "don't change it"; a new user with nil defaults
+	// to false (opted out) since there is nothing to preserve yet.
+	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM *bool, uiBanks interface{}) (user *User, isNew bool, err error)
 	UpdateUserName(ctx context.Context, userID uuid.UUID, name string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*User, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
@@ -75,7 +80,7 @@ func (r *PostgresUserRepository) SetAssigner(a AssignmentRepository) {
 	r.assigner = a
 }
 
-func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (*User, bool, error) {
+func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM *bool, uiBanks interface{}) (*User, bool, error) {
 	if existing, err := r.findByPhone(ctx, phoneNumber); err != nil {
 		return nil, false, err
 	} else if existing != nil {
@@ -98,16 +103,21 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		}
 		// Honour a change to the advisory opt-in: turning it on assigns an RM
 		// if the user has none; turning it off releases their current RM.
-		if wantsRM != existing.WantsRM {
+		// wantsRM == nil means the caller (e.g. a background re-auth call
+		// that isn't the signup form) has no opinion — leave it as-is rather
+		// than treating "field omitted" as "opt out".
+		if wantsRM != nil && *wantsRM != existing.WantsRM {
 			if _, err := r.db.Pool.Exec(ctx,
-				`UPDATE users SET wants_rm = $1 WHERE id = $2`, wantsRM, existing.ID); err != nil {
+				`UPDATE users SET wants_rm = $1 WHERE id = $2`, *wantsRM, existing.ID); err != nil {
 				return nil, false, fmt.Errorf("update user wants_rm: %w", err)
 			}
-			existing.WantsRM = wantsRM
-			r.syncRMAssignment(ctx, existing.ID, wantsRM)
+			existing.WantsRM = *wantsRM
+			r.syncRMAssignment(ctx, existing.ID, *wantsRM)
 		}
 		return existing, false, nil
 	}
+
+	newUserWantsRM := wantsRM != nil && *wantsRM
 
 	var user User
 	var isNew bool
@@ -116,7 +126,7 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		VALUES (gen_random_uuid(), $1, $2, $3, $4)
 		ON CONFLICT (phone_number) DO UPDATE SET phone_number = EXCLUDED.phone_number
 		RETURNING id, astra_user_id, phone_number, name, wants_rm, created_at, (xmax = 0) AS is_new
-	`, astraUserID, phoneNumber, name, wantsRM).Scan(
+	`, astraUserID, phoneNumber, name, newUserWantsRM).Scan(
 		&user.ID,
 		&user.AstraUserID,
 		&user.PhoneNumber,
@@ -142,7 +152,7 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	// a failure here (no active RMs, transient DB error) must never block
 	// signup — the user is created either way and, if they wanted an RM,
 	// shows up in the admin console's unassigned pool.
-	if wantsRM && r.assigner != nil {
+	if newUserWantsRM && r.assigner != nil {
 		if _, err := r.assigner.AssignNextRM(ctx, user.ID); err != nil && !errors.Is(err, ErrNoActiveRM) {
 			fmt.Printf("user_repo: auto-assign RM for user %s failed: %v\n", user.ID, err)
 		}

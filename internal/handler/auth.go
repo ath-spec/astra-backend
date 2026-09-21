@@ -20,7 +20,11 @@ type VerifyRequest struct {
 	PhoneNumber string                   `json:"phone_number"`
 	OTP         string                   `json:"otp"`
 	Name        string                   `json:"name"`
-	WantsRM     bool                     `json:"wants_rm"` // advisory opt-in from the signup form
+	// WantsRM is a pointer so a call that omits the field (e.g. the nav-pill
+	// chat's background re-auth ping) doesn't get decoded as "false" and
+	// silently unassign an RM the user already opted into on the real
+	// signup form. Only an explicit true/false in the payload changes it.
+	WantsRM     *bool                    `json:"wants_rm"`
 	Banks       []repository.BankAccount `json:"banks"`    // Dynamic UI accounts
 }
 

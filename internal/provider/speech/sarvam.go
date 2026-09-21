@@ -173,7 +173,7 @@ func (p *SarvamProvider) SpeechToTextStream(ctx context.Context, clientConn *web
 		return ErrNotConfigured
 	}
 	lang := orDefault(language, "auto")
-	url := fmt.Sprintf("%s?language_code=%s&stream_type=balanced&silence_duration_ms=5000", sarvamSTTStreamURL, lang)
+	url := fmt.Sprintf("%s?language_code=%s&stream_type=balanced&silence_duration_ms=20000", sarvamSTTStreamURL, lang)
 
 	header := http.Header{}
 	header.Set("api-subscription-key", p.apiKey)

@@ -404,13 +404,13 @@ func main() {
 	// query-token fallback (browsers can't set custom headers on the native
 	// WebSocket API) instead of the header-only RequireAuth used below.
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.RequireAuthWS(authService))
+		r.Use(authmw.RequireAuthWS(authService, userRepo))
 		r.Get("/api/chat/stt/stream", chatHandler.HandleSTTStream)
 	})
 
 	// Protected Routes (Requires JWT Bearer Token)
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.RequireAuth(authService))
+		r.Use(authmw.RequireAuth(authService, userRepo))
 		r.Get("/api/auth/me", authHandler.Me)
 		r.Patch("/api/auth/me", authHandler.UpdateMe)
 		r.Post("/api/chat", chatHandler.HandleChat)
