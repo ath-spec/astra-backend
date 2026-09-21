@@ -92,7 +92,10 @@ var defaults = map[Key]Agent{
 	},
 	KeyRMNarrator: {
 		Key: KeyRMNarrator, Label: "RM Narrative Writer",
-		Models:         []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b"},
+		// llama-3.3-70b-versatile and llama-3.1-8b-instant are discontinued
+		// on Groq — routing to them just burns the fallback chain on
+		// guaranteed failures before ever reaching a live model.
+		Models:         []string{"openai/gpt-oss-20b"},
 		Temperature:    llm.Temp(0.2),
 		MaxTokens:      2048,
 		ResponseFormat: "json_object",
