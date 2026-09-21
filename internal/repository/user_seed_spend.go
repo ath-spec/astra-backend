@@ -142,26 +142,51 @@ func (r *PostgresUserRepository) seedSpendHistory(ctx context.Context, userID uu
 		`, userID, round2Money(amount), typ, category, merchant, at)
 	}
 
-	for m := 1; m <= spendHistoryMonths; m++ {
+	// m=0 is the current, still-in-progress month — included so the newest
+	// seeded transaction lands near "today" instead of the loop stopping
+	// dead at the end of last month. Its day range and category counts are
+	// scaled down to the days actually elapsed so it doesn't look like a
+	// full month's worth of activity crammed into a partial one.
+	for m := 0; m <= spendHistoryMonths; m++ {
 		monthStart := firstOfThisMonth.AddDate(0, -m, 0)
 		daysInMonth := monthStart.AddDate(0, 1, -1).Day()
+		isCurrentMonth := m == 0
+		daySpan := daysInMonth
+		if isCurrentMonth {
+			daySpan = now.Day() // only days that have actually happened
+		}
 
-		// Monthly salary credit, first few days of the month.
-		salary := prof.monthlyIncome * (0.97 + rng.Float64()*0.06)
-		queue(salary, "CREDIT", "Salary", prof.incomeMerchant,
-			atRandomHour(monthStart.AddDate(0, 0, rng.Intn(3)), rng))
+		// Monthly salary credit, first few days of the month — skip it for
+		// the current month if payday (day 1-3) hasn't happened yet.
+		if !isCurrentMonth || daySpan >= 3 {
+			salary := prof.monthlyIncome * (0.97 + rng.Float64()*0.06)
+			queue(salary, "CREDIT", "Salary", prof.incomeMerchant,
+				atRandomHour(monthStart.AddDate(0, 0, rng.Intn(3)), rng))
+		}
 
 		for _, c := range prof.categories {
 			n := c.perMonthMin
 			if c.perMonthMax > c.perMonthMin {
 				n += rng.Intn(c.perMonthMax - c.perMonthMin + 1)
 			}
+			if isCurrentMonth {
+				n = n * daySpan / daysInMonth
+			}
 			for i := 0; i < n; i++ {
-				day := monthStart.AddDate(0, 0, rng.Intn(daysInMonth))
+				day := monthStart.AddDate(0, 0, rng.Intn(daySpan))
 				amt := c.amountMin + rng.Float64()*(c.amountMax-c.amountMin)
 				queue(amt, "DEBIT", c.name, c.merchant, atRandomHour(day, rng))
 			}
 		}
+	}
+
+	// The random draws above can land short of today by chance even with
+	// the current month included — guarantee at least one transaction on
+	// each of the last 2 days so "today" is never an empty gap.
+	for i, daysAgo := range []int{0, 1} {
+		c := prof.categories[i%len(prof.categories)]
+		amt := c.amountMin + rng.Float64()*(c.amountMax-c.amountMin)
+		queue(amt, "DEBIT", c.name, c.merchant, atRandomHour(now.AddDate(0, 0, -daysAgo), rng))
 	}
 
 	br := r.db.Pool.SendBatch(ctx, batch)

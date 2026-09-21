@@ -6,7 +6,7 @@
     "input": {
       "acid": "660100100003",
       "branchId": "105",
-      "fromDate": "2026-03-01T00:00:00.000",
+      "fromDate": "2026-03-21T10:58:17.072",
       "paginationDetails": {
         "lastBalance": {
           "amountValue": "0.00",
@@ -18,7 +18,7 @@
         "lastTxnSrlNo": ""
       },
       "sortIn": "D",
-      "toDate": "2026-09-01T00:00:00.000"
+      "toDate": "2026-09-21T10:58:17.072"
     }
   },
   "response": {
@@ -29,7 +29,7 @@
       "accountBalances": {
         "acid": "660100100003",
         "availableBalance": {
-          "amountValue": "32083.21",
+          "amountValue": "34102.73",
           "currencyCode": "INR"
         },
         "branchId": "105",
@@ -43,11 +43,11 @@
           "currencyCode": "INR"
         },
         "ledgerBalance": {
-          "amountValue": "33083.21",
+          "amountValue": "35102.73",
           "currencyCode": "INR"
         },
         "userDefinedBalance": {
-          "amountValue": "32083.21",
+          "amountValue": "34102.73",
           "currencyCode": "INR"
         }
       },
@@ -56,6 +56,1098 @@
       "field127": "",
       "hasMoreData": "N",
       "transactionDetails": [
+        {
+          "pstdDate": "2026-09-21T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "555.00",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-21T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "61761.69",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100308",
+          "txnSrlNo": "308",
+          "valueDate": "2026-09-21T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-21T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "683.41",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-21T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "57544.50",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100317",
+          "txnSrlNo": "317",
+          "valueDate": "2026-09-21T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-21T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1960.37",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-21T00:00:00.000",
+            "txnDesc": "BILLPAY ELECTRICITY BOARD",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "46918.36",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100337",
+          "txnSrlNo": "337",
+          "valueDate": "2026-09-21T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-21T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "520.68",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-21T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "35546.59",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100344",
+          "txnSrlNo": "344",
+          "valueDate": "2026-09-21T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-20T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "532.22",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-20T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "35014.37",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100345",
+          "txnSrlNo": "345",
+          "valueDate": "2026-09-20T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-19T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "770.79",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-19T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "63132.52",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100306",
+          "txnSrlNo": "306",
+          "valueDate": "2026-09-19T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-19T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "911.65",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-19T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "34102.73",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100346",
+          "txnSrlNo": "346",
+          "valueDate": "2026-09-19T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-18T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "4393.16",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-18T00:00:00.000",
+            "txnDesc": "ATM CASH WITHDRAWAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "36067.27",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100343",
+          "txnSrlNo": "343",
+          "valueDate": "2026-09-18T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-18T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "269.61",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-18T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "48878.73",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100336",
+          "txnSrlNo": "336",
+          "valueDate": "2026-09-18T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-18T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "345.04",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-18T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52849.56",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100322",
+          "txnSrlNo": "322",
+          "valueDate": "2026-09-18T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-18T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "300.29",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-18T00:00:00.000",
+            "txnDesc": "BILLPAY AIRTEL MOBILE RECHARGE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "46618.07",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100338",
+          "txnSrlNo": "338",
+          "valueDate": "2026-09-18T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-17T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "165.10",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-17T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "51536.77",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100327",
+          "txnSrlNo": "327",
+          "valueDate": "2026-09-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-17T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1532.58",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-17T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "73237.18",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100297",
+          "txnSrlNo": "297",
+          "valueDate": "2026-09-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-16T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "702.34",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-16T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "59627.16",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100312",
+          "txnSrlNo": "312",
+          "valueDate": "2026-09-16T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-15T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "431.31",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-15T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "60329.49",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100311",
+          "txnSrlNo": "311",
+          "valueDate": "2026-09-15T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-15T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1919.09",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-15T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "64783.26",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100302",
+          "txnSrlNo": "302",
+          "valueDate": "2026-09-15T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-14T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "389.75",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-14T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "49148.34",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100335",
+          "txnSrlNo": "335",
+          "valueDate": "2026-09-14T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-14T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "601.95",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-14T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "53464.18",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100320",
+          "txnSrlNo": "320",
+          "valueDate": "2026-09-14T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-13T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "926.67",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-13T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "72310.51",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100298",
+          "txnSrlNo": "298",
+          "valueDate": "2026-09-13T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-13T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "296.64",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-13T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "64148.32",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100304",
+          "txnSrlNo": "304",
+          "valueDate": "2026-09-13T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-12T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "331.91",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-12T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52360.70",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100324",
+          "txnSrlNo": "324",
+          "valueDate": "2026-09-12T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-12T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "363.60",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-12T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "51173.17",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100328",
+          "txnSrlNo": "328",
+          "valueDate": "2026-09-12T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "784.28",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "54066.13",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100319",
+          "txnSrlNo": "319",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "174.52",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "60760.80",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100310",
+          "txnSrlNo": "310",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "213.38",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "44820.54",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100341",
+          "txnSrlNo": "341",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "269.58",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "53194.60",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100321",
+          "txnSrlNo": "321",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "152.34",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "51020.83",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100329",
+          "txnSrlNo": "329",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "2143.50",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "66702.35",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100301",
+          "txnSrlNo": "301",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "156.95",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-11T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52692.61",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100323",
+          "txnSrlNo": "323",
+          "valueDate": "2026-09-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-10T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "131.15",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-10T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "49538.09",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100334",
+          "txnSrlNo": "334",
+          "valueDate": "2026-09-10T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-10T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "299.76",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-10T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "59327.39",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100313",
+          "txnSrlNo": "313",
+          "valueDate": "2026-09-10T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "2694.10",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-09T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "54850.40",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100318",
+          "txnSrlNo": "318",
+          "valueDate": "2026-09-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "163.36",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-09T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50170.62",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100332",
+          "txnSrlNo": "332",
+          "valueDate": "2026-09-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-08T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1235.74",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-08T00:00:00.000",
+            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "45033.92",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100340",
+          "txnSrlNo": "340",
+          "valueDate": "2026-09-08T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-08T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "272.68",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-08T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "59054.71",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100314",
+          "txnSrlNo": "314",
+          "valueDate": "2026-09-08T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-07T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "815.83",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-07T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "62316.69",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100307",
+          "txnSrlNo": "307",
+          "valueDate": "2026-09-07T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-07T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1338.10",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-07T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "70972.42",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100299",
+          "txnSrlNo": "299",
+          "valueDate": "2026-09-07T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-06T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "826.37",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-06T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "60935.32",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100309",
+          "txnSrlNo": "309",
+          "valueDate": "2026-09-06T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-05T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "397.56",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-05T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "58227.91",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100316",
+          "txnSrlNo": "316",
+          "valueDate": "2026-09-05T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-05T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "16926.25",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-05T00:00:00.000",
+            "txnDesc": "UPI RENT PAYMENT LANDLORD",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "74769.77",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100296",
+          "txnSrlNo": "296",
+          "valueDate": "2026-09-05T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-04T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "245.01",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-04T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "63903.30",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100305",
+          "txnSrlNo": "305",
+          "valueDate": "2026-09-04T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-04T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "4360.11",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-04T00:00:00.000",
+            "txnDesc": "ATM CASH WITHDRAWAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "40460.42",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100342",
+          "txnSrlNo": "342",
+          "valueDate": "2026-09-04T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "405.27",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50615.56",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100330",
+          "txnSrlNo": "330",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "281.58",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50333.98",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100331",
+          "txnSrlNo": "331",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "338.31",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "64444.95",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100303",
+          "txnSrlNo": "303",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "501.38",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "49669.24",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100333",
+          "txnSrlNo": "333",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "210.92",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52149.78",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100325",
+          "txnSrlNo": "325",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "59612.81",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "NEFT SALARY CREDIT EMPLOYER PAYROLL",
+            "txnType": "C"
+          },
+          "txnBalance": {
+            "amountValue": "91696.02",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100295",
+          "txnSrlNo": "295",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "2126.56",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "68845.85",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100300",
+          "txnSrlNo": "300",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-03T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "429.24",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-03T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "58625.47",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100315",
+          "txnSrlNo": "315",
+          "valueDate": "2026-09-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-01T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "348.41",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-01T00:00:00.000",
+            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "46269.66",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100339",
+          "txnSrlNo": "339",
+          "valueDate": "2026-09-01T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-09-01T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "447.91",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-09-01T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "51701.87",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100326",
+          "txnSrlNo": "326",
+          "valueDate": "2026-09-01T00:00:00.000"
+        },
         {
           "pstdDate": "2026-08-30T10:00:00.000",
           "transactionSummary": {
@@ -124,27 +1216,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "314.84",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-28T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "49605.15",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100274",
-          "txnSrlNo": "274",
-          "valueDate": "2026-08-28T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-28T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "2158.64",
               "currencyCode": "INR"
             },
@@ -183,6 +1254,27 @@
           "valueDate": "2026-08-28T00:00:00.000"
         },
         {
+          "pstdDate": "2026-08-28T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "314.84",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-28T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "49605.15",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100274",
+          "txnSrlNo": "274",
+          "valueDate": "2026-08-28T00:00:00.000"
+        },
+        {
           "pstdDate": "2026-08-25T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
@@ -202,48 +1294,6 @@
           "txnId": "S100282",
           "txnSrlNo": "282",
           "valueDate": "2026-08-25T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-24T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "777.36",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-24T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "67056.89",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100255",
-          "txnSrlNo": "255",
-          "valueDate": "2026-08-24T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-24T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "307.24",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-24T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "49180.20",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100276",
-          "txnSrlNo": "276",
-          "valueDate": "2026-08-24T00:00:00.000"
         },
         {
           "pstdDate": "2026-08-24T10:00:00.000",
@@ -309,46 +1359,46 @@
           "valueDate": "2026-08-24T00:00:00.000"
         },
         {
-          "pstdDate": "2026-08-23T10:00:00.000",
+          "pstdDate": "2026-08-24T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "423.94",
+              "amountValue": "777.36",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-08-23T00:00:00.000",
+            "txnDate": "2026-08-24T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "67056.89",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100255",
+          "txnSrlNo": "255",
+          "valueDate": "2026-08-24T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-24T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "307.24",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-24T00:00:00.000",
             "txnDesc": "UPI OLA CAB RIDE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "48311.98",
+            "amountValue": "49180.20",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100278",
-          "txnSrlNo": "278",
-          "valueDate": "2026-08-23T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-23T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "1699.78",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-23T00:00:00.000",
-            "txnDesc": "UPI DMART GROCERIES PURCHASE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "75406.84",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100248",
-          "txnSrlNo": "248",
-          "valueDate": "2026-08-23T00:00:00.000"
+          "txnId": "S100276",
+          "txnSrlNo": "276",
+          "valueDate": "2026-08-24T00:00:00.000"
         },
         {
           "pstdDate": "2026-08-23T10:00:00.000",
@@ -414,25 +1464,46 @@
           "valueDate": "2026-08-23T00:00:00.000"
         },
         {
-          "pstdDate": "2026-08-22T10:00:00.000",
+          "pstdDate": "2026-08-23T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "1832.83",
+              "amountValue": "423.94",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-08-22T00:00:00.000",
+            "txnDate": "2026-08-23T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "48311.98",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100278",
+          "txnSrlNo": "278",
+          "valueDate": "2026-08-23T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-23T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1699.78",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-23T00:00:00.000",
             "txnDesc": "UPI DMART GROCERIES PURCHASE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "73574.00",
+            "amountValue": "75406.84",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100249",
-          "txnSrlNo": "249",
-          "valueDate": "2026-08-22T00:00:00.000"
+          "txnId": "S100248",
+          "txnSrlNo": "248",
+          "valueDate": "2026-08-23T00:00:00.000"
         },
         {
           "pstdDate": "2026-08-22T10:00:00.000",
@@ -474,6 +1545,27 @@
           "txnCat": "TCI",
           "txnId": "S100294",
           "txnSrlNo": "294",
+          "valueDate": "2026-08-22T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-22T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1832.83",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-22T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "73574.00",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100249",
+          "txnSrlNo": "249",
           "valueDate": "2026-08-22T00:00:00.000"
         },
         {
@@ -586,27 +1678,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "1106.28",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-14T00:00:00.000",
-            "txnDesc": "POS AMAZON RETAIL PURCHASE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "50673.08",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100271",
-          "txnSrlNo": "271",
-          "valueDate": "2026-08-14T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-14T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "265.20",
               "currencyCode": "INR"
             },
@@ -642,6 +1713,27 @@
           "txnCat": "TCI",
           "txnId": "S100263",
           "txnSrlNo": "263",
+          "valueDate": "2026-08-14T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-14T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1106.28",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-14T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50673.08",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100271",
+          "txnSrlNo": "271",
           "valueDate": "2026-08-14T00:00:00.000"
         },
         {
@@ -685,48 +1777,6 @@
           "txnId": "S100277",
           "txnSrlNo": "277",
           "valueDate": "2026-08-12T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-11T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "597.13",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-11T00:00:00.000",
-            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "62647.31",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100265",
-          "txnSrlNo": "265",
-          "valueDate": "2026-08-11T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-11T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "482.97",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-11T00:00:00.000",
-            "txnDesc": "BILLPAY AIRTEL MOBILE RECHARGE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "42707.99",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100289",
-          "txnSrlNo": "289",
-          "valueDate": "2026-08-11T00:00:00.000"
         },
         {
           "pstdDate": "2026-08-11T10:00:00.000",
@@ -789,6 +1839,48 @@
           "txnCat": "TCI",
           "txnId": "S100257",
           "txnSrlNo": "257",
+          "valueDate": "2026-08-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "597.13",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-11T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "62647.31",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100265",
+          "txnSrlNo": "265",
+          "valueDate": "2026-08-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-11T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "482.97",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-11T00:00:00.000",
+            "txnDesc": "BILLPAY AIRTEL MOBILE RECHARGE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "42707.99",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100289",
+          "txnSrlNo": "289",
           "valueDate": "2026-08-11T00:00:00.000"
         },
         {
@@ -880,27 +1972,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "442.77",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-04T00:00:00.000",
-            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "41640.98",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100291",
-          "txnSrlNo": "291",
-          "valueDate": "2026-08-04T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-04T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "588.11",
               "currencyCode": "INR"
             },
@@ -936,6 +2007,27 @@
           "txnCat": "TCI",
           "txnId": "S100279",
           "txnSrlNo": "279",
+          "valueDate": "2026-08-04T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-04T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "442.77",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-04T00:00:00.000",
+            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "41640.98",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100291",
+          "txnSrlNo": "291",
           "valueDate": "2026-08-04T00:00:00.000"
         },
         {
@@ -1027,27 +2119,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "1435.16",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-08-01T00:00:00.000",
-            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "40205.82",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100292",
-          "txnSrlNo": "292",
-          "valueDate": "2026-08-01T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-08-01T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "171.95",
               "currencyCode": "INR"
             },
@@ -1083,6 +2154,27 @@
           "txnCat": "TCI",
           "txnId": "S100273",
           "txnSrlNo": "273",
+          "valueDate": "2026-08-01T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-08-01T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1435.16",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-08-01T00:00:00.000",
+            "txnDesc": "POS APOLLO PHARMACY MEDICAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "40205.82",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100292",
+          "txnSrlNo": "292",
           "valueDate": "2026-08-01T00:00:00.000"
         },
         {
@@ -1300,48 +2392,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "2307.06",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-07-24T00:00:00.000",
-            "txnDesc": "ATM CASH WITHDRAWAL",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "40859.08",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100244",
-          "txnSrlNo": "244",
-          "valueDate": "2026-07-24T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-07-24T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "825.37",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-07-24T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "67692.62",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100211",
-          "txnSrlNo": "211",
-          "valueDate": "2026-07-24T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-07-24T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "4065.27",
               "currencyCode": "INR"
             },
@@ -1398,6 +2448,48 @@
           "txnCat": "TCI",
           "txnId": "S100243",
           "txnSrlNo": "243",
+          "valueDate": "2026-07-24T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-07-24T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "2307.06",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-07-24T00:00:00.000",
+            "txnDesc": "ATM CASH WITHDRAWAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "40859.08",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100244",
+          "txnSrlNo": "244",
+          "valueDate": "2026-07-24T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-07-24T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "825.37",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-07-24T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "67692.62",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100211",
+          "txnSrlNo": "211",
           "valueDate": "2026-07-24T00:00:00.000"
         },
         {
@@ -1615,6 +2707,48 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
+              "amountValue": "266.55",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-07-16T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50785.15",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100227",
+          "txnSrlNo": "227",
+          "valueDate": "2026-07-16T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-07-16T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "616.04",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-07-16T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "65641.82",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100214",
+          "txnSrlNo": "214",
+          "valueDate": "2026-07-16T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-07-16T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
               "amountValue": "433.20",
               "currencyCode": "INR"
             },
@@ -1692,48 +2826,6 @@
           "txnCat": "TCI",
           "txnId": "S100221",
           "txnSrlNo": "221",
-          "valueDate": "2026-07-16T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-07-16T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "266.55",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-07-16T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "50785.15",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100227",
-          "txnSrlNo": "227",
-          "valueDate": "2026-07-16T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-07-16T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "616.04",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-07-16T00:00:00.000",
-            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "65641.82",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100214",
-          "txnSrlNo": "214",
           "valueDate": "2026-07-16T00:00:00.000"
         },
         {
@@ -2413,27 +3505,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "534.00",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-06-18T00:00:00.000",
-            "txnDesc": "BILLPAY AIRTEL MOBILE RECHARGE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "42048.21",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100191",
-          "txnSrlNo": "191",
-          "valueDate": "2026-06-18T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-06-18T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "774.09",
               "currencyCode": "INR"
             },
@@ -2472,25 +3543,25 @@
           "valueDate": "2026-06-18T00:00:00.000"
         },
         {
-          "pstdDate": "2026-06-17T10:00:00.000",
+          "pstdDate": "2026-06-18T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "4095.63",
+              "amountValue": "534.00",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-06-17T00:00:00.000",
-            "txnDesc": "ATM CASH WITHDRAWAL",
+            "txnDate": "2026-06-18T00:00:00.000",
+            "txnDesc": "BILLPAY AIRTEL MOBILE RECHARGE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "36375.33",
+            "amountValue": "42048.21",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100195",
-          "txnSrlNo": "195",
-          "valueDate": "2026-06-17T00:00:00.000"
+          "txnId": "S100191",
+          "txnSrlNo": "191",
+          "valueDate": "2026-06-18T00:00:00.000"
         },
         {
           "pstdDate": "2026-06-17T10:00:00.000",
@@ -2532,6 +3603,27 @@
           "txnCat": "TCI",
           "txnId": "S100165",
           "txnSrlNo": "165",
+          "valueDate": "2026-06-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-06-17T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "4095.63",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-06-17T00:00:00.000",
+            "txnDesc": "ATM CASH WITHDRAWAL",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "36375.33",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100195",
+          "txnSrlNo": "195",
           "valueDate": "2026-06-17T00:00:00.000"
         },
         {
@@ -2749,27 +3841,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "300.44",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-06-06T00:00:00.000",
-            "txnDesc": "UPI UBER CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "45640.14",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100185",
-          "txnSrlNo": "185",
-          "valueDate": "2026-06-06T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-06-06T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "4342.79",
               "currencyCode": "INR"
             },
@@ -2808,46 +3879,25 @@
           "valueDate": "2026-06-06T00:00:00.000"
         },
         {
-          "pstdDate": "2026-06-05T10:00:00.000",
+          "pstdDate": "2026-06-06T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "1470.79",
+              "amountValue": "300.44",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-06-05T00:00:00.000",
-            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnDate": "2026-06-06T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "69194.34",
+            "amountValue": "45640.14",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100154",
-          "txnSrlNo": "154",
-          "valueDate": "2026-06-05T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-06-05T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "168.60",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-06-05T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "48499.14",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100175",
-          "txnSrlNo": "175",
-          "valueDate": "2026-06-05T00:00:00.000"
+          "txnId": "S100185",
+          "txnSrlNo": "185",
+          "valueDate": "2026-06-06T00:00:00.000"
         },
         {
           "pstdDate": "2026-06-05T10:00:00.000",
@@ -2910,6 +3960,48 @@
           "txnCat": "TCI",
           "txnId": "S100178",
           "txnSrlNo": "178",
+          "valueDate": "2026-06-05T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-06-05T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1470.79",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-06-05T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "69194.34",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100154",
+          "txnSrlNo": "154",
+          "valueDate": "2026-06-05T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-06-05T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "168.60",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-06-05T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "48499.14",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100175",
+          "txnSrlNo": "175",
           "valueDate": "2026-06-05T00:00:00.000"
         },
         {
@@ -3001,48 +4093,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "16374.79",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-06-02T00:00:00.000",
-            "txnDesc": "UPI RENT PAYMENT LANDLORD",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "76203.00",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100149",
-          "txnSrlNo": "149",
-          "valueDate": "2026-06-02T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-06-02T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "178.77",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-06-02T00:00:00.000",
-            "txnDesc": "UPI UBER CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "44819.74",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100188",
-          "txnSrlNo": "188",
-          "valueDate": "2026-06-02T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-06-02T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "292.60",
               "currencyCode": "INR"
             },
@@ -3102,6 +4152,48 @@
           "valueDate": "2026-06-02T00:00:00.000"
         },
         {
+          "pstdDate": "2026-06-02T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "16374.79",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-06-02T00:00:00.000",
+            "txnDesc": "UPI RENT PAYMENT LANDLORD",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "76203.00",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100149",
+          "txnSrlNo": "149",
+          "valueDate": "2026-06-02T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-06-02T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "178.77",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-06-02T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "44819.74",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100188",
+          "txnSrlNo": "188",
+          "valueDate": "2026-06-02T00:00:00.000"
+        },
+        {
           "pstdDate": "2026-06-01T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
@@ -3148,27 +4240,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "794.35",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-05-31T00:00:00.000",
-            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "67395.97",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100116",
-          "txnSrlNo": "116",
-          "valueDate": "2026-05-31T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-05-31T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "397.74",
               "currencyCode": "INR"
             },
@@ -3207,25 +4278,25 @@
           "valueDate": "2026-05-31T00:00:00.000"
         },
         {
-          "pstdDate": "2026-05-30T10:00:00.000",
+          "pstdDate": "2026-05-31T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "383.72",
+              "amountValue": "794.35",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-05-30T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
+            "txnDate": "2026-05-31T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "50132.27",
+            "amountValue": "67395.97",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100129",
-          "txnSrlNo": "129",
-          "valueDate": "2026-05-30T00:00:00.000"
+          "txnId": "S100116",
+          "txnSrlNo": "116",
+          "valueDate": "2026-05-31T00:00:00.000"
         },
         {
           "pstdDate": "2026-05-30T10:00:00.000",
@@ -3267,6 +4338,27 @@
           "txnCat": "TCI",
           "txnId": "S100107",
           "txnSrlNo": "107",
+          "valueDate": "2026-05-30T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-05-30T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "383.72",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-05-30T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "50132.27",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100129",
+          "txnSrlNo": "129",
           "valueDate": "2026-05-30T00:00:00.000"
         },
         {
@@ -3568,48 +4660,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "878.91",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-05-17T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "69237.05",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100112",
-          "txnSrlNo": "112",
-          "valueDate": "2026-05-17T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-05-17T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "237.77",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-05-17T00:00:00.000",
-            "txnDesc": "UPI UBER CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "47206.79",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100138",
-          "txnSrlNo": "138",
-          "valueDate": "2026-05-17T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-05-17T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "1448.82",
               "currencyCode": "INR"
             },
@@ -3666,6 +4716,48 @@
           "txnCat": "TCI",
           "txnId": "S100122",
           "txnSrlNo": "122",
+          "valueDate": "2026-05-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-05-17T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "878.91",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-05-17T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "69237.05",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100112",
+          "txnSrlNo": "112",
+          "valueDate": "2026-05-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-05-17T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "237.77",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-05-17T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "47206.79",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100138",
+          "txnSrlNo": "138",
           "valueDate": "2026-05-17T00:00:00.000"
         },
         {
@@ -3820,27 +4912,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "343.94",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-05-09T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "68502.91",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100114",
-          "txnSrlNo": "114",
-          "valueDate": "2026-05-09T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-05-09T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "4301.07",
               "currencyCode": "INR"
             },
@@ -3879,6 +4950,27 @@
           "valueDate": "2026-05-09T00:00:00.000"
         },
         {
+          "pstdDate": "2026-05-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "343.94",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-05-09T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "68502.91",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100114",
+          "txnSrlNo": "114",
+          "valueDate": "2026-05-09T00:00:00.000"
+        },
+        {
           "pstdDate": "2026-05-08T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
@@ -3898,27 +4990,6 @@
           "txnId": "S100120",
           "txnSrlNo": "120",
           "valueDate": "2026-05-08T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-05-07T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "453.09",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-05-07T00:00:00.000",
-            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "43905.42",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100143",
-          "txnSrlNo": "143",
-          "valueDate": "2026-05-07T00:00:00.000"
         },
         {
           "pstdDate": "2026-05-07T10:00:00.000",
@@ -3960,6 +5031,27 @@
           "txnCat": "TCI",
           "txnId": "S100109",
           "txnSrlNo": "109",
+          "valueDate": "2026-05-07T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-05-07T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "453.09",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-05-07T00:00:00.000",
+            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "43905.42",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100143",
+          "txnSrlNo": "143",
           "valueDate": "2026-05-07T00:00:00.000"
         },
         {
@@ -4261,27 +5353,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "478.42",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-04-24T00:00:00.000",
-            "txnDesc": "UPI UBER CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "52208.11",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100087",
-          "txnSrlNo": "87",
-          "valueDate": "2026-04-24T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-04-24T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "258.30",
               "currencyCode": "INR"
             },
@@ -4317,6 +5388,27 @@
           "txnCat": "TCI",
           "txnId": "S100080",
           "txnSrlNo": "80",
+          "valueDate": "2026-04-24T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-04-24T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "478.42",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-04-24T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52208.11",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100087",
+          "txnSrlNo": "87",
           "valueDate": "2026-04-24T00:00:00.000"
         },
         {
@@ -4450,27 +5542,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "291.42",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-04-19T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "54435.73",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100081",
-          "txnSrlNo": "81",
-          "valueDate": "2026-04-19T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-04-19T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "650.44",
               "currencyCode": "INR"
             },
@@ -4506,6 +5577,27 @@
           "txnCat": "TCI",
           "txnId": "S100051",
           "txnSrlNo": "51",
+          "valueDate": "2026-04-19T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-04-19T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "291.42",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-04-19T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "54435.73",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100081",
+          "txnSrlNo": "81",
           "valueDate": "2026-04-19T00:00:00.000"
         },
         {
@@ -4576,27 +5668,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "948.64",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-04-13T00:00:00.000",
-            "txnDesc": "POS AMAZON RETAIL PURCHASE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "56030.46",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100075",
-          "txnSrlNo": "75",
-          "valueDate": "2026-04-13T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-04-13T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "992.28",
               "currencyCode": "INR"
             },
@@ -4632,6 +5703,27 @@
           "txnCat": "TCI",
           "txnId": "S100082",
           "txnSrlNo": "82",
+          "valueDate": "2026-04-13T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-04-13T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "948.64",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-04-13T00:00:00.000",
+            "txnDesc": "POS AMAZON RETAIL PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "56030.46",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100075",
+          "txnSrlNo": "75",
           "valueDate": "2026-04-13T00:00:00.000"
         },
         {
@@ -4675,48 +5767,6 @@
           "txnId": "S100097",
           "txnSrlNo": "97",
           "valueDate": "2026-04-11T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-04-10T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "606.44",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-04-10T00:00:00.000",
-            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "47985.64",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100094",
-          "txnSrlNo": "94",
-          "valueDate": "2026-04-10T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-04-10T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "852.02",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-04-10T00:00:00.000",
-            "txnDesc": "UPI DMART GROCERIES PURCHASE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "74383.84",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100057",
-          "txnSrlNo": "57",
-          "valueDate": "2026-04-10T00:00:00.000"
         },
         {
           "pstdDate": "2026-04-10T10:00:00.000",
@@ -4782,46 +5832,46 @@
           "valueDate": "2026-04-10T00:00:00.000"
         },
         {
-          "pstdDate": "2026-04-09T10:00:00.000",
+          "pstdDate": "2026-04-10T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "471.99",
+              "amountValue": "606.44",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-04-09T00:00:00.000",
-            "txnDesc": "UPI UBER CAB RIDE",
+            "txnDate": "2026-04-10T00:00:00.000",
+            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "52686.53",
+            "amountValue": "47985.64",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100086",
-          "txnSrlNo": "86",
-          "valueDate": "2026-04-09T00:00:00.000"
+          "txnId": "S100094",
+          "txnSrlNo": "94",
+          "valueDate": "2026-04-10T00:00:00.000"
         },
         {
-          "pstdDate": "2026-04-09T10:00:00.000",
+          "pstdDate": "2026-04-10T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "487.11",
+              "amountValue": "852.02",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-04-09T00:00:00.000",
-            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnDate": "2026-04-10T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "69168.05",
+            "amountValue": "74383.84",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100066",
-          "txnSrlNo": "66",
-          "valueDate": "2026-04-09T00:00:00.000"
+          "txnId": "S100057",
+          "txnSrlNo": "57",
+          "valueDate": "2026-04-10T00:00:00.000"
         },
         {
           "pstdDate": "2026-04-09T10:00:00.000",
@@ -4884,6 +5934,48 @@
           "txnCat": "TCI",
           "txnId": "S100093",
           "txnSrlNo": "93",
+          "valueDate": "2026-04-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-04-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "471.99",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-04-09T00:00:00.000",
+            "txnDesc": "UPI UBER CAB RIDE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "52686.53",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100086",
+          "txnSrlNo": "86",
+          "valueDate": "2026-04-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-04-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "487.11",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-04-09T00:00:00.000",
+            "txnDesc": "UPI ZOMATO FOOD DELIVERY",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "69168.05",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100066",
+          "txnSrlNo": "66",
           "valueDate": "2026-04-09T00:00:00.000"
         },
         {
@@ -5332,27 +6424,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "331.11",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-03-26T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "57377.03",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100034",
-          "txnSrlNo": "34",
-          "valueDate": "2026-03-26T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-03-26T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "618.23",
               "currencyCode": "INR"
             },
@@ -5391,25 +6462,25 @@
           "valueDate": "2026-03-26T00:00:00.000"
         },
         {
-          "pstdDate": "2026-03-25T10:00:00.000",
+          "pstdDate": "2026-03-26T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "308.32",
+              "amountValue": "331.11",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-03-25T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnDate": "2026-03-26T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "74621.69",
+            "amountValue": "57377.03",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100015",
-          "txnSrlNo": "15",
-          "valueDate": "2026-03-25T00:00:00.000"
+          "txnId": "S100034",
+          "txnSrlNo": "34",
+          "valueDate": "2026-03-26T00:00:00.000"
         },
         {
           "pstdDate": "2026-03-25T10:00:00.000",
@@ -5451,6 +6522,27 @@
           "txnCat": "TCI",
           "txnId": "S100022",
           "txnSrlNo": "22",
+          "valueDate": "2026-03-25T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-03-25T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "308.32",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-03-25T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "74621.69",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100015",
+          "txnSrlNo": "15",
           "valueDate": "2026-03-25T00:00:00.000"
         },
         {
@@ -5752,27 +6844,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "1563.48",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-03-12T00:00:00.000",
-            "txnDesc": "UPI DMART GROCERIES PURCHASE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "80299.14",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100005",
-          "txnSrlNo": "5",
-          "valueDate": "2026-03-12T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-03-12T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "203.58",
               "currencyCode": "INR"
             },
@@ -5808,6 +6879,27 @@
           "txnCat": "TCI",
           "txnId": "S100031",
           "txnSrlNo": "31",
+          "valueDate": "2026-03-12T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-03-12T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "1563.48",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-03-12T00:00:00.000",
+            "txnDesc": "UPI DMART GROCERIES PURCHASE",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "80299.14",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100005",
+          "txnSrlNo": "5",
           "valueDate": "2026-03-12T00:00:00.000"
         },
         {
@@ -5857,27 +6949,6 @@
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "379.45",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-03-10T00:00:00.000",
-            "txnDesc": "UPI OLA CAB RIDE",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "56550.86",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100036",
-          "txnSrlNo": "36",
-          "valueDate": "2026-03-10T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-03-10T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
               "amountValue": "831.44",
               "currencyCode": "INR"
             },
@@ -5916,46 +6987,25 @@
           "valueDate": "2026-03-10T00:00:00.000"
         },
         {
-          "pstdDate": "2026-03-09T10:00:00.000",
+          "pstdDate": "2026-03-10T10:00:00.000",
           "transactionSummary": {
             "instrumentId": "",
             "txnAmt": {
-              "amountValue": "878.09",
+              "amountValue": "379.45",
               "currencyCode": "INR"
             },
-            "txnDate": "2026-03-09T00:00:00.000",
-            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnDate": "2026-03-10T00:00:00.000",
+            "txnDesc": "UPI OLA CAB RIDE",
             "txnType": "D"
           },
           "txnBalance": {
-            "amountValue": "76084.43",
+            "amountValue": "56550.86",
             "currencyCode": "INR"
           },
           "txnCat": "TCI",
-          "txnId": "S100010",
-          "txnSrlNo": "10",
-          "valueDate": "2026-03-09T00:00:00.000"
-        },
-        {
-          "pstdDate": "2026-03-09T10:00:00.000",
-          "transactionSummary": {
-            "instrumentId": "",
-            "txnAmt": {
-              "amountValue": "556.31",
-              "currencyCode": "INR"
-            },
-            "txnDate": "2026-03-09T00:00:00.000",
-            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
-            "txnType": "D"
-          },
-          "txnBalance": {
-            "amountValue": "51354.82",
-            "currencyCode": "INR"
-          },
-          "txnCat": "TCI",
-          "txnId": "S100045",
-          "txnSrlNo": "45",
-          "valueDate": "2026-03-09T00:00:00.000"
+          "txnId": "S100036",
+          "txnSrlNo": "36",
+          "valueDate": "2026-03-10T00:00:00.000"
         },
         {
           "pstdDate": "2026-03-09T10:00:00.000",
@@ -6018,6 +7068,48 @@
           "txnCat": "TCI",
           "txnId": "S100004",
           "txnSrlNo": "4",
+          "valueDate": "2026-03-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-03-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "878.09",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-03-09T00:00:00.000",
+            "txnDesc": "UPI SWIGGY FOOD ORDER",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "76084.43",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100010",
+          "txnSrlNo": "10",
+          "valueDate": "2026-03-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2026-03-09T10:00:00.000",
+          "transactionSummary": {
+            "instrumentId": "",
+            "txnAmt": {
+              "amountValue": "556.31",
+              "currencyCode": "INR"
+            },
+            "txnDate": "2026-03-09T00:00:00.000",
+            "txnDesc": "UPI NETFLIX SUBSCRIPTION",
+            "txnType": "D"
+          },
+          "txnBalance": {
+            "amountValue": "51354.82",
+            "currencyCode": "INR"
+          },
+          "txnCat": "TCI",
+          "txnId": "S100045",
+          "txnSrlNo": "45",
           "valueDate": "2026-03-09T00:00:00.000"
         },
         {
