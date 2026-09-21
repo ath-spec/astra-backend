@@ -114,12 +114,15 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Feature 1: when the user has synced IDBI accounts, serve those in the
-	// same shape the screen already reads. Falls through to bank_accounts
-	// when IDBI is off or the user has none linked yet.
+	// Feature 1: when the user has synced IDBI accounts, fold those in
+	// alongside bank_accounts (below) rather than replacing them — a bank
+	// added manually via the "connect more accounts" search (AddAccount,
+	// which only ever writes to bank_accounts) must stay visible even after
+	// the user also has real IDBI accounts synced, otherwise it silently
+	// vanishes from this list the moment IDBI accounts exist.
+	var accounts []BankAccountResponse
 	if h.idbiAccounts != nil {
 		if idbiAccs, ierr := h.idbiAccounts.List(r.Context(), userID); ierr == nil && len(idbiAccs) > 0 {
-			out := make([]BankAccountResponse, 0, len(idbiAccs))
 			for _, a := range idbiAccs {
 				bal := a.LedgerBalance
 				if bal == 0 {
@@ -129,7 +132,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 				if a.BranchName != "" {
 					name = "IDBI Bank — " + a.BranchName
 				}
-				out = append(out, BankAccountResponse{
+				accounts = append(accounts, BankAccountResponse{
 					ID:          uuid.NewSHA1(idbiAcctNamespace, []byte(a.AccountNumber)),
 					BankName:    name,
 					AccountType: a.AccountType,
@@ -137,8 +140,6 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 					CreatedAt:   a.SyncedAt,
 				})
 			}
-			apiresponse.OK(w, map[string]any{"accounts": out, "count": len(out)})
-			return
 		}
 	}
 
@@ -154,7 +155,6 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	var accounts []BankAccountResponse
 	for rows.Next() {
 		var acc BankAccountResponse
 		if err := rows.Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance, &acc.CreatedAt); err != nil {
