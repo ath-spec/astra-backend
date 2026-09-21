@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -39,7 +40,8 @@ type ChatRequest struct {
 }
 
 type TTSRequest struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	Language string `json:"language,omitempty"` // BCP-47-ish, e.g. "hi-IN"; "" => en-IN default
 }
 
 type ChatHandler struct {
@@ -553,7 +555,7 @@ Your goal is to provide tailored investment advice based on the user's specific 
 ` + "```json\n{ \"type\": \"chart\", \"chartType\": \"pie\", \"title\": \"Portfolio\", \"data\": {\"Equities\": 75, \"Debt\": 15, \"Gold\": 10} }\n```" + `
 (chartType can be "pie", "doughnut", or "bar").
 4. TEXT FORMATTING RULE: Do not use markdown formatting (like bolding, italics, or long bullet points). Just provide simple text.
-5. IMPORTANT LANGUAGE RULE: You must respond in the exact same language the user uses (English, Hindi, or Hinglish).
+5. IMPORTANT LANGUAGE RULE: You must respond in the exact same language the user uses, written in that language's own native script (e.g. Devanagari for Hindi, Tamil script for Tamil, Bengali script for Bengali) — never romanize or force English script.
 6. Keep this ongoing conversation in mind. You have access to recent conversation history, so reference previous context seamlessly when relevant.
 6b. PERSISTENT MEMORY: A "PERSISTENT MEMORY" block may appear above with dated facts, preferences and codewords the user gave you in earlier sessions. Treat each as something the user said on that date. Use it to recall details on request and to personalize. If a remembered item conflicts with the LIVE GROUND-TRUTH block, the LIVE data is current and correct: use it, and briefly note the change if it helps. Never expose PAN, Aadhaar, phone or account numbers even if asked to "remember" them.
 7. FUND RULE: You must NEVER recommend or name a specific mutual fund, ETF, stock, or investment product to buy. Instead, only suggest strategies and actions (e.g. 'increase your equity allocation', 'add a liquid fund buffer', 'consider tax harvesting'). The Astra app will surface the right products — your job is to advise on direction only.
@@ -660,7 +662,7 @@ func (h *ChatHandler) HandleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bodyBytes, statusCode, err := h.aiService.GetTextToSpeech(r.Context(), ttsReq.Text)
+	bodyBytes, statusCode, err := h.aiService.GetTextToSpeech(r.Context(), ttsReq.Text, ttsReq.Language)
 	if err != nil {
 		log.Printf("TTS error: %v", err)
 		http.Error(w, `{"error": "TTS failed"}`, http.StatusInternalServerError)
@@ -670,6 +672,63 @@ func (h *ChatHandler) HandleTTS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	w.Write(bodyBytes)
+}
+
+// HandleSTT accepts recorded voice audio (multipart "file" or raw body) and
+// returns the transcript via the speech seam's auto language detection — the
+// user may speak in any supported language, no forcing to English.
+func (h *ChatHandler) HandleSTT(w http.ResponseWriter, r *http.Request) {
+	var (
+		audio    []byte
+		filename = "speech.webm"
+		err      error
+	)
+	if file, hdr, ferr := r.FormFile("file"); ferr == nil {
+		defer file.Close()
+		if hdr != nil && hdr.Filename != "" {
+			filename = hdr.Filename
+		}
+		audio, err = io.ReadAll(io.LimitReader(file, 20<<20)) // 20 MB cap
+	} else {
+		audio, err = io.ReadAll(io.LimitReader(r.Body, 20<<20))
+	}
+	if err != nil {
+		http.Error(w, `{"error": "could not read audio"}`, http.StatusBadRequest)
+		return
+	}
+
+	transcript, err := h.aiService.GetSpeechToText(r.Context(), audio, filename)
+	if err != nil {
+		log.Printf("STT error: %v", err)
+		http.Error(w, `{"error": "STT failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"transcript": transcript})
+}
+
+// HandleSTTStream upgrades to a WebSocket and proxies it to the realtime STT
+// stream, so the client gets partial transcripts while the user is still
+// speaking instead of waiting for a full recording to upload. language comes
+// from the client's ?lang= query param; "auto" (the default) lets Sarvam
+// detect whatever language is spoken rather than forcing one.
+func (h *ChatHandler) HandleSTTStream(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("STT stream upgrade error: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	lang := r.URL.Query().Get("lang")
+	if lang == "" {
+		lang = "auto"
+	}
+
+	if err := h.aiService.GetSpeechToTextStream(r.Context(), conn, lang); err != nil {
+		log.Printf("STT stream ended: %v", err)
+	}
 }
 
 // --- Cross-session memory inspect / edit API -----------------------------

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/provider/llm"
@@ -37,6 +38,9 @@ func (f *fakeSpeech) TextToSpeech(_ context.Context, _ speech.TTSRequest) (*spee
 }
 func (f *fakeSpeech) SpeechToText(_ context.Context, _ speech.STTRequest) (*speech.STTResult, error) {
 	return nil, f.err
+}
+func (f *fakeSpeech) SpeechToTextStream(_ context.Context, _ *websocket.Conn, _ string) error {
+	return f.err
 }
 
 type memChatRepo struct{ saved *repository.ChatSession }
@@ -158,7 +162,7 @@ func TestGetTextToSpeech_ForwardsProviderBody(t *testing.T) {
 	sp := &fakeSpeech{tts: &speech.TTSResult{Audio: []byte(`{"audios":["deadbeef"]}`)}}
 	svc := newTestAI(&fakeLLMProvider{}, sp, &memChatRepo{})
 
-	body, status, err := svc.GetTextToSpeech(context.Background(), "hello")
+	body, status, err := svc.GetTextToSpeech(context.Background(), "hello", "")
 	if err != nil || status != 200 {
 		t.Fatalf("status=%d err=%v", status, err)
 	}
@@ -171,7 +175,7 @@ func TestGetTextToSpeech_UnconfiguredDegrades(t *testing.T) {
 	sp := &fakeSpeech{err: speech.ErrNotConfigured}
 	svc := newTestAI(&fakeLLMProvider{}, sp, &memChatRepo{})
 
-	_, status, err := svc.GetTextToSpeech(context.Background(), "hello")
+	_, status, err := svc.GetTextToSpeech(context.Background(), "hello", "")
 	if err != nil || status != 503 {
 		t.Errorf("want graceful 503, got status=%d err=%v", status, err)
 	}

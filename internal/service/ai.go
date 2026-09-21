@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/provider/llm"
@@ -20,7 +23,16 @@ type AIService interface {
 	// nav-pill agent instead of the full advisor. The returned bytes are the
 	// OpenAI-style chat-completions envelope the frontend already parses.
 	GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error)
-	GetTextToSpeech(ctx context.Context, text string) ([]byte, int, error)
+	// GetTextToSpeech synthesizes text in the caller-supplied language/script
+	// (BCP-47-ish, e.g. "hi-IN", "ta-IN"); empty falls back to "en-IN".
+	GetTextToSpeech(ctx context.Context, text string, language string) ([]byte, int, error)
+	// GetSpeechToText transcribes audio with Sarvam's auto language detection —
+	// the user may speak in any supported language/script, no forcing to English.
+	GetSpeechToText(ctx context.Context, audio []byte, filename string) (string, error)
+	// GetSpeechToTextStream bridges an already-upgraded client WebSocket to
+	// the realtime STT stream for live partial transcripts while the user
+	// speaks. Blocks until the stream ends; the caller owns clientConn.
+	GetSpeechToTextStream(ctx context.Context, clientConn *websocket.Conn, language string) error
 }
 
 // GroqAIService is the AIService implementation. It routes through the
@@ -84,8 +96,11 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 	return marshalChatEnvelope(resp), http.StatusOK, nil
 }
 
-func (s *GroqAIService) GetTextToSpeech(ctx context.Context, text string) ([]byte, int, error) {
-	res, err := s.speech.TextToSpeech(ctx, speech.TTSRequest{Text: text, Language: "en-IN"})
+func (s *GroqAIService) GetTextToSpeech(ctx context.Context, text string, language string) ([]byte, int, error) {
+	if strings.TrimSpace(language) == "" {
+		language = detectLanguageCode(text)
+	}
+	res, err := s.speech.TextToSpeech(ctx, speech.TTSRequest{Text: text, Language: language})
 	if err != nil {
 		if errors.Is(err, speech.ErrNotConfigured) {
 			return jsonErrBody("Voice is not configured on this environment"), http.StatusServiceUnavailable, nil
@@ -95,6 +110,31 @@ func (s *GroqAIService) GetTextToSpeech(ctx context.Context, text string) ([]byt
 	// Sarvam's body is JSON carrying base64 audio under "audios" — the client
 	// already consumes that shape, so forward it unchanged.
 	return res.Audio, http.StatusOK, nil
+}
+
+// GetSpeechToText forwards to the speech seam's STT (Sarvam saarika with auto
+// language detection today; Transcribe when SPEECH_PROVIDER=aws), returning
+// the transcript exactly as recognized — no romanization/transliteration.
+func (s *GroqAIService) GetSpeechToText(ctx context.Context, audio []byte, filename string) (string, error) {
+	if len(audio) == 0 {
+		return "", fmt.Errorf("empty audio")
+	}
+	res, err := s.speech.SpeechToText(ctx, speech.STTRequest{Audio: audio, Filename: filename})
+	if err != nil {
+		if errors.Is(err, speech.ErrNotConfigured) {
+			return "", fmt.Errorf("voice is not configured on this environment")
+		}
+		return "", err
+	}
+	return strings.TrimSpace(res.Text), nil
+}
+
+// GetSpeechToTextStream delegates to the speech seam's realtime STT proxy.
+func (s *GroqAIService) GetSpeechToTextStream(ctx context.Context, clientConn *websocket.Conn, language string) error {
+	if s.speech == nil {
+		return fmt.Errorf("voice is not configured on this environment")
+	}
+	return s.speech.SpeechToTextStream(ctx, clientConn, language)
 }
 
 // splitChatMessages turns the handler's []map message list into a system prompt

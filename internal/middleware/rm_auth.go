@@ -63,6 +63,39 @@ func RequireRMAuth(authService *service.RMAuthService) func(http.Handler) http.H
 	}
 }
 
+// RequireRMAuthWS is RequireRMAuth's counterpart for WebSocket upgrade
+// routes (the RM copilot's realtime STT stream). See RequireAuthWS for why
+// this accepts a `?token=` query param fallback instead of changing
+// RequireRMAuth globally.
+func RequireRMAuthWS(authService *service.RMAuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tokenString := ""
+			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					tokenString = parts[1]
+				}
+			}
+			if tokenString == "" {
+				tokenString = r.URL.Query().Get("token")
+			}
+			if tokenString == "" {
+				http.Error(w, `{"error": "Missing auth token"}`, http.StatusUnauthorized)
+				return
+			}
+			claims, err := authService.ValidateToken(tokenString)
+			if err != nil {
+				http.Error(w, `{"error": "Invalid or expired token"}`, http.StatusUnauthorized)
+				return
+			}
+			ctx := context.WithValue(r.Context(), rmIDKey, claims.RMID)
+			ctx = context.WithValue(ctx, rmRoleKey, claims.Role)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // RequireAdmin must be chained after RequireRMAuth; it 403s any non-admin.
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

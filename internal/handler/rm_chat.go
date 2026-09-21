@@ -37,6 +37,28 @@ func (h *RMChatHandler) Register(r chi.Router) {
 	r.Post("/chat/stt", h.stt)
 }
 
+// STTStream upgrades to a WebSocket and proxies it to the realtime STT
+// stream. Mounted separately from Register (not under the header-only
+// RequireRMAuth group) because it needs RequireRMAuthWS's query-token
+// fallback for browser WebSocket clients — see cmd/api/main.go wiring.
+func (h *RMChatHandler) STTStream(w http.ResponseWriter, r *http.Request) {
+	if _, ok := middleware.GetRMID(r.Context()); !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	lang := r.URL.Query().Get("lang")
+	if lang == "" {
+		lang = "auto"
+	}
+	_ = h.svc.TranscribeStream(r.Context(), conn, lang)
+}
+
 func (h *RMChatHandler) scope(r *http.Request) string {
 	if middleware.IsAdmin(r.Context()) {
 		return service.ScopeAdmin
@@ -198,13 +220,14 @@ func (h *RMChatHandler) tts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Text string `json:"text"`
+		Text     string `json:"text"`
+		Language string `json:"language,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Text == "" {
 		apiresponse.Error(w, apiresponse.Validation("text is required"))
 		return
 	}
-	raw, status, err := h.svc.TTS(r.Context(), body.Text)
+	raw, status, err := h.svc.TTS(r.Context(), body.Text, body.Language)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

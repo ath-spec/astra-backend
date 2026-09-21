@@ -3,6 +3,8 @@ package speech
 import (
 	"context"
 	"fmt"
+
+	"github.com/gorilla/websocket"
 )
 
 // AWSProvider is the provisioned Amazon Polly (TTS) + Transcribe (STT)
@@ -42,4 +44,8 @@ func (p *AWSProvider) TextToSpeech(ctx context.Context, req TTSRequest) (*TTSRes
 
 func (p *AWSProvider) SpeechToText(ctx context.Context, req STTRequest) (*STTResult, error) {
 	return nil, fmt.Errorf("aws transcribe backend not connected yet (region=%q): %w", p.region, ErrNotConfigured)
+}
+
+func (p *AWSProvider) SpeechToTextStream(ctx context.Context, clientConn *websocket.Conn, language string) error {
+	return fmt.Errorf("aws transcribe streaming backend not connected yet (region=%q): %w", p.region, ErrNotConfigured)
 }

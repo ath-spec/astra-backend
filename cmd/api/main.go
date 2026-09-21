@@ -400,6 +400,14 @@ func main() {
 		}
 	})
 
+	// Realtime STT stream: a WebSocket upgrade, so it needs RequireAuthWS's
+	// query-token fallback (browsers can't set custom headers on the native
+	// WebSocket API) instead of the header-only RequireAuth used below.
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequireAuthWS(authService))
+		r.Get("/api/chat/stt/stream", chatHandler.HandleSTTStream)
+	})
+
 	// Protected Routes (Requires JWT Bearer Token)
 	r.Group(func(r chi.Router) {
 		r.Use(authmw.RequireAuth(authService))
@@ -411,6 +419,7 @@ func main() {
 		r.Post("/api/chat/memory", chatHandler.AddMemory)
 		r.Delete("/api/chat/memory/{id}", chatHandler.DeleteMemory)
 		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route
+		r.Post("/api/stt", chatHandler.HandleSTT)
 
 		// v1 financial domain APIs (see the IDBI sandbox spec doc).
 		r.Mount("/api/v1/stocks", stocksHandler.Routes())
@@ -459,6 +468,13 @@ func main() {
 				r.Use(authmw.RequireAdmin)
 				rmAdminHandler.Register(r)
 			})
+		})
+
+		// Realtime STT stream: needs RequireRMAuthWS's query-token fallback,
+		// same reasoning as the app chat's stream route above.
+		r.Group(func(r chi.Router) {
+			r.Use(authmw.RequireRMAuthWS(rmAuthService))
+			r.Get("/chat/stt/stream", rmChatHandler.STTStream)
 		})
 	})
 

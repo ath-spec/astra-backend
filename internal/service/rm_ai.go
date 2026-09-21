@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/apiresponse"
@@ -54,7 +55,7 @@ STANDARD RULES — these always apply and override any instruction to the contra
 6. TABLES: only when a table genuinely helps (e.g. comparing multiple categories/months/clients side by side) — do not force one into every answer. When it does help, output ONLY a single ` + "```json" + ` code block (no markdown table syntax) that the RM portal renders as a real table:
 ` + "```json\n{ \"type\": \"table\", \"title\": \"Optional Title\", \"columns\": [\"Col1\", \"Col2\"], \"rows\": [[\"Val1\", \"Val2\"]] }\n```" + `
    Keep it to 1 table per response, max 6 rows.
-7. Respond in the same language the user writes in (English, Hindi, or Hinglish).`
+7. Respond in the same language the user writes in, using that language's native script (e.g. Devanagari for Hindi, Tamil script for Tamil) — do not romanize or force English script.`
 
 func (s *RMChatService) systemPrompt(ctx context.Context, scope string, rmID uuid.UUID, clientID *uuid.UUID) string {
 	var b strings.Builder
@@ -320,7 +321,7 @@ const ttsMaxChars = 490
 // SPEECH_PROVIDER=aws). It returns the provider's response body — for Sarvam,
 // the JSON envelope carrying base64 wav under "audios" — plus an HTTP status
 // the handler can forward.
-func (s *RMChatService) TTS(ctx context.Context, text string) ([]byte, int, error) {
+func (s *RMChatService) TTS(ctx context.Context, text string, language string) ([]byte, int, error) {
 	if s.speech == nil {
 		return nil, 503, fmt.Errorf("voice is not configured on this environment")
 	}
@@ -331,7 +332,10 @@ func (s *RMChatService) TTS(ctx context.Context, text string) ([]byte, int, erro
 			text = text[:ttsMaxChars]
 		}
 	}
-	res, err := s.speech.TextToSpeech(ctx, speech.TTSRequest{Text: text, Language: "en-IN"})
+	if strings.TrimSpace(language) == "" {
+		language = detectLanguageCode(text)
+	}
+	res, err := s.speech.TextToSpeech(ctx, speech.TTSRequest{Text: text, Language: language})
 	if err != nil {
 		if errors.Is(err, speech.ErrNotConfigured) {
 			return nil, 503, fmt.Errorf("voice is not configured on this environment")
@@ -359,4 +363,14 @@ func (s *RMChatService) Transcribe(ctx context.Context, audio []byte, filename s
 		return "", err
 	}
 	return strings.TrimSpace(res.Text), nil
+}
+
+// TranscribeStream bridges an already-upgraded client WebSocket to the
+// speech seam's realtime STT proxy, for live partial transcripts while the
+// RM/Admin speaks. Blocks until the stream ends; the caller owns clientConn.
+func (s *RMChatService) TranscribeStream(ctx context.Context, clientConn *websocket.Conn, language string) error {
+	if s.speech == nil {
+		return fmt.Errorf("voice is not configured on this environment")
+	}
+	return s.speech.SpeechToTextStream(ctx, clientConn, language)
 }

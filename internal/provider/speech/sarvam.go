@@ -10,12 +10,15 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // URLs are vars (not consts) so tests can point them at a stub server.
 var (
-	sarvamTTSURL = "https://api.sarvam.ai/text-to-speech"
-	sarvamSTTURL = "https://api.sarvam.ai/speech-to-text"
+	sarvamTTSURL      = "https://api.sarvam.ai/text-to-speech"
+	sarvamSTTURL      = "https://api.sarvam.ai/speech-to-text"
+	sarvamSTTStreamURL = "wss://api.sarvam.ai/speech-to-text-realtime/ws"
 )
 
 // maxSpeechResponseBytes bounds how much of an upstream response we buffer.
@@ -157,6 +160,86 @@ func (p *SarvamProvider) SpeechToText(ctx context.Context, req STTRequest) (*STT
 		return nil, fmt.Errorf("sarvam stt: parse transcript: %w", err)
 	}
 	return &STTResult{Text: strings.TrimSpace(parsed.Transcript), Language: parsed.LanguageCode, Provider: "sarvam"}, nil
+}
+
+// SpeechToTextStream bridges an already-upgraded client WebSocket to Sarvam's
+// realtime STT WebSocket: client audio frames go one way, Sarvam's partial/
+// final transcript events go the other. language is normally "auto" so
+// Sarvam detects whatever language the user speaks; silence_duration_ms
+// closes Sarvam's turn after a pause, matching the client's own stop-on-
+// silence UX.
+func (p *SarvamProvider) SpeechToTextStream(ctx context.Context, clientConn *websocket.Conn, language string) error {
+	if p.apiKey == "" {
+		return ErrNotConfigured
+	}
+	lang := orDefault(language, "auto")
+	url := fmt.Sprintf("%s?language_code=%s&stream_type=balanced&silence_duration_ms=5000", sarvamSTTStreamURL, lang)
+
+	header := http.Header{}
+	header.Set("api-subscription-key", p.apiKey)
+
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	sarvamConn, resp, err := dialer.DialContext(ctx, url, header)
+	if err != nil {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		return fmt.Errorf("sarvam stt stream: dial failed (status %d): %w", status, err)
+	}
+	defer sarvamConn.Close()
+
+	// ctx cancellation (client disconnect, request timeout, server shutdown)
+	// must tear down the Sarvam leg too, since neither read loop below is
+	// otherwise woken by context cancellation.
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = sarvamConn.Close()
+		case <-done:
+		}
+	}()
+
+	errCh := make(chan error, 2)
+
+	// client -> Sarvam: forward audio_input frames as-is.
+	go func() {
+		for {
+			messageType, message, err := clientConn.ReadMessage()
+			if err != nil {
+				errCh <- fmt.Errorf("client read: %w", err)
+				return
+			}
+			if err := sarvamConn.WriteMessage(messageType, message); err != nil {
+				errCh <- fmt.Errorf("sarvam write: %w", err)
+				return
+			}
+		}
+	}()
+
+	// Sarvam -> client: forward transcript.partial / transcript.final events.
+	go func() {
+		for {
+			messageType, message, err := sarvamConn.ReadMessage()
+			if err != nil {
+				errCh <- fmt.Errorf("sarvam read: %w", err)
+				return
+			}
+			if err := clientConn.WriteMessage(messageType, message); err != nil {
+				errCh <- fmt.Errorf("client write: %w", err)
+				return
+			}
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func orDefault(v, def string) string {

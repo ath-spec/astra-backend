@@ -56,3 +56,40 @@ func RequireAuth(authService *service.AuthService) func(http.Handler) http.Handl
 		})
 	}
 }
+
+// RequireAuthWS is RequireAuth's counterpart for WebSocket upgrade routes.
+// Native clients can set the Authorization header on the upgrade request,
+// but browsers' native WebSocket API cannot — so this also accepts the JWT
+// as a `?token=` query parameter, same as the reference realtime-STT
+// implementation. Kept as a separate middleware (rather than changing
+// RequireAuth globally) so plain REST endpoints never log tokens via query
+// string, only the handful of streaming routes that need this fallback.
+func RequireAuthWS(authService *service.AuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tokenString := ""
+			if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+				parts := strings.Split(authHeader, " ")
+				if len(parts) == 2 && parts[0] == "Bearer" {
+					tokenString = parts[1]
+				}
+			}
+			if tokenString == "" {
+				tokenString = r.URL.Query().Get("token")
+			}
+			if tokenString == "" {
+				http.Error(w, `{"error": "Missing auth token"}`, http.StatusUnauthorized)
+				return
+			}
+
+			claims, err := authService.ValidateToken(tokenString)
+			if err != nil {
+				http.Error(w, `{"error": "Invalid or expired token"}`, http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
