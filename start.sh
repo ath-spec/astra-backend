@@ -3,6 +3,8 @@
 set -e
 
 echo "[$(date)] Starting initialization script..."
+echo "[$(date)] VERIFICATION - The injected DATABASE_URL is:"
+echo "${DATABASE_URL}"
 echo "[$(date)] Attempting to connect to the database and run migrations..."
 echo "[$(date)] WARNING: If this step hangs or fails, your EKS worker nodes are being blocked by the RDS Security Group."
 
