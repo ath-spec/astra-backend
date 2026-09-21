@@ -32,7 +32,7 @@ func CreatePostgresPool(ctx context.Context, dsn string) (*pgxpool.Pool, error) 
 		config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeSimpleProtocol
 	}
 
-	config.MaxConns = 25
+	config.MaxConns = 100
 	config.MinConns = 5
 	config.MaxConnLifetime = time.Hour
 	config.MaxConnIdleTime = 30 * time.Minute

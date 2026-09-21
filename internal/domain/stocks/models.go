@@ -92,3 +92,59 @@ const (
 	OrderTypeSL     = "SL"
 	OrderTypeSLM    = "SL-M"
 )
+
+type ChartPoint struct {
+	Timestamp int64   `json:"timestamp"`
+	Price     float64 `json:"price"`
+}
+
+type ShareholderInfo struct {
+	Title      string  `json:"title"`
+	Percentage float64 `json:"percentage"`
+}
+
+type ShareholdingPattern struct {
+	Promoter []ShareholderInfo `json:"promoter"`
+	FII      []ShareholderInfo `json:"fii"`
+	DII      []ShareholderInfo `json:"dii"`
+	Public   []ShareholderInfo `json:"public"`
+}
+
+type InstrumentDeepDive struct {
+	PrimaryRole   string   `json:"primary_role"`
+	SecondaryRole string   `json:"secondary_role"`
+	Strengths     []string `json:"strengths"`
+	TradeOffs     []string `json:"trade_offs"`
+}
+
+type PortfolioInsights struct {
+	IsPositiveImpact     bool     `json:"is_positive_impact"`
+	WhyGetFund           []string `json:"why_get_fund"`
+	SuitableFor          []string `json:"suitable_for"`
+	AvoidIf              []string `json:"avoid_if"`
+	ImpactText           string   `json:"impact_text"`
+	WhatItDoesRightNow   string   `json:"what_it_does_right_now"`
+	WhatBuyingMoreWillDo string   `json:"what_buying_more_will_do"`
+}
+
+type Fundamentals struct {
+	MarketCap   float64 `json:"market_cap"` // in Crores
+	PERatio     float64 `json:"pe_ratio"`
+	PBRatio     float64 `json:"pb_ratio"`
+	DivYield    float64 `json:"div_yield"`
+	ROE         float64 `json:"roe"`
+	High52W     float64 `json:"high_52w"`
+	Low52W      float64 `json:"low_52w"`
+}
+
+type StockProfile struct {
+	Quote               Quote               `json:"quote"`
+	CompanyName         string              `json:"company_name"`
+	Sector              string              `json:"sector"`
+	Description         string              `json:"description"`
+	ChartPoints         []ChartPoint        `json:"chart_points"`
+	Fundamentals        Fundamentals        `json:"fundamentals"`
+	ShareholdingPattern ShareholdingPattern `json:"shareholding_pattern"`
+	InstrumentDeepDive  InstrumentDeepDive  `json:"instrument_deep_dive"`
+	PortfolioInsights   PortfolioInsights   `json:"portfolio_insights"`
+}

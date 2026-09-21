@@ -50,69 +50,6 @@ func round4(v float64) float64 { return math.Round(v*10000) / 10000 }
 
 func newTxnDate() time.Time { return time.Now().UTC() }
 
-// seedProfile describes one fund this mock seeds a new user into, spanning
-// a mix of categories and holding durations so returns/XIRR differ
-// meaningfully across holdings instead of all looking identical.
-type seedProfile struct {
-	schemeCode string
-	costValue  float64
-	daysHeld   int
-	isSIP      bool
-}
-
-var seedProfiles = []seedProfile{
-	{"HDFC-MC-G", 118000, 520, true},
-	{"SBI-BLC-G", 82000, 340, false},
-	{"PARAG-FLX-G", 96000, 260, true},
-	{"KOTAK-GOLD-G", 31000, 180, false},
-}
-
-// seedFolios lazily seeds a new user's starting mutual-fund portfolio the
-// first time their holdings are read, mirroring the Stocks domain's
-// seedHoldings pattern. Idempotent via the (user_id, scheme_code) unique
-// constraint (migration 000011).
-func (p *MockProvider) seedFolios(ctx context.Context, userID uuid.UUID) error {
-	for _, sp := range seedProfiles {
-		var baseNAV float64
-		var amcName, schemeName, isin, category string
-		err := p.pool.QueryRow(ctx, `SELECT amc_name, scheme_name, isin, category, nav FROM fund_catalog WHERE scheme_code = $1`, sp.schemeCode).
-			Scan(&amcName, &schemeName, &isin, &category, &baseNAV)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				continue // catalog entry missing; skip rather than fail the whole seed
-			}
-			return fmt.Errorf("lookup seed fund %s: %w", sp.schemeCode, err)
-		}
-
-		purchaseDate := time.Now().UTC().AddDate(0, 0, -sp.daysHeld)
-		purchaseNAV := navOnDate(sp.schemeCode, baseNAV, purchaseDate)
-		units := round4(sp.costValue / purchaseNAV)
-		folioNumber := fmt.Sprintf("FOLIO%d", time.Now().UTC().UnixNano()%1_000_000_000)
-
-		var folioID uuid.UUID
-		err = p.pool.QueryRow(ctx, `
-			INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type, is_sip, created_at)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'GROWTH',$12,$13)
-			ON CONFLICT (user_id, scheme_code) DO NOTHING
-			RETURNING id
-		`, userID, folioNumber, amcName, sp.schemeCode, schemeName, isin, units, purchaseNAV, purchaseDate, sp.costValue, category, sp.isSIP, purchaseDate).Scan(&folioID)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				continue // ON CONFLICT DO NOTHING: already seeded for this user
-			}
-			return fmt.Errorf("seed folio %s: %w", sp.schemeCode, err)
-		}
-
-		if _, err := p.pool.Exec(ctx, `
-			INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price)
-			VALUES ($1, $2, $3, $4, $5, $6)
-		`, folioID, mfdomain.TxnPurchase, purchaseDate, sp.costValue, units, purchaseNAV); err != nil {
-			return fmt.Errorf("seed purchase txn for %s: %w", sp.schemeCode, err)
-		}
-	}
-	return nil
-}
-
 type folioRow struct {
 	folioNumber, amcName, schemeCode, schemeName, isin, category, planType string
 	isSIP                                                                  bool
@@ -121,10 +58,6 @@ type folioRow struct {
 }
 
 func (p *MockProvider) GetHoldings(ctx context.Context, userID uuid.UUID) (*mfdomain.HoldingsResult, error) {
-	if err := p.seedFolios(ctx, userID); err != nil {
-		return nil, err
-	}
-
 	// Joins fund_catalog directly rather than looking up each folio's NAV in
 	// a separate query afterward — avoids an N+1 query pattern here.
 	rows, err := p.pool.Query(ctx, `

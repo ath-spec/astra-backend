@@ -36,6 +36,7 @@ func (h *StocksHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/holdings", h.getHoldings)
 	r.Get("/quote", h.getQuote)
+	r.Get("/profile", h.getProfile)
 	r.Post("/orders", h.placeOrder)
 	r.Get("/orders", h.listOrders)
 	r.Get("/orders/{orderID}", h.getOrder)
@@ -72,6 +73,22 @@ func (h *StocksHandler) getQuote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiresponse.OK(w, quote)
+}
+
+func (h *StocksHandler) getProfile(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("trading_symbol")
+	if symbol == "" {
+		apiresponse.Error(w, apiresponse.Validation("trading_symbol query parameter is required"))
+		return
+	}
+	exchange := r.URL.Query().Get("exchange")
+
+	profile, err := h.svc.GetProfile(r.Context(), exchange, symbol)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, profile)
 }
 
 func (h *StocksHandler) placeOrder(w http.ResponseWriter, r *http.Request) {

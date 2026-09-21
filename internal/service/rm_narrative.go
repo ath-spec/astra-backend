@@ -35,7 +35,7 @@ For each topic present in the input, write one flowing paragraph, 2-3 sentences,
 
 Rules: use only the given figures, invent nothing; no fund, stock, ETF or product names; plain prose, no markdown, no lists; skip any topic not in the input.
 
-Reply with a compact JSON object {topic: paragraph}. Nothing else.`
+Reply ONLY in valid JSON format with a compact JSON object mapping each topic to its paragraph string. Example: {"risk": "your paragraph", "cost": "your paragraph"}`
 
 // ClientNarrative returns AI-written, figure-grounded report paragraphs per
 // analytic topic. A cheap fingerprint query gates everything: while the

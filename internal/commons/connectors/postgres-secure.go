@@ -23,7 +23,7 @@ func CreateSecurePostgresSession(dsn string) *pgxpool.Pool {
 	}
 
 	// Connection pool settings
-	config.MaxConns = 25
+	config.MaxConns = 100
 	config.MinConns = 5
 	config.MaxConnLifetime = time.Hour
 	config.MaxConnIdleTime = time.Minute * 30
