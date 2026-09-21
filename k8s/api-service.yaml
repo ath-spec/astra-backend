@@ -3,11 +3,11 @@ kind: Service
 metadata:
   name: astra-api-service
   labels:
-    app: astra-api
+    app: astra-backend
 spec:
   type: LoadBalancer # Creates an AWS Classic/Network Load Balancer
   selector:
-    app: astra-api
+    app: astra-backend
   ports:
     - protocol: TCP
       port: 80
