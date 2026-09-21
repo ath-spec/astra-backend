@@ -384,6 +384,13 @@ func main() {
 		w.Write([]byte("Astra Backend is running with JWT Authentication!"))
 	})
 
+	// Health check endpoint for Kubernetes liveness/readiness probes
+	r.Get("/api/v1/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "ok"}`))
+	})
+
 	// Unprotected Routes (OTP Flow)
 	r.Group(func(r chi.Router) {
 		r.Post("/api/auth/otp/send", authHandler.SendOTP)
