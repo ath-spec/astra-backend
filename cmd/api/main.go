@@ -56,9 +56,6 @@ func main() {
 	// 1. Load Configuration
 	cfg := config.Load()
 
-	// Hardcoding the connection string exactly as requested to bypass all secrets/env vars
-	cfg.DatabaseURL = "postgres://postgres:idbi-34f543#*@abhimanyu-gupta-psql-rds.cxgiym4yu3kl.ap-south-1.rds.amazonaws.com:5432/abhimanyu_gupta_psql_rds?sslmode=verify-full&sslrootcert=/app/global-bundle.pem"
-
 	// Configure the global structured (JSON) logger. Every slog.Info/Warn/Error
 	// call — including the StructuredLogger middleware — writes to stdout as a
 	// JSON object. CloudWatch / Loki can ingest this without any format config.
