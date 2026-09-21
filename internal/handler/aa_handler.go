@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/events"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/provider/idbi"
 	"github.com/yourusername/astra-backend/internal/service/idbiaa"
@@ -31,10 +32,18 @@ type AAHandler struct {
 	pool         *pgxpool.Pool
 	aa           *idbiaa.Service       // nil unless IDBI_AA_ENABLED — then the consent flow is real
 	idbiAccounts *idbiaccounts.Service // nil unless IDBI_ACCOUNTS_ENABLED — then GET /accounts serves real IDBI accounts
+	events       *events.Publisher
 }
 
 func NewAAHandler(pool *pgxpool.Pool) *AAHandler {
 	return &AAHandler{pool: pool}
+}
+
+// WithEvents attaches the live-update publisher so adding or unlinking a
+// bank account pushes an invalidation to the RM portal.
+func (h *AAHandler) WithEvents(pub *events.Publisher) *AAHandler {
+	h.events = pub
+	return h
 }
 
 // WithIDBI attaches the real AA consent service (feature 4). When it is not
@@ -213,6 +222,9 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
+	}
 
 	apiresponse.Created(w, acc)
 }
@@ -238,6 +250,9 @@ func (h *AAHandler) UnlinkAccount(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
 	}
 
 	apiresponse.OK(w, map[string]string{

@@ -1,23 +1,33 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	stocksdomain "github.com/yourusername/astra-backend/internal/domain/stocks"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/httpx"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
 type StocksHandler struct {
-	svc *service.StocksService
+	svc    *service.StocksService
+	events *events.Publisher
 }
 
 func NewStocksHandler(svc *service.StocksService) *StocksHandler {
 	return &StocksHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher so a placed/modified/
+// cancelled order pushes a portfolio invalidation to the RM portal.
+func (h *StocksHandler) WithEvents(pub *events.Publisher) *StocksHandler {
+	h.events = pub
+	return h
 }
 
 // Routes mounts the Demat & Exchange endpoints. Every route here requires
@@ -80,6 +90,9 @@ func (h *StocksHandler) placeOrder(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
+	}
 	apiresponse.Created(w, order)
 }
 
@@ -101,6 +114,9 @@ func (h *StocksHandler) modifyOrder(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
+	}
 	apiresponse.OK(w, order)
 }
 
@@ -116,6 +132,9 @@ func (h *StocksHandler) cancelOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
 	}
 	apiresponse.OK(w, order)
 }

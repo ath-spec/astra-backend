@@ -210,7 +210,14 @@ func (s *DashboardService) recordSnapshot(ctx context.Context, userID uuid.UUID,
 // GrowthHistory returns up to `days` of recorded daily snapshots, oldest
 // first, for the Home screen's growth chart. History only exists from
 // whenever this user's first dashboard read happened onward.
-func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, days int) ([]dashboarddomain.SnapshotPoint, error) {
+//
+// prefetched lets a caller that already has this user's PortfolioInputs pass
+// them in (nil otherwise) — RMService.GetClient needs both this and the
+// dashboard summary for its own portfolio-inputs branch, and without this,
+// the <=30-days-of-history backfill below called Summary(ctx, userID), which
+// silently re-ran the exact same FetchInputs query that caller had already
+// done seconds earlier in a sibling goroutine.
+func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, days int, prefetched *PortfolioInputs) ([]dashboarddomain.SnapshotPoint, error) {
 	if days <= 0 || days > 3650 {
 		days = 180
 	}
@@ -255,9 +262,19 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 		// from a hardcoded ₹245,000 that had nothing to do with their real
 		// portfolio and could visibly disagree with the real total shown
 		// elsewhere in the same screen.
-		summary, err := s.Summary(ctx, userID)
-		if err != nil {
-			return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+		var summary *dashboarddomain.Summary
+		if prefetched != nil {
+			s2, err := s.Summarize(ctx, userID, prefetched)
+			if err != nil {
+				return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+			}
+			summary = s2
+		} else {
+			s2, err := s.Summary(ctx, userID)
+			if err != nil {
+				return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+			}
+			summary = s2
 		}
 		mfVal, stockVal, fdVal := summary.MutualFunds.Value, summary.Stocks.Value, summary.FixedDeposits.Value
 
@@ -298,6 +315,8 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 		}
 
 		allPoints := make([]dashboarddomain.SnapshotPoint, totalDays)
+		dates := make([]time.Time, totalDays)
+		vals := make([]float64, totalDays)
 		for i := 0; i < totalDays; i++ {
 			d := now.AddDate(0, 0, -(totalDays - 1 - i))
 			val := simValues[i]
@@ -305,12 +324,20 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 				Date:        apitime.New(d),
 				TotalWealth: val,
 			}
-			_, _ = s.pool.Exec(ctx, `
-				INSERT INTO portfolio_snapshots
-					(user_id, snapshot_date, total_wealth, mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value)
-				VALUES ($1, $2, $3, $3 * 0.65, $3 * 0.25, $3 * 0.10, 0)
-				ON CONFLICT (user_id, snapshot_date) DO UPDATE SET total_wealth = EXCLUDED.total_wealth
-			`, userID, d, val)
+			dates[i] = d
+			vals[i] = val
+		}
+		// One batched statement instead of 365 sequential round-trips — this
+		// backfill only runs once per user (their first 30 days), but it used
+		// to block the request on 365 individual blocking Execs.
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO portfolio_snapshots
+				(user_id, snapshot_date, total_wealth, mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value)
+			SELECT $1, d, v, v * 0.65, v * 0.25, v * 0.10, 0
+			FROM unnest($2::date[], $3::float8[]) AS t(d, v)
+			ON CONFLICT (user_id, snapshot_date) DO UPDATE SET total_wealth = EXCLUDED.total_wealth
+		`, userID, dates, vals); err != nil {
+			return nil, fmt.Errorf("batch insert growth backfill: %w", err)
 		}
 
 		if days < totalDays && days > 0 {

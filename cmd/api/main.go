@@ -19,6 +19,7 @@ import (
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/handler"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
@@ -293,6 +294,15 @@ func main() {
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 	rmChatService := service.NewRMChatService(llmProvider, speechProvider, agentCatalog, rmChatRepo, rmService, rmAdminService)
 
+	// Live update push: an in-process pub/sub that mutation handlers publish
+	// to after a write commits, and the RM portal's WebSocket connection
+	// (rmEventsHandler below) subscribes to — replaces the portal's previous
+	// "fetch once on mount, never again until a hard refresh" behaviour with
+	// real invalidation pushes.
+	eventsHub := events.NewHub()
+	eventsPublisher := events.NewPublisher(eventsHub, assignmentRepo.OwnerOf)
+	rmEventsHandler := handler.NewRMEventsHandler(eventsHub, assignmentRepo)
+
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(
 		aiService, userRepo, chatRepo, memoryService,
@@ -300,23 +310,23 @@ func main() {
 		stocksProvider, mfProvider, fdProvider, watchlistService, spendAnalyticsService,
 		db.Pool,
 	)
-	authHandler := handler.NewAuthHandler(authService, userRepo)
-	stocksHandler := handler.NewStocksHandler(stocksService)
+	authHandler := handler.NewAuthHandler(authService, userRepo).WithEvents(eventsPublisher)
+	stocksHandler := handler.NewStocksHandler(stocksService).WithEvents(eventsPublisher)
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	fdHandler := handler.NewFDHandler(fdService)
-	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
+	paymentsHandler := handler.NewPaymentsHandler(paymentsService).WithEvents(eventsPublisher)
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
-	budgetHandler := handler.NewBudgetHandler(budgetService)
+	budgetHandler := handler.NewBudgetHandler(budgetService).WithEvents(eventsPublisher)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
-	aaHandler := handler.NewAAHandler(db.Pool)
+	aaHandler := handler.NewAAHandler(db.Pool).WithEvents(eventsPublisher)
 	if idbiAASvc != nil {
 		aaHandler.WithIDBI(idbiAASvc)
 	}
 	if idbiAccountsSvc != nil {
 		aaHandler.WithIDBIAccounts(idbiAccountsSvc)
 	}
-	kycHandler := handler.NewKYCHandler(idbiKYCSvc)
-	mfHandler := handler.NewMFHandler(mfService)
+	kycHandler := handler.NewKYCHandler(idbiKYCSvc).WithEvents(eventsPublisher)
+	mfHandler := handler.NewMFHandler(mfService).WithEvents(eventsPublisher)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
 	if advisorTipsSvc != nil {
@@ -475,6 +485,9 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(authmw.RequireRMAuthWS(rmAuthService))
 			r.Get("/chat/stt/stream", rmChatHandler.STTStream)
+			// Live update push: one long-lived socket per RM session, see
+			// internal/events and internal/handler/rm_events_handler.go.
+			r.Get("/events", rmEventsHandler.Stream)
 		})
 	})
 

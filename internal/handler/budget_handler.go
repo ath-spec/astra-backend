@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	budgetdomain "github.com/yourusername/astra-backend/internal/domain/budget"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	budgetprovider "github.com/yourusername/astra-backend/internal/provider/budget"
 	"github.com/yourusername/astra-backend/internal/repository"
@@ -21,11 +22,25 @@ import (
 // Route names and JSON bodies match the reference budget API exactly (raw
 // bodies, no apiresponse envelope) so the ported Flutter client is a drop-in.
 type BudgetHandler struct {
-	svc *budgetservice.Service
+	svc    *budgetservice.Service
+	events *events.Publisher
 }
 
 func NewBudgetHandler(svc *budgetservice.Service) *BudgetHandler {
 	return &BudgetHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher so budget creation, edits,
+// finalization and deletion push an invalidation to the RM portal.
+func (h *BudgetHandler) WithEvents(pub *events.Publisher) *BudgetHandler {
+	h.events = pub
+	return h
+}
+
+func (h *BudgetHandler) notifyChanged(uid uuid.UUID) {
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), uid, events.TypeBudgetChanged)
+	}
 }
 
 func (h *BudgetHandler) Routes() chi.Router {
@@ -151,6 +166,7 @@ func (h *BudgetHandler) createSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not create session"})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusCreated, resp)
 }
 
@@ -196,6 +212,7 @@ func (h *BudgetHandler) updateSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update session"})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -217,6 +234,7 @@ func (h *BudgetHandler) finalizeSession(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not finalize session"})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"session_id": sid.String(),
 		"status":     "finalized",
@@ -238,6 +256,7 @@ func (h *BudgetHandler) deleteSession(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not delete session"})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, map[string]string{"message": "Session deleted successfully"})
 }
 
@@ -289,6 +308,7 @@ func (h *BudgetHandler) patchLatestCategory(w http.ResponseWriter, r *http.Reque
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "success", "message": "Category budget updated successfully"})
 }
 
@@ -334,6 +354,7 @@ func (h *BudgetHandler) updateSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "could not update settings"})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -404,6 +425,7 @@ func (h *BudgetHandler) reallocationApply(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	h.notifyChanged(uid)
 	writeJSON(w, http.StatusOK, resp)
 }
 

@@ -187,19 +187,25 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 		return nil
 	})
 	g.Go(func() error {
+		// GrowthHistory's <=30-days-of-history backfill path needs this
+		// user's current portfolio summary — merged into this same goroutine
+		// (rather than kept as its own parallel fetch) so it reuses the
+		// PortfolioInputs already fetched here instead of independently
+		// re-running the same stocks/mf/fd/bank query a second time. That
+		// used to make every client-profile open with under a month of
+		// history do the full portfolio fetch twice, concurrently, against
+		// the same tables — exactly the READ COMMITTED consistency risk this
+		// function's own comment above warns about, reintroduced here.
 		v, err := s.dashboard.FetchInputs(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("client portfolio inputs: %w", err)
 		}
 		inputs = v
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.dashboard.GrowthHistory(gCtx, userID, growthDays)
+		g2, err := s.dashboard.GrowthHistory(gCtx, userID, growthDays, v)
 		if err != nil {
 			return fmt.Errorf("client growth: %w", err)
 		}
-		growth = v
+		growth = g2
 		return nil
 	})
 	g.Go(func() error {
@@ -335,7 +341,7 @@ func (s *RMService) ClientGrowth(ctx context.Context, callerRMID uuid.UUID, isAd
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
 		return nil, err
 	}
-	return s.dashboard.GrowthHistory(ctx, userID, days)
+	return s.dashboard.GrowthHistory(ctx, userID, days, nil)
 }
 
 // PortfolioHistory returns how a client's asset allocation and portfolio

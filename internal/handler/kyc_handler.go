@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/httpx"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/service/idbikyc"
@@ -15,11 +17,19 @@ import (
 // (IDBI_KYC_ENABLED=true) POST /pan/verify runs a real CKYC search via IDBI
 // 415; otherwise it returns notConfigured as before.
 type KYCHandler struct {
-	svc *idbikyc.Service // nil => not configured
+	svc    *idbikyc.Service // nil => not configured
+	events *events.Publisher
 }
 
 func NewKYCHandler(svc *idbikyc.Service) *KYCHandler {
 	return &KYCHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher so a newly verified PAN
+// shows up on the RM's account-details view without a manual refresh.
+func (h *KYCHandler) WithEvents(pub *events.Publisher) *KYCHandler {
+	h.events = pub
+	return h
 }
 
 func (h *KYCHandler) Routes() chi.Router {
@@ -51,6 +61,9 @@ func (h *KYCHandler) verifyPAN(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeProfileUpdated)
 	}
 	apiresponse.OK(w, res)
 }

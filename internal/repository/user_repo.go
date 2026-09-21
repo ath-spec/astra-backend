@@ -50,6 +50,7 @@ type UserRepository interface {
 	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM *bool, uiBanks interface{}) (user *User, isNew bool, err error)
 	UpdateUserName(ctx context.Context, userID uuid.UUID, name string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*User, error)
+	GetLatestVerifiedPAN(ctx context.Context, userID uuid.UUID) (string, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 	GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error)
 
@@ -65,6 +66,9 @@ type UserRepository interface {
 	// from what should be a single-use token. Callers MUST use this instead
 	// of GetRefreshToken+RevokeRefreshToken for the rotate-on-use flow.
 	ConsumeRefreshToken(ctx context.Context, tokenHash string) (userID uuid.UUID, ok bool, err error)
+	// RotateRefreshToken is ConsumeRefreshToken plus issuing the replacement,
+	// both in one transaction. Use this for the refresh-endpoint flow.
+	RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (userID uuid.UUID, ok bool, err error)
 	DeleteUserByPhone(ctx context.Context, phoneNumber string) error
 }
 
@@ -220,6 +224,26 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, userID uuid.UUID) 
 		return nil, fmt.Errorf("get user by id: %w", err)
 	}
 	return &user, nil
+}
+
+// GetLatestVerifiedPAN returns the PAN from this user's most recent CKYC
+// verification (idbi_ckyc, written by POST /api/v1/kyc/pan/verify), or ""
+// if they've never completed that step. This is the only place a user's PAN
+// is actually persisted server-side — the account-details screen previously
+// relied solely on a client-side value collected during onboarding that was
+// never sent anywhere and never survived an app restart.
+func (r *PostgresUserRepository) GetLatestVerifiedPAN(ctx context.Context, userID uuid.UUID) (string, error) {
+	var pan string
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT pan FROM idbi_ckyc WHERE user_id = $1 ORDER BY verified_at DESC LIMIT 1
+	`, userID).Scan(&pan)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("get latest verified pan: %w", err)
+	}
+	return pan, nil
 }
 
 func (r *PostgresUserRepository) findByPhone(ctx context.Context, phoneNumber string) (*User, error) {
@@ -705,12 +729,57 @@ func (r *PostgresUserRepository) RevokeRefreshToken(ctx context.Context, tokenHa
 	return nil
 }
 
+// RotateRefreshToken atomically revokes oldHash and inserts newHash as its
+// replacement in a single DB transaction. Without the transaction, a caller
+// doing "ConsumeRefreshToken, then separately CreateRefreshToken" could have
+// the revoke succeed and the create fail (a dropped connection, a full disk,
+// any transient DB error between the two calls) — leaving the user's old
+// token burned and no new one issued, stranding them with no way back in
+// except a full re-login. Wrapping both in one transaction means either the
+// whole rotation lands or none of it does; the old token stays valid to
+// retry against if the create step fails.
+func (r *PostgresUserRepository) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (uuid.UUID, bool, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("begin refresh rotation: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var userID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING user_id
+	`, oldHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume refresh token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, newHash, newExpiresAt); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("create refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("commit refresh rotation: %w", err)
+	}
+	return userID, true, nil
+}
+
 // ConsumeRefreshToken validates and revokes in a single atomic statement: the
 // WHERE clause re-checks not-revoked/not-expired at the same instant the row
 // is claimed, so of any number of concurrent callers passing the same
 // tokenHash, exactly one gets ok=true (and the user ID), and the rest get
 // ok=false immediately — no separate read-then-write window for two callers
-// to both see "still valid" before either commits.
+// to both see "still valid" before either commits. Prefer RotateRefreshToken
+// above for the rotate-on-refresh flow; this is kept for logout-style
+// call sites that only need to revoke without issuing a replacement.
 func (r *PostgresUserRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, bool, error) {
 	var userID uuid.UUID
 	err := r.db.Pool.QueryRow(ctx, `

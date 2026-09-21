@@ -37,6 +37,7 @@ type RMUserRepository interface {
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RMRefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
 	ConsumeRefreshToken(ctx context.Context, tokenHash string) (rmID uuid.UUID, ok bool, err error)
+	RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (rmID uuid.UUID, ok bool, err error)
 
 	// OTP login codes.
 	CreateOTP(ctx context.Context, rmID uuid.UUID, codeHash string, expiresAt time.Time) error
@@ -287,6 +288,43 @@ func (r *PostgresRMUserRepository) RevokeRefreshToken(ctx context.Context, token
 		return fmt.Errorf("revoke rm refresh token: %w", err)
 	}
 	return nil
+}
+
+// RotateRefreshToken atomically revokes oldHash and inserts newHash as its
+// replacement in one transaction — see the app-side
+// PostgresUserRepository.RotateRefreshToken for why revoke-then-separately-
+// create is unsafe without it.
+func (r *PostgresRMUserRepository) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (uuid.UUID, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("begin rm refresh rotation: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var rmID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE rm_refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING rm_id
+	`, oldHash).Scan(&rmID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume rm refresh token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO rm_refresh_tokens (rm_id, token_hash, expires_at) VALUES ($1, $2, $3)
+	`, rmID, newHash, newExpiresAt); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("create rm refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("commit rm refresh rotation: %w", err)
+	}
+	return rmID, true, nil
 }
 
 // ConsumeRefreshToken validates and revokes in one atomic statement — see the

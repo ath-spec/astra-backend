@@ -1,0 +1,2 @@
+DELETE FROM fund_allocation WHERE scheme_code IN ('HDFC-INVIT-G', 'SBI-INVIT-G', 'AXIS-INVIT-G', 'KOTAK-INVIT-G');
+DELETE FROM fund_catalog WHERE scheme_code IN ('HDFC-INVIT-G', 'SBI-INVIT-G', 'AXIS-INVIT-G', 'KOTAK-INVIT-G');
