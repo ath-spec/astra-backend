@@ -79,13 +79,17 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	if existing, err := r.findByPhone(ctx, phoneNumber); err != nil {
 		return nil, false, err
 	} else if existing != nil {
-		// Keep the stored name in sync with what the client sends on verify.
-		// The account row is created on the first OTP verify (often with a
-		// placeholder name), but the user sets / corrects their real name
-		// during onboarding, which happens after the row already exists and
-		// hits verify again. Only a non-empty, changed name is written — a
-		// blank never overwrites a good one.
-		if trimmed := strings.TrimSpace(name); trimmed != "" && (existing.Name == nil || *existing.Name != trimmed) {
+		// Fill in the name ONLY while none is set yet. The account row is
+		// created on the first OTP verify (often with a placeholder name),
+		// and the user corrects it during onboarding via a second verify
+		// call before any real name exists — that's the case this backfills.
+		// The mobile app sends *some* name on every verify call, including
+		// plain returning-user logins (it defaults to a placeholder like
+		// "Investor" when the login screen never asked for one), so once a
+		// real name is stored it must never be overwritten here again — a
+		// deliberate name change belongs to the dedicated profile-update
+		// endpoint, not the login path.
+		if trimmed := strings.TrimSpace(name); trimmed != "" && (existing.Name == nil || *existing.Name == "") {
 			if _, err := r.db.Pool.Exec(ctx,
 				`UPDATE users SET name = $1 WHERE id = $2`, trimmed, existing.ID); err != nil {
 				return nil, false, fmt.Errorf("update user name: %w", err)
