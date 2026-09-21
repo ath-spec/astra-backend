@@ -201,8 +201,16 @@ func (s *RMChatService) Chat(ctx context.Context, rmID uuid.UUID, scope string, 
 	if scope == ScopeAdmin {
 		agentKey = agents.KeyAdminCopilot
 	}
+	sysPrompt := s.systemPrompt(ctx, scope, rmID, clientID)
+	// Same reinforcement as the app chat (see chat.go): quoting the RM's own
+	// last message pins the reply to that exact language/script, which a
+	// concrete example enforces far more reliably than an abstract rule
+	// stated once earlier in a long prompt.
+	if lastUserText := lastUserMessage(trimmed); strings.TrimSpace(lastUserText) != "" {
+		sysPrompt += fmt.Sprintf("\n\nThe user's most recent message was: %q — your entire reply must be written in that exact same language and script. Do not switch to English or Roman/Latin letters unless that message itself was in English.", lastUserText)
+	}
 	req := s.agents.Get(agentKey).Request(
-		s.systemPrompt(ctx, scope, rmID, clientID),
+		sysPrompt,
 		toLLMMessages(trimmed),
 	)
 	resp, err := s.llm.Complete(ctx, req)
@@ -263,6 +271,21 @@ func deriveSessionTitle(history []map[string]interface{}) string {
 // toLLMMessages converts the stored []map history turns into typed llm
 // messages, dropping any system turns (the persona is supplied separately) and
 // empty entries.
+// lastUserMessage finds the most recent "user"-role message's content, used
+// to pin the reply's language to a concrete example of what the user just
+// wrote. Returns "" if there's no user turn (e.g. history is empty/system-only).
+func lastUserMessage(in []map[string]interface{}) string {
+	for i := len(in) - 1; i >= 0; i-- {
+		role, _ := in[i]["role"].(string)
+		if role == "user" || role == "" {
+			if content, _ := in[i]["content"].(string); content != "" {
+				return content
+			}
+		}
+	}
+	return ""
+}
+
 func toLLMMessages(in []map[string]interface{}) []llm.Message {
 	out := make([]llm.Message, 0, len(in))
 	for _, m := range in {

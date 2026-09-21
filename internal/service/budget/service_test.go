@@ -27,7 +27,7 @@ func testCanon(raw string) string {
 }
 
 func TestComputeFallbackCategories_NoHistory(t *testing.T) {
-	got := computeFallbackCategories(10000, nil)
+	got := computeFallbackCategories(10000, nil, nil)
 	if len(got) == 0 {
 		t.Fatal("expected default distribution, got none")
 	}
@@ -46,7 +46,7 @@ func TestComputeFallbackCategories_ProportionalToHistory(t *testing.T) {
 		"transportation": {{"spent": 2000.0, "month": "2026-01"}},
 		"shopping":       {{"spent": 2000.0, "month": "2026-01"}},
 	}
-	got := computeFallbackCategories(20000, hist)
+	got := computeFallbackCategories(20000, hist, nil)
 	byID := map[string]float64{}
 	for _, c := range got {
 		byID[c.CategoryID] = c.SuggestedAmount

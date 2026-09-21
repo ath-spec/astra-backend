@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"math"
 	"strings"
 	"time"
@@ -74,30 +75,71 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		adv *rmdomain.ClientAdvisory
 		si  *rmdomain.ClientSpendIntelligence
 	)
+	// Every source below degrades independently: a failure in any one of
+	// them (sparse data, a missing snapshot, an analyzer edge case) must
+	// never blank out the whole report. Each keeps its slice nil on error and
+	// the deterministic builder below (and the model prompt) simply omits
+	// whatever wasn't available — it does not abort the request. This used
+	// to only apply to SpendIntelligence; PortfolioAnalysis/ClientAnalytics/
+	// ClientAdvisory erroring here used to fail g.Wait() and take down every
+	// Pro Tip on every tab for the client, with no deterministic fallback at
+	// all.
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error { v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID); pa = v; return e })
-	g.Go(func() error { v, e := s.ClientAnalytics(gctx, callerRMID, isAdmin, userID); an = v; return e })
-	g.Go(func() error { v, e := s.ClientAdvisory(gctx, callerRMID, isAdmin, userID); adv = v; return e })
 	g.Go(func() error {
-		// Spend intelligence is supplementary to the review, not central to
-		// it — a failure here (e.g. no spend source configured) must not
-		// block the rest of the narrative.
-		v, _ := s.SpendIntelligence(gctx, callerRMID, isAdmin, userID)
+		v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID)
+		if e != nil {
+			slog.Warn("rm narrative: portfolio analysis failed", "user", userID, "error", e)
+			return nil
+		}
+		pa = v
+		return nil
+	})
+	g.Go(func() error {
+		v, e := s.ClientAnalytics(gctx, callerRMID, isAdmin, userID)
+		if e != nil {
+			slog.Warn("rm narrative: client analytics failed", "user", userID, "error", e)
+			return nil
+		}
+		an = v
+		return nil
+	})
+	g.Go(func() error {
+		v, e := s.ClientAdvisory(gctx, callerRMID, isAdmin, userID)
+		if e != nil {
+			slog.Warn("rm narrative: client advisory failed", "user", userID, "error", e)
+			return nil
+		}
+		adv = v
+		return nil
+	})
+	g.Go(func() error {
+		v, e := s.SpendIntelligence(gctx, callerRMID, isAdmin, userID)
+		if e != nil {
+			slog.Warn("rm narrative: spend intelligence failed", "user", userID, "error", e)
+			return nil
+		}
 		si = v
 		return nil
 	})
-	if err := g.Wait(); err != nil {
+	_ = g.Wait()
+
+	// authorizeClient runs first inside each of the four calls above, so if
+	// the caller genuinely isn't allowed to see this client, surface that
+	// instead of silently returning an empty narrative.
+	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
 		return nil, err
 	}
 
 	blob := buildFiguresBlob(pa, an, adv, si)
-	if strings.TrimSpace(blob) == "" {
-		return map[string]string{}, nil
-	}
 
-	// 1. Try AI-generated narrative through the LLM seam (Groq today).
+	// 1. Try AI-generated narrative through the LLM seam (Groq today). Skip
+	// the call entirely when there's nothing to summarize (blob empty), but
+	// still fall through to the deterministic builder below — it reads pa/
+	// an/adv/si directly rather than the blob, so e.g. a client with no
+	// budget set up still gets its "not set up yet" deterministic note
+	// instead of the whole narrative silently coming back empty.
 	var m map[string]string
-	if s.llm != nil {
+	if s.llm != nil && strings.TrimSpace(blob) != "" {
 		m, _ = s.generateNarrative(ctx, blob)
 	}
 

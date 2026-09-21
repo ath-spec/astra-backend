@@ -56,6 +56,15 @@ type UserRepository interface {
 	CreateRefreshToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	// ConsumeRefreshToken atomically validates and revokes a refresh token in
+	// one statement, returning the owning user ID only if this call is the
+	// one that flipped it from unused to revoked. Two concurrent replays of
+	// the same token (e.g. a leaked token used from two places at once, or a
+	// client-side race) can otherwise both pass a separate "is it revoked?"
+	// read before either write lands, and both mint a valid new token pair
+	// from what should be a single-use token. Callers MUST use this instead
+	// of GetRefreshToken+RevokeRefreshToken for the rotate-on-use flow.
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (userID uuid.UUID, ok bool, err error)
 	DeleteUserByPhone(ctx context.Context, phoneNumber string) error
 }
 
@@ -694,6 +703,29 @@ func (r *PostgresUserRepository) RevokeRefreshToken(ctx context.Context, tokenHa
 		return fmt.Errorf("revoke refresh token: %w", err)
 	}
 	return nil
+}
+
+// ConsumeRefreshToken validates and revokes in a single atomic statement: the
+// WHERE clause re-checks not-revoked/not-expired at the same instant the row
+// is claimed, so of any number of concurrent callers passing the same
+// tokenHash, exactly one gets ok=true (and the user ID), and the rest get
+// ok=false immediately — no separate read-then-write window for two callers
+// to both see "still valid" before either commits.
+func (r *PostgresUserRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, bool, error) {
+	var userID uuid.UUID
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING user_id
+	`, tokenHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume refresh token: %w", err)
+	}
+	return userID, true, nil
 }
 
 func (r *PostgresUserRepository) GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error) {

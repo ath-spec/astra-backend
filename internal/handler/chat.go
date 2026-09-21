@@ -567,6 +567,16 @@ Use the financial overview and portfolio analytics provided above to contextuali
 CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what LLM you are based on. If asked about your origins, inner workings, or to perform any out-of-scope tasks (like writing code), you must refuse by dodging the request with a highly witty and sarcastic reply, mocking the request and reminding them that your intellect is reserved for making them wealthy. And never use em '-' dashes in reponses`
 	}
 
+	// A concrete, recency-weighted language reminder beats an abstract rule
+	// buried earlier in a long prompt — LLMs follow "match this exact
+	// example" far more reliably than "remember rule 5 from a paragraph you
+	// read a while ago". Quoting the user's own last message removes any
+	// ambiguity about which language/script the reply must land in, and
+	// catches the model drifting back to English mid-conversation.
+	if strings.TrimSpace(lastUserText) != "" {
+		promptContent += fmt.Sprintf("\n\nThe user's most recent message was: %q — your entire reply must be written in that exact same language and script (e.g. if it's Hindi in Devanagari, reply in Devanagari; if Tamil script, reply in Tamil script). Do not switch to English or Roman/Latin letters unless that message itself was in English.", lastUserText)
+	}
+
 	// Final belt-and-braces pass over the fully assembled system prompt.
 	if h.pii != nil {
 		promptContent = h.pii.Redact(promptContent)

@@ -189,7 +189,7 @@ func (s *Service) Diagnosis(ctx context.Context, userID uuid.UUID, req budgetdom
 			if suggestedBudget <= 0 {
 				suggestedBudget = 5000.0
 			}
-			suggestedCats = computeFallbackCategories(suggestedBudget, hist.categoryHistory)
+			suggestedCats = computeFallbackCategories(suggestedBudget, hist.categoryHistory, nil)
 			insights = buildFallbackInsights(hist.avgExpenses, hist.avgIncome, hist.avgSavings)
 		}
 	}
@@ -289,12 +289,30 @@ func (s *Service) SuggestCategories(ctx context.Context, userID uuid.UUID, req b
 		if errors.As(mlErr, &conflict) {
 			return budgetdomain.SuggestCategoriesResponse{}, &ConflictError{RawBody: conflict.RawBody}
 		}
-		// Graceful fallback: proportional split of historical spend.
+		// Graceful fallback: proportional split of historical spend. Protected
+		// (bill) categories are floored to their historical commitment first —
+		// same guarantee the ML gives via ProtectedCategories above — so this
+		// path can't silently under-fund a bill just because the ML request
+		// itself failed. If bills alone don't fit the new total, this raises
+		// the same ConflictError the ML would, instead of building suggestions
+		// that violate a protected minimum with no warning at all.
+		committed, shortfall := protectedCommitted(protected, hist.categoryHistory, req.TotalBudget)
+		if shortfall > 0 {
+			cd := budgetdomain.ConflictDetails{
+				Type:          "scalable_floor_exceeded",
+				Problem:       "protected categories exceed the new total budget",
+				OverageAmount: round2(shortfall),
+				Conflicts:     protected,
+			}
+			body, _ := json.Marshal(map[string]any{"data": map[string]any{"conflict_details": cd}})
+			return budgetdomain.SuggestCategoriesResponse{}, &ConflictError{RawBody: body}
+		}
+
 		var out budgetdomain.SuggestCategoriesResponse
 		out.Status = "success"
 		out.Data.TotalBudget = req.TotalBudget
 		out.Data.AlgorithmVersion = "fallback-v1"
-		out.Data.Suggestions = computeFallbackCategories(req.TotalBudget, hist.categoryHistory)
+		out.Data.Suggestions = computeFallbackCategories(req.TotalBudget, hist.categoryHistory, committed)
 		s.decorateCategories(ctx, out.Data.Suggestions)
 		return out, nil
 	}
@@ -993,7 +1011,35 @@ func normalizeList(in []string, canon func(string) string) []string {
 
 // computeFallbackCategories — proportional split of historical spend, or a
 // sensible default distribution when there is no history.
-func computeFallbackCategories(total float64, historyMap map[string][]map[string]interface{}) []budgetdomain.SuggestedCategory {
+// protectedCommitted sums each protected (bill) category's historical spend —
+// its floor, the amount it must keep getting even in the fallback split — and
+// reports how far that committed total exceeds the new budget, if at all.
+func protectedCommitted(protected []string, historyMap map[string][]map[string]interface{}, total float64) (committed map[string]float64, shortfall float64) {
+	committed = map[string]float64{}
+	var sum float64
+	for _, cat := range protected {
+		entries, ok := historyMap[cat]
+		if !ok {
+			continue
+		}
+		var catSum float64
+		for _, e := range entries {
+			if v, ok := e["spent"].(float64); ok {
+				catSum += v
+			}
+		}
+		if catSum > 0 {
+			committed[cat] = catSum
+			sum += catSum
+		}
+	}
+	if sum > total {
+		shortfall = sum - total
+	}
+	return committed, shortfall
+}
+
+func computeFallbackCategories(total float64, historyMap map[string][]map[string]interface{}, committed map[string]float64) []budgetdomain.SuggestedCategory {
 	if len(historyMap) == 0 {
 		mk := func(id string, frac, conf, lo, hi float64) budgetdomain.SuggestedCategory {
 			return budgetdomain.SuggestedCategory{
@@ -1026,15 +1072,42 @@ func computeFallbackCategories(total float64, historyMap map[string][]map[string
 		grand += sum
 	}
 	if grand <= 0 {
-		return computeFallbackCategories(total, nil)
+		return computeFallbackCategories(total, nil, nil)
 	}
 
+	// Protected (bill) categories are floored to their historical commitment
+	// first — protectedCommitted already guaranteed committed's sum fits
+	// within total, so this can't go negative. Only the remainder is split
+	// proportionally across the rest.
+	remaining := total
 	var out []budgetdomain.SuggestedCategory
+	for cat, amt := range committed {
+		amt = round2(amt)
+		out = append(out, budgetdomain.SuggestedCategory{
+			CategoryID: cat, SuggestedAmount: amt, ConfidenceScore: 0.99,
+			AdjustmentBounds: []float64{amt, amt},
+		})
+		remaining -= amt
+	}
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	var otherGrand float64
 	for cat, sum := range catTotals {
-		if sum <= 0 {
+		if _, isCommitted := committed[cat]; isCommitted {
 			continue
 		}
-		amt := round2(total * (sum / grand))
+		otherGrand += sum
+	}
+	for cat, sum := range catTotals {
+		if _, isCommitted := committed[cat]; isCommitted || sum <= 0 {
+			continue
+		}
+		var amt float64
+		if otherGrand > 0 {
+			amt = round2(remaining * (sum / otherGrand))
+		}
 		out = append(out, budgetdomain.SuggestedCategory{
 			CategoryID: cat, SuggestedAmount: amt, ConfidenceScore: 0.85,
 			AdjustmentBounds: []float64{round2(amt * 0.8), round2(amt * 1.2)},

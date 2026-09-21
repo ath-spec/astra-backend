@@ -271,17 +271,14 @@ func (s *RMAuthService) Refresh(ctx context.Context, refreshToken string) (*rmdo
 		return nil, apiresponse.Validation("refresh_token is required")
 	}
 	hash := HashRefreshToken(refreshToken)
-	rt, err := s.repo.GetRefreshToken(ctx, hash)
+	rmID, ok, err := s.repo.ConsumeRefreshToken(ctx, hash)
 	if err != nil {
 		return nil, err
 	}
-	if rt == nil || rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
+	if !ok {
 		return nil, fmt.Errorf("invalid or expired refresh token: %w", apiresponse.ErrUnauthorized)
 	}
-	if err := s.repo.RevokeRefreshToken(ctx, hash); err != nil {
-		return nil, err
-	}
-	staff, err := s.repo.GetByID(ctx, rt.RMID)
+	staff, err := s.repo.GetByID(ctx, rmID)
 	if err != nil {
 		return nil, err
 	}

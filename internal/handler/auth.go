@@ -144,26 +144,22 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := service.HashRefreshToken(req.RefreshToken)
-	rt, err := h.userRepo.GetRefreshToken(r.Context(), hash)
+	// ConsumeRefreshToken validates and revokes atomically: it is the single
+	// source of truth for "did THIS call win the single-use race", so two
+	// concurrent requests replaying the same token can't both pass a
+	// separate validity check before either write lands.
+	userID, ok, err := h.userRepo.ConsumeRefreshToken(r.Context(), hash)
 	if err != nil {
-		middleware.L(r.Context()).Error("get refresh token", "error", err)
+		middleware.L(r.Context()).Error("consume refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error validating refresh token")
 		return
 	}
-	if rt == nil || rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
+	if !ok {
 		respondAuthError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
 		return
 	}
 
-	// Rotate: revoke the token that was just used before issuing its
-	// replacement, so it can't be exchanged a second time.
-	if err := h.userRepo.RevokeRefreshToken(r.Context(), hash); err != nil {
-		middleware.L(r.Context()).Error("revoke refresh token", "error", err)
-		respondAuthError(w, http.StatusInternalServerError, "Error rotating refresh token")
-		return
-	}
-
-	accessToken, err := h.authService.GenerateToken(rt.UserID)
+	accessToken, err := h.authService.GenerateToken(userID)
 	if err != nil {
 		middleware.L(r.Context()).Error("generate access token (refresh)", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
@@ -175,7 +171,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		respondAuthError(w, http.StatusInternalServerError, "Error generating refresh token")
 		return
 	}
-	if err := h.userRepo.CreateRefreshToken(r.Context(), rt.UserID, newRefreshHash, time.Now().Add(service.RefreshTokenTTL)); err != nil {
+	if err := h.userRepo.CreateRefreshToken(r.Context(), userID, newRefreshHash, time.Now().Add(service.RefreshTokenTTL)); err != nil {
 		middleware.L(r.Context()).Error("persist new refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error persisting refresh token")
 		return

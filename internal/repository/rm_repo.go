@@ -36,6 +36,7 @@ type RMUserRepository interface {
 	CreateRefreshToken(ctx context.Context, rmID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RMRefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (rmID uuid.UUID, ok bool, err error)
 
 	// OTP login codes.
 	CreateOTP(ctx context.Context, rmID uuid.UUID, codeHash string, expiresAt time.Time) error
@@ -286,6 +287,26 @@ func (r *PostgresRMUserRepository) RevokeRefreshToken(ctx context.Context, token
 		return fmt.Errorf("revoke rm refresh token: %w", err)
 	}
 	return nil
+}
+
+// ConsumeRefreshToken validates and revokes in one atomic statement — see the
+// app-side PostgresUserRepository.ConsumeRefreshToken for why the separate
+// GetRefreshToken+RevokeRefreshToken pair it replaces was a TOCTOU race.
+func (r *PostgresRMUserRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, bool, error) {
+	var rmID uuid.UUID
+	err := r.pool.QueryRow(ctx, `
+		UPDATE rm_refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING rm_id
+	`, tokenHash).Scan(&rmID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume rm refresh token: %w", err)
+	}
+	return rmID, true, nil
 }
 
 // --- Assignment repository ---
