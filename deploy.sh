@@ -32,9 +32,9 @@ docker push "$IMAGE:$TAG"
 echo "==> Applying Kubernetes configurations (ConfigMaps, Secrets, Services, Deployment)"
 kubectl apply -f k8s/
 
-echo "==> Cleaning up any previously stuck pods (ImagePullBackOff/CrashLoopBackOff)"
-# This forces Kubernetes to delete stuck pods and rely on the new ReplicaSet
-kubectl delete pods -l app=astra-backend --field-selector=status.phase!=Running 2>/dev/null || true
+echo "==> Cleaning up old ReplicaSets to remove stuck pods"
+# This clears out all old ReplicaSets (and their stuck pods) so the deployment starts fresh
+kubectl delete replicaset -l app=astra-backend 2>/dev/null || true
 
 echo "==> Updating Kubernetes deployment with new image tag"
 kubectl set image deployment/astra-backend \
