@@ -209,7 +209,7 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 	var holdings []paDomain.HoldingBreakdown
 
 	if bankRows, berr := s.pool.Query(ctx,
-		`SELECT bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1`, userID); berr == nil {
+		`SELECT bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID); berr == nil {
 		for bankRows.Next() {
 			var name, acctType string
 			var bal float64

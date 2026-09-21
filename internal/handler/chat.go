@@ -284,9 +284,15 @@ func (h *ChatHandler) buildUserLiveContext(ctx context.Context, userID uuid.UUID
 
 	// 2. Net Worth & Portfolios
 	if summary != nil {
-		totalNetWorth := summary.TotalWealth + summary.BankBalance.Value
+		// TotalWealth now includes bank balance directly (see
+		// DashboardService.Summarize) — it used to exclude it, so this line
+		// added BankBalance.Value back on to get the true net-worth figure.
+		// Now that addition would double-count it; "Invested" (ex-bank) is
+		// what needs deriving instead, to keep this same Total-vs-Invested
+		// distinction in the prompt.
+		investedWealth := summary.TotalWealth - summary.BankBalance.Value
 		fmt.Fprintf(&b, "[NET_WORTH: Total=%s | Invested=%s (1d:%+.1f%%) | LiquidBank=%s | MF=%s (%.0f%%) | Stocks=%s (%.0f%%) | FD=%s (%.0f%%)]\n",
-			inrFormat(totalNetWorth), inrFormat(summary.TotalWealth), summary.OneDayChangePct, inrFormat(summary.BankBalance.Value),
+			inrFormat(summary.TotalWealth), inrFormat(investedWealth), summary.OneDayChangePct, inrFormat(summary.BankBalance.Value),
 			inrFormat(summary.MutualFunds.Value), summary.MutualFunds.SharePct,
 			inrFormat(summary.Stocks.Value), summary.Stocks.SharePct,
 			inrFormat(summary.FixedDeposits.Value), summary.FixedDeposits.SharePct)

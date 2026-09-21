@@ -676,7 +676,7 @@ func (r *PostgresUserRepository) seedPortfolioSnapshots(
 }
 
 func (r *PostgresUserRepository) GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error) {
-	rows, err := r.db.Pool.Query(ctx, `SELECT id, bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1 ORDER BY created_at`, userID)
+	rows, err := r.db.Pool.Query(ctx, `SELECT id, bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL ORDER BY created_at`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query bank accounts: %w", err)
 	}
@@ -801,7 +801,7 @@ func (r *PostgresUserRepository) GetPrimaryBankAccount(ctx context.Context, user
 	var acc BankAccount
 	err := r.db.Pool.QueryRow(ctx, `
 		SELECT id, bank_name, account_type, balance
-		FROM bank_accounts WHERE user_id = $1
+		FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
 		ORDER BY created_at LIMIT 1
 	`, userID).Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance)
 	if err != nil {

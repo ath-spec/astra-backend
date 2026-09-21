@@ -48,7 +48,7 @@ func (p *MockProvider) resolveBankAccountID(ctx context.Context, userID uuid.UUI
 		return uuid.Nil, apiresponse.Validation("bank_account_id is not a valid identifier")
 	}
 	var exists bool
-	if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bank_accounts WHERE id = $1 AND user_id = $2)`, accID, userID).Scan(&exists); err != nil {
+	if err := p.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM bank_accounts WHERE id = $1 AND user_id = $2 AND unlinked_at IS NULL)`, accID, userID).Scan(&exists); err != nil {
 		return uuid.Nil, fmt.Errorf("verify bank account ownership: %w", err)
 	}
 	if !exists {
@@ -116,7 +116,7 @@ func (p *MockProvider) InitiatePayment(ctx context.Context, userID uuid.UUID, re
 	}
 
 	var balance float64
-	if err := tx.QueryRow(ctx, `SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 FOR UPDATE`, bankAccountID, userID).Scan(&balance); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 AND unlinked_at IS NULL FOR UPDATE`, bankAccountID, userID).Scan(&balance); err != nil {
 		return nil, fmt.Errorf("lock bank account: %w", err)
 	}
 

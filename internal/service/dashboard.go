@@ -155,15 +155,16 @@ func (s *DashboardService) Summarize(ctx context.Context, userID uuid.UUID, in *
 	fillDerivedFields(&fdBucket)
 	fillDerivedFields(&bankBucket)
 
-	totalWealth := round2(stocksBucket.Value + mfBucket.Value + fdBucket.Value)
+	// Total wealth / net worth is every asset the user holds: stocks + MF +
+	// FDs + bank balances. Bank balance used to be left out of this sum
+	// entirely (only folded into the *denominator* below for its own share%,
+	// never into the total itself) — so a user's reported net worth was
+	// missing however much cash they had in linked bank accounts.
+	totalWealth := round2(stocksBucket.Value + mfBucket.Value + fdBucket.Value + bankBucket.Value)
 	shareOf(&stocksBucket, totalWealth)
 	shareOf(&mfBucket, totalWealth)
 	shareOf(&fdBucket, totalWealth)
-	// Bank balance's share is reported against total wealth + bank itself,
-	// matching how the frontend's own asset-row percentages are laid out
-	// (MF / Stocks / Bank splitting 100% together) rather than against
-	// investment wealth alone.
-	shareOf(&bankBucket, totalWealth+bankBucket.Value)
+	shareOf(&bankBucket, totalWealth)
 
 	oneDayChange := round2(stocksBucket.OneDayChangeAmount + mfBucket.OneDayChangeAmount)
 	prevTotal := totalWealth - oneDayChange

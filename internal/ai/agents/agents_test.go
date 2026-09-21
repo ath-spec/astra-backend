@@ -32,8 +32,12 @@ func TestDefaults_PreserveInlineBehaviour(t *testing.T) {
 	if nar.ResponseFormat != "json_object" {
 		t.Errorf("rm_narrator must request json_object, got %q", nar.ResponseFormat)
 	}
-	if nar.MaxTokens != 2048 {
-		t.Errorf("rm_narrator max tokens = %d, want 2048", nar.MaxTokens)
+	// 2048 was the original inline value, but it was too tight for
+	// gpt-oss-20b's real output length on this schema — Groq's own console
+	// showed responses truncating at exactly 2048 tokens and failing
+	// json_object validation as a result. 4096 gives real headroom.
+	if nar.MaxTokens != 4096 {
+		t.Errorf("rm_narrator max tokens = %d, want 4096", nar.MaxTokens)
 	}
 	if nar.Temperature == nil || *nar.Temperature != 0.2 {
 		t.Errorf("rm_narrator temperature = %v, want 0.2", nar.Temperature)

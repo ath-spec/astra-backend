@@ -155,7 +155,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(r.Context(), `
 		SELECT id, bank_name, account_type, balance, created_at
 		FROM bank_accounts
-		WHERE user_id = $1
+		WHERE user_id = $1 AND unlinked_at IS NULL
 		ORDER BY created_at ASC
 	`, userID)
 	if err != nil {
@@ -243,12 +243,23 @@ func (h *AAHandler) UnlinkAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.pool.Exec(r.Context(), `
-		DELETE FROM bank_accounts
-		WHERE id = $1 AND user_id = $2
+	// Soft-delete: bank_account_id is a NOT NULL, ON-DELETE-RESTRICT FK from
+	// payments, mandates, and fd_accounts, so a hard DELETE here fails the
+	// moment the account has any transaction history. Marking it unlinked
+	// removes it from every "your accounts" / balance view while preserving
+	// that history intact — the same behaviour a real bank's "close account"
+	// flow has.
+	tag, err := h.pool.Exec(r.Context(), `
+		UPDATE bank_accounts
+		SET unlinked_at = now()
+		WHERE id = $1 AND user_id = $2 AND unlinked_at IS NULL
 	`, accountID, userID)
 	if err != nil {
 		apiresponse.Error(w, err)
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		apiresponse.Error(w, apiresponse.NotFound("bank account not found"))
 		return
 	}
 	if h.events != nil {

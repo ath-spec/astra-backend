@@ -95,9 +95,20 @@ var defaults = map[Key]Agent{
 		// llama-3.3-70b-versatile and llama-3.1-8b-instant are discontinued
 		// on Groq — routing to them just burns the fallback chain on
 		// guaranteed failures before ever reaching a live model.
-		Models:         []string{"openai/gpt-oss-20b"},
+		//
+		// gpt-oss-20b alone (no fallback) was hitting MaxTokens=2048 exactly
+		// on a chunk of real requests (confirmed from Groq's own console:
+		// output_tokens=2048 on every json_validate_failed row, well under
+		// it on the ones that succeeded) — the response was getting cut off
+		// mid-JSON before response_format: json_object could validate it,
+		// and with no second model to fall back to, that request just
+		// failed outright. Two independent fixes for the two distinct
+		// causes: more headroom so a normal-length response doesn't brush
+		// the ceiling, and a real fallback model so an occasional long
+		// generation from 20b doesn't take the whole call down.
+		Models:         []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"},
 		Temperature:    llm.Temp(0.2),
-		MaxTokens:      2048,
+		MaxTokens:      4096,
 		ResponseFormat: "json_object",
 	},
 	KeyMemory: {

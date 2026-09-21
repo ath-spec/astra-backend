@@ -192,7 +192,7 @@ func (p *MockProvider) runOneMandateCycle(ctx context.Context, userID uuid.UUID,
 	}
 
 	var balance float64
-	if err := tx.QueryRow(ctx, `SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 FOR UPDATE`, bankAccountID, userID).Scan(&balance); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 AND unlinked_at IS NULL FOR UPDATE`, bankAccountID, userID).Scan(&balance); err != nil {
 		return false, fmt.Errorf("lock bank account for mandate cycle: %w", err)
 	}
 

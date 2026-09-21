@@ -192,7 +192,7 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 			(SELECT count(*) FROM mf_transactions t JOIN mf_folios f ON f.id = t.folio_id WHERE f.user_id = $1),
 			(SELECT count(*) FROM stock_orders WHERE user_id = $1),
 			COALESCE((SELECT sum(units_held * COALESCE(nav, 0)) FROM mf_folios WHERE user_id = $1), 0),
-			COALESCE((SELECT sum(balance) FROM bank_accounts WHERE user_id = $1), 0),
+			COALESCE((SELECT sum(balance) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL), 0),
 			(SELECT count(*) FROM goals WHERE user_id = $1 AND status = 'ACTIVE'),
 			COALESCE((SELECT count(*) FROM spend_transactions WHERE user_id = $1), 0),
 			(SELECT max(occurred_at) FROM spend_transactions WHERE user_id = $1),

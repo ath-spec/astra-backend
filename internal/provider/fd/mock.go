@@ -103,7 +103,7 @@ func (p *MockProvider) resolveBankAccount(ctx context.Context, tx pgx.Tx, userID
 
 	var balance float64
 	err = tx.QueryRow(ctx, `
-		SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 FOR UPDATE
+		SELECT balance FROM bank_accounts WHERE id = $1 AND user_id = $2 AND unlinked_at IS NULL FOR UPDATE
 	`, accID, userID).Scan(&balance)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
