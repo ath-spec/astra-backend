@@ -27,7 +27,7 @@ echo "==> Downloading AWS RDS SSL Certificate"
 curl -sS -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
 echo "==> Building image: $IMAGE:$TAG"
-docker build -t "$IMAGE:$TAG" .
+docker build --platform linux/arm64 -t "$IMAGE:$TAG" .
 
 echo "==> Pushing image"
 docker push "$IMAGE:$TAG"

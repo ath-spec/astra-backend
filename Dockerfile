@@ -12,15 +12,15 @@ RUN go mod download
 COPY . .
 
 # Build the application and the seed script
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/api/main.go
-RUN CGO_ENABLED=0 GOOS=linux go build -o seed_idbi_customers ./scripts/seed_idbi_customers.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o main ./cmd/api/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o seed_idbi_customers ./scripts/seed_idbi_customers.go
 
 # Start a new stage from scratch
 FROM alpine:latest  
 RUN apk --no-cache add ca-certificates tzdata curl bash
 
 # Install golang-migrate
-RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz | tar xvz && \
+RUN curl -L https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-arm64.tar.gz | tar xvz && \
     mv migrate /usr/local/bin/migrate && \
     chmod +x /usr/local/bin/migrate
 
