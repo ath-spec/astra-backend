@@ -13,8 +13,10 @@ import (
 
 // BookComposition breaks the RM's whole book down by asset class, risk level
 // and wealth band, sizes key-client concentration, tracks net flows over the
-// last six months, and buckets clients into behavioural segments — all from
-// live data.
+// last six months, and buckets clients into behavioural segments. Per-client
+// wealth comes from the latest portfolio_snapshots row, not a live recompute
+// (see the snapshot query below) — a background refresh is triggered for any
+// client whose snapshot has gone stale.
 func (s *RMService) BookComposition(ctx context.Context, rmID uuid.UUID) (*rmdomain.BookComposition, error) {
 	staff, err := s.rmRepo.GetByID(ctx, rmID)
 	if err != nil {
@@ -34,15 +36,19 @@ func (s *RMService) BookComposition(ctx context.Context, rmID uuid.UUID) (*rmdom
 	}
 
 	// ---- Per-client latest snapshot: wealth + asset-class values ----
+	// Like ListClients, this reads the cached portfolio_snapshots table
+	// rather than recomputing live for every client in the book — any row
+	// whose snapshot isn't from today gets a deduped background refresh
+	// (refreshSnapshotInBackground) so the *next* load is current.
 	rows, err := s.pool.Query(ctx, `
 		WITH latest AS (
 			SELECT DISTINCT ON (user_id) user_id, total_wealth,
-			       mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value
+			       mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value, snapshot_date
 			FROM portfolio_snapshots ORDER BY user_id, snapshot_date DESC
 		)
 		SELECT u.id, COALESCE(u.name, 'Client'),
 		       COALESCE(l.total_wealth, 0), COALESCE(l.mutual_funds_value, 0), COALESCE(l.stocks_value, 0),
-		       COALESCE(l.fixed_deposits_value, 0), COALESCE(l.bank_balance_value, 0)
+		       COALESCE(l.fixed_deposits_value, 0), COALESCE(l.bank_balance_value, 0), l.snapshot_date
 		FROM users u
 		LEFT JOIN latest l ON l.user_id = u.id
 		WHERE u.assigned_rm_id = $1
@@ -58,11 +64,16 @@ func (s *RMService) BookComposition(ctx context.Context, rmID uuid.UUID) (*rmdom
 	}
 	var clients []client
 	var mfSum, stSum, fdSum, bkSum float64
+	today := time.Now().UTC().Truncate(24 * time.Hour)
 	for rows.Next() {
 		var c client
-		if err := rows.Scan(&c.id, &c.name, &c.wealth, &c.mf, &c.st, &c.fd, &c.bk); err != nil {
+		var snapshotDate *time.Time
+		if err := rows.Scan(&c.id, &c.name, &c.wealth, &c.mf, &c.st, &c.fd, &c.bk, &snapshotDate); err != nil {
 			rows.Close()
 			return nil, err
+		}
+		if snapshotDate == nil || snapshotDate.Before(today) {
+			s.refreshSnapshotInBackground(c.id)
 		}
 		clients = append(clients, c)
 		mfSum += c.mf

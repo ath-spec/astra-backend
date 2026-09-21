@@ -753,7 +753,7 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 		       hist.created_at AS assigned_at,
 		       (SELECT COUNT(*) FROM goals g WHERE g.user_id = u.id) AS goals_count,
 		       s.total_wealth, s.mutual_funds_value, s.stocks_value, s.fixed_deposits_value, s.bank_balance_value,
-		       prev.total_wealth AS prev_wealth
+		       s.snapshot_date, prev.total_wealth AS prev_wealth
 		FROM users u
 		LEFT JOIN rm_users r ON r.id = u.assigned_rm_id
 		LEFT JOIN LATERAL (
@@ -796,10 +796,11 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 			assignedT          *time.Time
 			total              *float64
 			mfv, stv, fdv, bkv *float64
+			snapshotDate       *time.Time
 			prev               *float64
 		)
 		if err := rows.Scan(&it.UserID, &name, &phone, &joined, &rmUUID, &rmName, &pan, &assignedT,
-			&it.GoalsCount, &total, &mfv, &stv, &fdv, &bkv, &prev); err != nil {
+			&it.GoalsCount, &total, &mfv, &stv, &fdv, &bkv, &snapshotDate, &prev); err != nil {
 			return nil, 0, fmt.Errorf("scan client row: %w", err)
 		}
 		if name != nil {
@@ -815,6 +816,10 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 		if assignedT != nil {
 			at := apitime.New(*assignedT)
 			it.AssignedAt = &at
+		}
+		if snapshotDate != nil {
+			sd := apitime.New(*snapshotDate)
+			it.SnapshotDate = &sd
 		}
 		if total != nil {
 			it.TotalWealth = round2(*total)

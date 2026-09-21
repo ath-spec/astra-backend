@@ -41,21 +41,32 @@ func NewDashboardService(stocks stocksprovider.Provider, mf mfprovider.Provider,
 	return &DashboardService{stocks: stocks, mf: mf, fd: fd, userRepo: userRepo, pool: pool}
 }
 
-func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dashboarddomain.Summary, error) {
-	// The four sources below are fully independent (different tables, no
-	// data dependency between them), so they're fetched concurrently rather
-	// than as four sequential round trips — each writes only to its own
-	// local variable, so there's no shared mutable state between goroutines.
-	var (
-		holdings     []stocksdomain.Holding
-		mfResult     *mfdomain.HoldingsResult
-		fdAccounts   []fddomain.Account
-		bankAccounts []repository.BankAccount
-	)
+// PortfolioInputs is the raw, per-provider data a portfolio valuation is
+// built from. Fetch it once per request (FetchInputs) and reuse it for every
+// computation that needs it (Summarize, and any raw holdings lists a caller
+// also wants) — never fetch it twice in the same request. Two independent
+// fetches run concurrently in separate goroutines are not guaranteed to see
+// the same database state under Postgres's default READ COMMITTED isolation:
+// a concurrent write between them (e.g. an order fill updating last_price)
+// can make one goroutine's holdings disagree with the other's, so a single
+// response could report two different totals for the same portfolio.
+type PortfolioInputs struct {
+	Holdings     []stocksdomain.Holding
+	MF           *mfdomain.HoldingsResult
+	FDAccounts   []fddomain.Account
+	BankAccounts []repository.BankAccount
+}
+
+// FetchInputs loads the four independent data sources a portfolio valuation
+// needs, concurrently (different tables, no data dependency between them —
+// each goroutine writes only its own local, so there's no shared mutable
+// state races here).
+func (s *DashboardService) FetchInputs(ctx context.Context, userID uuid.UUID) (*PortfolioInputs, error) {
+	var in PortfolioInputs
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var err error
-		holdings, err = s.stocks.GetHoldings(gCtx, userID)
+		in.Holdings, err = s.stocks.GetHoldings(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load stocks for dashboard: %w", err)
 		}
@@ -63,7 +74,7 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		mfResult, err = s.mf.GetHoldings(gCtx, userID)
+		in.MF, err = s.mf.GetHoldings(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load mf for dashboard: %w", err)
 		}
@@ -71,7 +82,7 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		fdAccounts, err = s.fd.ListFDs(gCtx, userID)
+		in.FDAccounts, err = s.fd.ListFDs(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load fd for dashboard: %w", err)
 		}
@@ -79,7 +90,7 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		bankAccounts, err = s.userRepo.GetBankAccounts(gCtx, userID)
+		in.BankAccounts, err = s.userRepo.GetBankAccounts(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load bank accounts for dashboard: %w", err)
 		}
@@ -88,9 +99,27 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+	return &in, nil
+}
+
+func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dashboarddomain.Summary, error) {
+	in, err := s.FetchInputs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Summarize(ctx, userID, in)
+}
+
+// Summarize computes the dashboard summary from already-fetched inputs and
+// records today's portfolio_snapshots row. Callers that already fetched
+// PortfolioInputs for another reason (e.g. RMService.GetClient also needs
+// the raw holdings lists) should call this directly instead of Summary, so
+// the data is only ever read from the database once per request.
+func (s *DashboardService) Summarize(ctx context.Context, userID uuid.UUID, in *PortfolioInputs) (*dashboarddomain.Summary, error) {
+	mfResult, fdAccounts, bankAccounts := in.MF, in.FDAccounts, in.BankAccounts
 
 	var stocksBucket dashboarddomain.AssetBucket
-	for _, h := range holdings {
+	for _, h := range in.Holdings {
 		qty := float64(h.Quantity)
 		stocksBucket.Value += qty * h.LastPrice
 		stocksBucket.InvestedValue += qty * h.AveragePrice
@@ -216,13 +245,23 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 	}
 
 	if len(points) <= 30 {
-		// Calculate current portfolio wealth from real holdings
-		var mfVal, stockVal, fdVal float64
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(current_value), 0) FROM mutual_fund_folios WHERE user_id = $1`, userID).Scan(&mfVal)
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(quantity * last_price), 0) FROM stock_holdings WHERE user_id = $1`, userID).Scan(&stockVal)
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(principal_amount), 0) FROM fixed_deposits WHERE user_id = $1 AND status = 'ACTIVE'`, userID).Scan(&fdVal)
+		// Current portfolio wealth, from the same single source of truth as
+		// the Home screen's headline number (Summary/Summarize) — this used
+		// to run its own raw SQL against mutual_fund_folios/stock_holdings/
+		// fixed_deposits, none of which exist (the real tables are
+		// mf_folios/demat_holdings/fd_accounts), so every query silently
+		// errored, mfVal/stockVal/fdVal stayed 0, and every user fell into
+		// the currTotal<=0 branch below — fabricating a growth curve seeded
+		// from a hardcoded ₹245,000 that had nothing to do with their real
+		// portfolio and could visibly disagree with the real total shown
+		// elsewhere in the same screen.
+		summary, err := s.Summary(ctx, userID)
+		if err != nil {
+			return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+		}
+		mfVal, stockVal, fdVal := summary.MutualFunds.Value, summary.Stocks.Value, summary.FixedDeposits.Value
 
-		currTotal := mfVal + stockVal + fdVal
+		currTotal := summary.TotalWealth
 		if currTotal <= 0 {
 			currTotal = 245000.0
 		}

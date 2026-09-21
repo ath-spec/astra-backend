@@ -129,6 +129,10 @@ type ClientListItem struct {
 	OneDayChangePct    float64       `json:"one_day_change_pct"`
 	AssetMix           AssetMix      `json:"asset_mix"`
 	GoalsCount         int           `json:"goals_count"`
+	// SnapshotDate is the portfolio_snapshots row TotalWealth above was read
+	// from — internal only (not serialized) so RMService.ListClients can
+	// decide whether it's stale enough to trigger a background refresh.
+	SnapshotDate *apitime.Time `json:"-"`
 }
 
 type ClientList struct {
