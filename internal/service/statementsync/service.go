@@ -33,6 +33,7 @@ type Repo interface {
 	ListAccounts(ctx context.Context, userID uuid.UUID) ([]repository.MirroredAccount, error)
 	UpsertSpendTransactions(ctx context.Context, userID uuid.UUID, source string, rows []idbimap.SpendRow) (int, error)
 	LatestSpendSync(ctx context.Context, userID uuid.UUID, source string) (time.Time, error)
+	ListLinkedUserIDs(ctx context.Context) ([]uuid.UUID, error)
 }
 
 const sourceIDBI = "idbi"
@@ -110,6 +111,30 @@ func (s *Service) SyncUser(ctx context.Context, userID uuid.UUID) (int, error) {
 	}
 	s.log.Info("statementsync: done", "user", userID, "accounts", len(accts), "rows", total)
 	return total, nil
+}
+
+// SyncAllLinkedUsers runs SyncUser for every IDBI-linked user, one at a time.
+// Used by the nightly scheduler so real transaction history stays fresh
+// without depending on the client ever calling /spend/refresh. A single
+// user's failure (no mirrored accounts yet, gateway error, ...) is logged and
+// skipped rather than aborting the run.
+func (s *Service) SyncAllLinkedUsers(ctx context.Context) (usersSynced int, rowsWritten int) {
+	ids, err := s.repo.ListLinkedUserIDs(ctx)
+	if err != nil {
+		s.log.Warn("statementsync: list linked users failed", "error", err)
+		return 0, 0
+	}
+	for _, id := range ids {
+		n, err := s.SyncUser(ctx, id)
+		if err != nil {
+			s.log.Warn("statementsync: nightly sync failed for user", "user", id, "error", err)
+			continue
+		}
+		usersSynced++
+		rowsWritten += n
+	}
+	s.log.Info("statementsync: nightly sync done", "users", usersSynced, "of", len(ids), "rows", rowsWritten)
+	return usersSynced, rowsWritten
 }
 
 func (s *Service) syncAccount(ctx context.Context, userID uuid.UUID, a repository.MirroredAccount, from, to time.Time) (int, error) {

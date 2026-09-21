@@ -76,6 +76,27 @@ func (r *IDBIRepository) UpsertCustomerLink(ctx context.Context, userID uuid.UUI
 	return nil
 }
 
+// ListLinkedUserIDs returns every user with an idbi_customer_link row — the
+// full set the nightly spend-sync scheduler needs to iterate. Plain pool
+// query since sqlc has no generated query for this yet.
+func (r *IDBIRepository) ListLinkedUserIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := r.pool.Query(ctx, `SELECT user_id FROM idbi_customer_link`)
+	if err != nil {
+		return nil, fmt.Errorf("list idbi linked users: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan idbi linked user: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // MirroredAccount is a row of idbi_accounts.
 type MirroredAccount struct {
 	AccountNumber    string

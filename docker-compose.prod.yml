@@ -46,6 +46,7 @@ services:
       - IDBI_BASE_URL=mock://sandbox
       - IDBI_ACCOUNTS_ENABLED=true
       - IDBI_SPEND_ENABLED=true
+      - IDBI_SPEND_SYNC_SCHEDULER=true
       - IDBI_LOANS_ENABLED=true
       - IDBI_KYC_ENABLED=true
       - IDBI_CREDIT_SCORE_ENABLED=true

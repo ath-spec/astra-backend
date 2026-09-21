@@ -74,6 +74,9 @@ func (r *fakeRepo) UpsertSpendTransactions(_ context.Context, _ uuid.UUID, _ str
 func (r *fakeRepo) LatestSpendSync(_ context.Context, _ uuid.UUID, _ string) (time.Time, error) {
 	return r.last, nil
 }
+func (r *fakeRepo) ListLinkedUserIDs(_ context.Context) ([]uuid.UUID, error) {
+	return nil, nil
+}
 
 func TestSyncUser_NoLink(t *testing.T) {
 	s := New(&fakeProvider{}, &fakeRepo{}, Config{}, nil)

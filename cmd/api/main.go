@@ -478,6 +478,31 @@ func main() {
 		slog.Info("BUDGET_ROLLOVER_SCHEDULER: daily budget rollover enabled")
 	}
 
+	// Optional nightly IDBI spend-transaction sync: opt in with
+	// IDBI_SPEND_SYNC_SCHEDULER=true (requires IDBI_SPEND_ENABLED). Pulls real
+	// transaction history for every linked user, aligned to 12:00 AM local
+	// server time, so Transactions/Analytics/Budget (all three read the same
+	// spend_transactions table) stay fresh without depending on the client
+	// ever calling /spend/refresh or on a user happening to log in that day.
+	if idbiSpendSvc != nil && os.Getenv("IDBI_SPEND_SYNC_SCHEDULER") == "true" {
+		go func() {
+			defer func() { _ = recover() }()
+			now := time.Now()
+			nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+			timer := time.NewTimer(time.Until(nextMidnight))
+			defer timer.Stop()
+			<-timer.C
+
+			idbiSpendSvc.SyncAllLinkedUsers(context.Background())
+			t := time.NewTicker(24 * time.Hour)
+			defer t.Stop()
+			for range t.C {
+				idbiSpendSvc.SyncAllLinkedUsers(context.Background())
+			}
+		}()
+		slog.Info("IDBI_SPEND_SYNC_SCHEDULER: nightly spend transaction sync enabled")
+	}
+
 	// 7. Start Server with Graceful Shutdown
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
