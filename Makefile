@@ -95,7 +95,9 @@ dropdb: db-up
 
 # --- Deployment Commands ---
 # EC2 SSH Configuration
-EC2_IP ?= 43.205.52.148
+BASTION_IP ?= 43.205.52.148
+BASTION_USER ?= ec2-user
+PRIVATE_EC2_IP ?= 10.0.x.x # REPLACE THIS WITH THE PRIVATE IP OF THE TARGET EC2
 EC2_USER ?= ec2-user
 PEM_FILE ?= ./zeyro-idbi.pem
 DEPLOY_DIR ?= /home/$(EC2_USER)/astra-backend
@@ -105,19 +107,19 @@ deploy:
 	@mkdir -p bin-prod
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin-prod/main ./cmd/api/main.go
 	@CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o bin-prod/seed_idbi_customers ./scripts/seed_idbi_customers.go
-	@echo "2. Deploying to $(EC2_IP)..."
-	@echo "3. Syncing files via rsync..."
+	@echo "2. Deploying to Private IP $(PRIVATE_EC2_IP) via Bastion $(BASTION_IP)..."
+	@echo "3. Syncing files via rsync through bastion proxy..."
 	@rsync -avz --delete \
 		--exclude '.git' \
 		--exclude 'bin' \
 		--exclude '.env' \
 		--exclude '.DS_Store' \
-		-e "ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no" \
-		. $(EC2_USER)@$(EC2_IP):$(DEPLOY_DIR)
-	@echo "4. Rebuilding and starting Docker containers on EC2..."
-	@ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no $(EC2_USER)@$(EC2_IP) \
+		-e "ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no -J $(BASTION_USER)@$(BASTION_IP)" \
+		. $(EC2_USER)@$(PRIVATE_EC2_IP):$(DEPLOY_DIR)
+	@echo "4. Rebuilding and starting Docker containers on Private EC2..."
+	@ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no -J $(BASTION_USER)@$(BASTION_IP) $(EC2_USER)@$(PRIVATE_EC2_IP) \
 		"cd $(DEPLOY_DIR) && docker compose -f docker-compose.prod.yml up -d --build"
-	@echo "Deployment successful! API is now running on http://$(EC2_IP)"
+	@echo "Deployment successful! API is now running on internal IP http://$(PRIVATE_EC2_IP)"
 
 # --- SSM Deployment Commands ---
 # EC2 SSM Configuration
@@ -141,3 +143,19 @@ deploy-ssm:
 	@ssh -i $(PEM_FILE) -o StrictHostKeyChecking=no -o ProxyCommand="aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p" $(EC2_USER)@$(EC2_INSTANCE_ID) \
 		"cd $(DEPLOY_DIR) && docker compose -f docker-compose.prod.yml up -d --build"
 	@echo "SSM Deployment successful!"
+
+# --- EKS Deployment Commands ---
+# Usage: make deploy-eks DOCKER_USERNAME=yourdockerhubusername
+DOCKER_USERNAME ?= fieryice24
+IMAGE_TAG ?= $(DOCKER_USERNAME)/astra-backend-api:latest
+
+deploy-eks:
+	@echo "1. Building Docker image for EKS..."
+	docker build -t $(IMAGE_TAG) .
+	@echo "2. Pushing to Docker Hub..."
+	docker push $(IMAGE_TAG)
+	@echo "3. Applying Kubernetes manifests..."
+	kubectl apply -f k8s/
+	@echo "4. Restarting deployment to pull new image..."
+	kubectl rollout restart deployment/astra-api
+	@echo "EKS Deployment pipeline complete! Check pod status with 'kubectl get pods'."

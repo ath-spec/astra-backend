@@ -33,6 +33,9 @@ COPY --from=builder /app/start.sh .
 COPY --from=builder /app/internal/database/migrations ./migrations
 COPY --from=builder ["/app/docs/IDBI APIs - Data.csv", "./docs/IDBI APIs - Data.csv"]
 
+# Copy RDS global bundle for SSL
+COPY global-bundle.pem /app/global-bundle.pem
+
 # Expose port 8080 to the outside world
 EXPOSE 8080
 

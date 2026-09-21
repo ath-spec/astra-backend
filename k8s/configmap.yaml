@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: astra-api-config
+  labels:
+    app: astra-api
+data:
+  PORT: "8080"
+  LLM_PROVIDER: "groq"
+  IDBI_BASE_URL: "mock://sandbox"
+  IDBI_ACCOUNTS_ENABLED: "true"
+  IDBI_SPEND_ENABLED: "true"
+  IDBI_LOANS_ENABLED: "true"
+  IDBI_KYC_ENABLED: "true"
+  IDBI_CREDIT_SCORE_ENABLED: "true"
+  IDBI_LEADS_ENABLED: "true"
+  IDBI_AA_ENABLED: "true"
+  IDBI_RM_RISK_ENABLED: "true"
+  IDBI_CKYC_API_TOKEN: "3420c172-fba9-44ac-ba95-2a9bb66f788f"
+  IDBI_CKYC_PARENT_COMPANY: "AAAAA8597P"
+  IDBI_CKYC_BRANCH_CODE: "HOBRANCH"
+  IDBI_CKYC_SOURCE_SYSTEM: "Finacle"
+  IDBI_CKYC_APP_FORM_NO: "FF01"
+  IDBI_LEAD_CHANNEL: "Online"
+  IDBI_LEAD_SOURCE: "Website"
+  IDBI_AA_REDIRECT_MODE: "stub"
+  IDBI_AA_PRODUCT_ID: "TEST"
+  IDBI_AA_VUA_SUFFIX: "@onemoney"
