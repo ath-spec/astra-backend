@@ -15,7 +15,7 @@ fi
 cd "$REPO_DIR"
 
 echo "==> Pulling latest code"
-git pull origin main
+git pull origin idbi-b1
 
 # Get the short git commit hash for tagging
 TAG=$(git rev-parse --short HEAD)
