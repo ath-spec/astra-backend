@@ -43,7 +43,6 @@ func (h *RMHandler) Register(r chi.Router) {
 	r.Get("/clients/{userID}/analytics/narrative", h.clientNarrative)
 	r.Get("/clients/{userID}/spend-intelligence", h.clientSpendIntelligence)
 	r.Get("/clients/{userID}/interactions", h.listInteractions)
-	r.Get("/clients/{userID}/watchlist", h.clientWatchlist)
 	r.Post("/clients/{userID}/interactions", h.addInteraction)
 	r.Post("/clients/{userID}/interactions/{id}/complete", h.completeInteraction)
 }
@@ -274,25 +273,6 @@ func (h *RMHandler) listInteractions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	apiresponse.OK(w, res)
-}
-
-func (h *RMHandler) clientWatchlist(w http.ResponseWriter, r *http.Request) {
-	rmID, ok := middleware.GetRMID(r.Context())
-	if !ok {
-		apiresponse.Error(w, apiresponse.ErrUnauthorized)
-		return
-	}
-	userID, err := uuid.Parse(chi.URLParam(r, "userID"))
-	if err != nil {
-		apiresponse.Error(w, apiresponse.Validation("invalid user id"))
-		return
-	}
-	items, err := h.svc.ClientWatchlist(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID)
-	if err != nil {
-		apiresponse.Error(w, err)
-		return
-	}
-	apiresponse.OK(w, items)
 }
 
 func (h *RMHandler) addInteraction(w http.ResponseWriter, r *http.Request) {

@@ -318,7 +318,7 @@ func main() {
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
 	budgetHandler := handler.NewBudgetHandler(budgetService).WithEvents(eventsPublisher)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
-	aaHandler := handler.NewAAHandler(db.Pool).WithEvents(eventsPublisher)
+	aaHandler := handler.NewAAHandler(db.Pool).WithEvents(eventsPublisher).WithSeeder(userRepo)
 	if idbiAASvc != nil {
 		aaHandler.WithIDBI(idbiAASvc)
 	}

@@ -268,6 +268,36 @@ func (r *PostgresUserRepository) DeleteUserByPhone(ctx context.Context, phoneNum
 	return err
 }
 
+// SeedBankDependentData creates this user's demo FD + mandate rows against a
+// bank account they actually linked themselves (discover -> APPROVE AND
+// CONNECT, or the manual "connect more accounts" picker) — never a
+// hardcoded bank_accounts row inserted at signup before any consent. Called
+// by AAHandler.AddAccount the first time a user's bank_accounts goes from
+// zero to one; a no-op (every insert here is ON CONFLICT DO NOTHING, keyed
+// off fixed demo IDs) if called again for a later account. Uses the same
+// phone-number archetype hash as seedInitialUserData so a given user always
+// gets the FD/mandate flavor matching whatever holdings/goals they were
+// already seeded with.
+func (r *PostgresUserRepository) SeedBankDependentData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	user, err := r.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("seed bank dependent data: %w", err)
+	}
+	sum := sha256.Sum256([]byte(user.PhoneNumber + userID.String()))
+	archetype := int(binary.BigEndian.Uint32(sum[:4]) % 4)
+
+	switch archetype {
+	case 0:
+		return r.seedTechGrowthBankData(ctx, userID, bankAccountID)
+	case 1:
+		return r.seedBalancedWealthBankData(ctx, userID, bankAccountID)
+	case 2:
+		return r.seedGlobalMultiAssetBankData(ctx, userID, bankAccountID)
+	default:
+		return r.seedConservativeIncomeBankData(ctx, userID, bankAccountID)
+	}
+}
+
 // seedInitialUserData selects from 4 distinct, rich investor archetypes based on phone number hash,
 // ensuring different users experience varied portfolio distributions, funds, balances, and goals.
 func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID uuid.UUID, phoneNumber string) error {
@@ -297,22 +327,6 @@ func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID
 
 // Archetype 0: Tech & Semiconductor Growth Investor
 func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'ICICI Bank - Wealth', 'SAVINGS', 345000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'HDFC Bank - Savings', 'SAVINGS', 185000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -359,20 +373,6 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-TECH-901', $1, $2, 75000.00, 7.25, 18, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 40, CURRENT_DATE + 505, 83450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-TECH-01', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'Mirae AI & Tech SIP', 'mirae@upi', 6000.00, 'MONTHLY', CURRENT_DATE - 270, CURRENT_DATE + 5, 'ACTIVE'),
-		('MND-TECH-02', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'ICICI Tech Fund SIP', 'icici@upi', 4000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 12, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'AI Venture Angel Fund', 'INVESTMENT', 5000000.00, 1850000.00, CURRENT_DATE + 1460, 'IN_PROGRESS'),
@@ -384,24 +384,29 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 	return r.seedPortfolioSnapshots(ctx, userID, 365, 2850000.0, 3950000.0)
 }
 
+// seedTechGrowthBankData creates the demo FD + mandates tied to a real,
+// user-approved bank account (see SeedBankDependentData) instead of a
+// hardcoded bank_accounts row inserted at signup before the user ever
+// consented to linking anything.
+func (r *PostgresUserRepository) seedTechGrowthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-TECH-901', $1, $2, 75000.00, 7.25, 18, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 40, CURRENT_DATE + 505, 83450.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-TECH-01', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'Mirae AI & Tech SIP', 'mirae@upi', 6000.00, 'MONTHLY', CURRENT_DATE - 270, CURRENT_DATE + 5, 'ACTIVE'),
+		('MND-TECH-02', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'ICICI Tech Fund SIP', 'icici@upi', 4000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 12, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 1: Balanced Bluechip & Flexicap Wealth Builder
 func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'HDFC Bank - Salary', 'SAVINGS', 265000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'State Bank of India - Savings', 'SAVINGS', 95000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -448,20 +453,6 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-BAL-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-BAL-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
-		('MND-BAL-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'Home Down Payment', 'HOME', 3500000.00, 1250000.00, CURRENT_DATE + 1095, 'IN_PROGRESS'),
@@ -473,24 +464,26 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 	return r.seedPortfolioSnapshots(ctx, userID, 180, 1650000.0, 2480000.0)
 }
 
+// seedBalancedWealthBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedBalancedWealthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-BAL-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-BAL-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
+		('MND-BAL-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 2: Global Markets, Gold & REITs Diversifier
 func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Axis Bank - Priority', 'SAVINGS', 390000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Bank of Baroda - Savings', 'SAVINGS', 140000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -543,20 +536,6 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-GLOB-301', $1, $2, 60000.00, 7.40, 24, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 120, CURRENT_DATE + 610, 69450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-GLOB-01', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Nasdaq 100 Index SIP', 'motilal@upi', 7500.00, 'MONTHLY', CURRENT_DATE - 210, CURRENT_DATE + 3, 'ACTIVE'),
-		('MND-GLOB-02', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Kotak Gold SIP', 'kotak@upi', 2500.00, 'MONTHLY', CURRENT_DATE - 150, CURRENT_DATE + 18, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'European Sabbatical', 'TRAVEL', 800000.00, 450000.00, CURRENT_DATE + 540, 'IN_PROGRESS'),
@@ -568,18 +547,26 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 	return r.seedPortfolioSnapshots(ctx, userID, 90, 2100000.0, 2650000.0)
 }
 
+// seedGlobalMultiAssetBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedGlobalMultiAssetBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-GLOB-301', $1, $2, 60000.00, 7.40, 24, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 120, CURRENT_DATE + 610, 69450.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-GLOB-01', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Nasdaq 100 Index SIP', 'motilal@upi', 7500.00, 'MONTHLY', CURRENT_DATE - 210, CURRENT_DATE + 3, 'ACTIVE'),
+		('MND-GLOB-02', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Kotak Gold SIP', 'kotak@upi', 2500.00, 'MONTHLY', CURRENT_DATE - 150, CURRENT_DATE + 18, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 3: Conservative Hybrid & Capital Preservation Planner
 func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'State Bank of India - Savings', 'SAVINGS', 480000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -621,21 +608,6 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES
-		('FD-CONS-401', $1, $2, 120000.00, 7.50, 36, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 90, CURRENT_DATE + 1005, 149850.00, 'ACTIVE'),
-		('FD-CONS-402', $1, $2, 80000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 30, CURRENT_DATE + 335, 85830.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-CONS-01', $1, $2, 'UPI_AUTOPAY', 'user@oksbi', 'HDFC Corporate Bond SIP', 'hdfc@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 20, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'Child Higher Education', 'EDUCATION', 4000000.00, 2100000.00, CURRENT_DATE + 1825, 'IN_PROGRESS'),
@@ -645,6 +617,25 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 
 	// Seed 30 days of portfolio history.
 	return r.seedPortfolioSnapshots(ctx, userID, 30, 3400000.0, 3720000.0)
+}
+
+// seedConservativeIncomeBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedConservativeIncomeBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES
+		('FD-CONS-401', $1, $2, 120000.00, 7.50, 36, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 90, CURRENT_DATE + 1005, 149850.00, 'ACTIVE'),
+		('FD-CONS-402', $1, $2, 80000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 30, CURRENT_DATE + 335, 85830.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-CONS-01', $1, $2, 'UPI_AUTOPAY', 'user@oksbi', 'HDFC Corporate Bond SIP', 'hdfc@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 20, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
 }
 
 // seedPortfolioSnapshots backfills `days` daily rows in portfolio_snapshots,

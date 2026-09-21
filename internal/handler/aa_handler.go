@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"hash/fnv"
 	"log/slog"
 	"net/http"
 	"time"
@@ -23,16 +24,98 @@ import (
 // occupy the "id" field the accounts screen already expects.
 var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
 
+// discoveryAcctNamespace namespaces synthetic IDs for DiscoverAccounts —
+// separate from idbiAcctNamespace so a discovered-but-unlinked candidate's
+// ID can never collide with a real IDBI-synced account's ID.
+var discoveryAcctNamespace = uuid.MustParse("7d3b6e2a-9c41-4b8f-8e2d-5a1f9c6b0d47")
+
+// discoveryBankPool is the small set of banks DiscoverAccounts can offer as
+// "found via Account Aggregator" candidates. There is no real cross-bank AA
+// discovery integration (IDBI's sandbox can only simulate IDBI's own
+// accounts, not other banks'), so this stands in for it the same way the
+// stocks/MF/FD MockProviders stand in for their real vendors: a real
+// backend endpoint with deterministic, per-user output, not hardcoded
+// client-side data.
+var discoveryBankPool = []string{"ICICI Bank", "HDFC Bank", "Axis Bank", "State Bank of India"}
+
+// DiscoverAccounts simulates an AA discovery step: it returns up to two
+// bank accounts the user hasn't already linked, with a deterministic
+// (stable per user+bank, not random per call) balance derived from their
+// user ID — so re-opening the linking screen shows the same candidates
+// instead of a new set each time. Discovered accounts are never written to
+// bank_accounts; the user still has to select them and hit APPROVE AND
+// CONNECT (which calls AddAccount) for that.
+func (h *AAHandler) DiscoverAccounts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+
+	rows, err := h.pool.Query(r.Context(), `
+		SELECT bank_name FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
+	`, userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	linked := map[string]bool{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			apiresponse.Error(w, err)
+			return
+		}
+		linked[name] = true
+	}
+	rows.Close()
+
+	accounts := make([]BankAccountResponse, 0, 2)
+	for _, bankName := range discoveryBankPool {
+		if linked[bankName] || len(accounts) >= 2 {
+			continue
+		}
+		hasher := fnv.New64a()
+		_, _ = hasher.Write([]byte(userID.String() + bankName))
+		sum := hasher.Sum64()
+		balance := float64(80000+int(sum%220000)) / 1.0
+
+		accounts = append(accounts, BankAccountResponse{
+			ID:          uuid.NewSHA1(discoveryAcctNamespace, []byte(userID.String()+bankName)),
+			BankName:    bankName,
+			AccountType: "SAVINGS",
+			Balance:     balance,
+			CreatedAt:   time.Now(),
+			IsLinked:    false,
+		})
+	}
+
+	apiresponse.OK(w, map[string]any{
+		"accounts": accounts,
+		"count":    len(accounts),
+	})
+}
+
 // aaWebhookProcessTimeout bounds the detached processing of an inbound AA
 // notification (which itself makes an outbound IDBI call). The webhook is
 // acked immediately; this only limits the background work.
 const aaWebhookProcessTimeout = 30 * time.Second
+
+// bankDependentSeeder creates demo data (FDs, mandates) tied to a bank
+// account the user actually linked themselves, instead of that data being
+// hardcoded against a fake bank account inserted at signup before any
+// consent. Implemented by *repository.PostgresUserRepository.
+type bankDependentSeeder interface {
+	SeedBankDependentData(ctx context.Context, userID, bankAccountID uuid.UUID) error
+}
 
 type AAHandler struct {
 	pool         *pgxpool.Pool
 	aa           *idbiaa.Service       // nil unless IDBI_AA_ENABLED — then the consent flow is real
 	idbiAccounts *idbiaccounts.Service // nil unless IDBI_ACCOUNTS_ENABLED — then GET /accounts serves real IDBI accounts
 	events       *events.Publisher
+	seeder       bankDependentSeeder // nil until WithSeeder is called
 }
 
 func NewAAHandler(pool *pgxpool.Pool) *AAHandler {
@@ -67,6 +150,16 @@ func (h *AAHandler) WithIDBIAccounts(svc *idbiaccounts.Service) *AAHandler {
 // IDBIEnabled reports whether the real AA flow is wired.
 func (h *AAHandler) IDBIEnabled() bool { return h.aa != nil }
 
+// WithSeeder attaches the demo-data seeder so a user's first successful
+// AddAccount call (from discover -> approve, or the manual "connect more
+// accounts" flow) can backfill their FD/mandate demo data against that real
+// bank account. Without it, AddAccount behaves exactly as before (no demo
+// FD/mandate seeding at all).
+func (h *AAHandler) WithSeeder(s bankDependentSeeder) *AAHandler {
+	h.seeder = s
+	return h
+}
+
 type AddBankAccountRequest struct {
 	BankName    string  `json:"bank_name"`
 	AccountType string  `json:"account_type"`
@@ -79,11 +172,16 @@ type BankAccountResponse struct {
 	AccountType string    `json:"account_type"`
 	Balance     float64   `json:"balance"`
 	CreatedAt   time.Time `json:"created_at"`
+	// IsLinked distinguishes a real, already-persisted account (GetAccounts)
+	// from a simulated AA-discovery candidate (DiscoverAccounts) that the
+	// user still has to approve before it's ever written to bank_accounts.
+	IsLinked bool `json:"is_linked"`
 }
 
 func (h *AAHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/accounts", h.GetAccounts)
+	r.Get("/accounts/discover", h.DiscoverAccounts)
 	r.Post("/accounts", h.AddAccount)
 	r.Post("/accounts/link", h.AddAccount)
 	r.Delete("/accounts/{accountID}", h.UnlinkAccount)
@@ -147,6 +245,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 					AccountType: a.AccountType,
 					Balance:     bal,
 					CreatedAt:   a.SyncedAt,
+					IsLinked:    true,
 				})
 			}
 		}
@@ -170,6 +269,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 			apiresponse.Error(w, err)
 			return
 		}
+		acc.IsLinked = true
 		accounts = append(accounts, acc)
 	}
 
@@ -206,6 +306,19 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 		req.Balance = 25000.00
 	}
 
+	// Checked before the insert below so this always reflects "had zero
+	// bank accounts before this call," not "has one now" (which would be
+	// true after every single AddAccount, including the second, third, ...).
+	var hadNoAccounts bool
+	if h.seeder != nil {
+		var existing int
+		if err := h.pool.QueryRow(r.Context(),
+			`SELECT count(*) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID,
+		).Scan(&existing); err == nil {
+			hadNoAccounts = existing == 0
+		}
+	}
+
 	var acc BankAccountResponse
 	err := h.pool.QueryRow(r.Context(), `
 		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
@@ -224,6 +337,16 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.events != nil {
 		go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
+	}
+	// Best-effort, same pattern as the RM auto-assign on signup: this is
+	// demo/mock enrichment (FDs, mandates), never something that should
+	// fail or slow down the user's actual bank-linking request.
+	if h.seeder != nil && hadNoAccounts {
+		go func() {
+			if err := h.seeder.SeedBankDependentData(context.Background(), userID, acc.ID); err != nil {
+				slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
+			}
+		}()
 	}
 
 	apiresponse.Created(w, acc)
