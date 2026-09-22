@@ -411,9 +411,6 @@ func (h *AAHandler) AvailableBanks(w http.ResponseWriter, r *http.Request) {
 	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
 	banks := make([]string, 0, len(bankPool))
 	for _, bankName := range bankPool {
-		if detected[bankName] {
-			continue
-		}
 		if linkedBankNames[bankName] >= discoverypool.AccountsPerBank {
 			continue
 		}
