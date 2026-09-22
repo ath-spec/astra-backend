@@ -39,16 +39,23 @@ type demoSubscription struct {
 	daysAgo             int
 }
 
+// Only brands the frontend actually has a real logo asset for (see
+// _brandVisuals in astra-frontend's recurring_mapping.dart — payeeName just
+// needs to contain the map key, case-insensitively, e.g. "Disney+ Hotstar"
+// matches "disney"). Previously included Amazon Prime/Apple One/Google One/
+// Airtel Fiber/Cult.fit, none of which have a real logo there — they fell
+// back to a generic Material icon, which looked wrong next to the brands
+// that do. Notion/Perplexity/Claude/Canva have logos on the frontend but
+// weren't seeded here at all until now.
 var demoSubscriptions = []demoSubscription{
 	{"Netflix", "netflix@upi", 649, 75},
 	{"YouTube Premium", "youtube@upi", 129, 45},
 	{"Spotify", "spotify@upi", 119, 20},
-	{"Amazon Prime", "prime@upi", 299, 60},
 	{"Disney+ Hotstar", "hotstar@upi", 299, 15},
-	{"Apple One", "apple@upi", 195, 10},
-	{"Google One Storage", "googleone@upi", 130, 5},
-	{"Airtel Fiber Broadband", "airtelfiber@upi", 999, 25},
-	{"Cult.fit Pass", "cultfit@upi", 1250, 85},
+	{"Notion Plus", "notion@upi", 799, 10},
+	{"Perplexity Pro", "perplexity@upi", 1650, 8},
+	{"Claude Pro", "claude@upi", 1650, 5},
+	{"Canva Pro", "canva@upi", 499, 3},
 }
 
 // seedDemoSubscriptions lazily seeds a new user's starter subscription

@@ -2,8 +2,6 @@ package repository
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -274,140 +272,43 @@ func (r *PostgresUserRepository) DeleteUserByPhone(ctx context.Context, phoneNum
 // hardcoded bank_accounts row inserted at signup before any consent. Called
 // by AAHandler.AddAccount the first time a user's bank_accounts goes from
 // zero to one; a no-op (every insert here is ON CONFLICT DO NOTHING, keyed
-// off fixed demo IDs) if called again for a later account. Uses the same
-// phone-number archetype hash as seedInitialUserData so a given user always
-// gets the FD/mandate flavor matching whatever holdings/goals they were
-// already seeded with.
+// off fixed demo IDs) if called again for a later account. Every user gets
+// the same single Good Investor FD/mandate flavor (see
+// seedGoodInvestorBankData), matching whatever holdings/goals
+// seedInitialUserData already seeded them with.
 func (r *PostgresUserRepository) SeedBankDependentData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
-	user, err := r.GetByID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("seed bank dependent data: %w", err)
-	}
-	sum := sha256.Sum256([]byte(user.PhoneNumber + userID.String()))
-	archetype := int(binary.BigEndian.Uint32(sum[:4]) % 4)
-
-	switch archetype {
-	case 0:
-		return r.seedTechGrowthBankData(ctx, userID, bankAccountID)
-	case 1:
-		return r.seedBalancedWealthBankData(ctx, userID, bankAccountID)
-	case 2:
-		return r.seedGlobalMultiAssetBankData(ctx, userID, bankAccountID)
-	default:
-		return r.seedConservativeIncomeBankData(ctx, userID, bankAccountID)
-	}
+	return r.seedGoodInvestorBankData(ctx, userID, bankAccountID)
 }
 
-// seedInitialUserData selects from 4 distinct, rich investor archetypes based on phone number hash,
-// ensuring different users experience varied portfolio distributions, funds, balances, and goals.
+// seedInitialUserData used to hash phone+userID into one of 4 wildly
+// different investor archetypes (aggressive thematic growth, balanced,
+// globally diversified, conservative) — every demo screen (funds, stocks,
+// FD, discipline, allocation, performance, net worth) told a different,
+// disconnected story depending on which bucket a phone number happened to
+// land in. Now every user gets the same single "Good Investor" persona —
+// a realistic, moderately diversified, consistently disciplined portfolio
+// — so the whole app tells one coherent story.
 func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID uuid.UUID, phoneNumber string) error {
-	sum := sha256.Sum256([]byte(phoneNumber + userID.String()))
-	archetype := int(binary.BigEndian.Uint32(sum[:4]) % 4)
-
-	var err error
-	switch archetype {
-	case 0:
-		err = r.seedTechGrowthArchetype(ctx, userID)
-	case 1:
-		err = r.seedBalancedWealthArchetype(ctx, userID)
-	case 2:
-		err = r.seedGlobalMultiAssetArchetype(ctx, userID)
-	default:
-		err = r.seedConservativeIncomeArchetype(ctx, userID)
-	}
-	if err != nil {
+	if err := r.seedGoodInvestorArchetype(ctx, userID); err != nil {
 		return err
 	}
 
-	// Layer on ~6 months of categorized spend history matching this
-	// archetype's income/spending persona, so the budget feature has real
-	// data to diagnose against from first login.
-	return r.seedSpendHistory(ctx, userID, spendProfiles[archetype])
+	// spendProfiles[1] ("Balanced Bluechip Wealth Builder") is the steady,
+	// ~25%-savings-rate profile that actually matches a disciplined good
+	// investor — kept as an indexed array (rather than inlined here) only
+	// because seedSpendHistory's signature takes a spendArchetypeProfile.
+	return r.seedSpendHistory(ctx, userID, spendProfiles[1])
 }
 
-
-// Archetype 0: Tech & Semiconductor Growth Investor
-func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, userID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
-		VALUES
-		($1, 'INE249Z01012', 'MAZDOCK', 'NSE', 'CNC', 25, 2100.00, 2340.50, 2305.00, CURRENT_DATE - 75),
-		($1, 'INE704P01017', 'COCHINSHIP', 'NSE', 'CNC', 40, 1380.00, 1510.00, 1480.00, CURRENT_DATE - 45)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
-		VALUES
-		('ORD-TECH-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 25, 'CNC', 'LIMIT', 2100.00, 'COMPLETE', 25, 2100.00, NOW() - INTERVAL '75 days'),
-		('ORD-TECH-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 40, 'CNC', 'LIMIT', 1380.00, 'COMPLETE', 40, 1380.00, NOW() - INTERVAL '45 days')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	var f1, f2, f3 uuid.UUID
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-TECH-01', 'Mirae Asset Mutual Fund', 'MIRAE-SEMICON-G', 'Mirae Asset Semiconductor & AI ETF Fund of Fund - Growth', 'INF769K01CX6', 520.000, 18.9034, CURRENT_DATE, 8000.00, 'Equity - Thematic', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f1)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-TECH-02', 'ICICI Prudential Mutual Fund', 'ICICI-TECH-G', 'ICICI Prudential Technology Fund - Growth', 'INF109K01VG1', 80.000, 198.4521, CURRENT_DATE, 13500.00, 'Equity - Thematic', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f2)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-TECH-03', 'Axis Mutual Fund', 'AXIS-SC-G', 'Axis Small Cap Fund - Growth', 'INF846K01EY7', 160.000, 95.1032, CURRENT_DATE, 12000.00, 'Equity - Small Cap', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f3)
-
-	for i := 0; i < 9; i++ {
-		tDate := time.Now().AddDate(0, -i, -7)
-		if f1 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 6000.00, 317.40, 18.90)`, f1, tDate)
-		}
-		if f2 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 4000.00, 20.15, 198.45)`, f2, tDate)
-		}
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
-		VALUES
-		($1, 'AI Venture Angel Fund', 'INVESTMENT', 5000000.00, 1850000.00, CURRENT_DATE + 1460, 'IN_PROGRESS'),
-		($1, 'EV Car Upgrade', 'PURCHASE', 2500000.00, 850000.00, CURRENT_DATE + 730, 'IN_PROGRESS')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	// Seed 365 days of portfolio history so the growth chart has data from day 1.
-	return r.seedPortfolioSnapshots(ctx, userID, 365, 2850000.0, 3950000.0)
-}
-
-// seedTechGrowthBankData creates the demo FD + mandates tied to a real,
-// user-approved bank account (see SeedBankDependentData) instead of a
-// hardcoded bank_accounts row inserted at signup before the user ever
-// consented to linking anything.
-func (r *PostgresUserRepository) seedTechGrowthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-TECH-901', $1, $2, 75000.00, 7.25, 18, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 40, CURRENT_DATE + 505, 83450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-
-	_, err := r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-TECH-01', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'Mirae AI & Tech SIP', 'mirae@upi', 6000.00, 'MONTHLY', CURRENT_DATE - 270, CURRENT_DATE + 5, 'ACTIVE'),
-		('MND-TECH-02', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'ICICI Tech Fund SIP', 'icici@upi', 4000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 12, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-	return err
-}
-
-// Archetype 1: Balanced Bluechip & Flexicap Wealth Builder
-func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context, userID uuid.UUID) error {
+// seedGoodInvestorArchetype seeds a single, realistic "disciplined
+// moderately-aggressive investor" persona: two solid, diversified equity
+// bets (large cap + flexi cap) instead of a concentrated sector bet,
+// consistent SIP discipline with no gaps, and a steady upward net worth
+// trend — every number here is meant to read as plausible, not
+// aspirational. This replaces what used to be 4 separate, disconnected
+// archetypes (aggressive thematic growth, balanced, globally diversified,
+// conservative) hashed off phone+userID; one consistent story now, always.
+func (r *PostgresUserRepository) seedGoodInvestorArchetype(ctx context.Context, userID uuid.UUID) error {
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -419,37 +320,58 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
 		VALUES
-		('ORD-BAL-01', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 75, 'CNC', 'LIMIT', 670.00, 'COMPLETE', 75, 670.00, NOW() - INTERVAL '60 days'),
-		('ORD-BAL-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 18, 'CNC', 'LIMIT', 1440.00, 'COMPLETE', 18, 1440.00, NOW() - INTERVAL '30 days')
+		('ORD-GOOD-01', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 75, 'CNC', 'LIMIT', 670.00, 'COMPLETE', 75, 670.00, NOW() - INTERVAL '60 days'),
+		('ORD-GOOD-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 18, 'CNC', 'LIMIT', 1440.00, 'COMPLETE', 18, 1440.00, NOW() - INTERVAL '30 days')
 		ON CONFLICT DO NOTHING
 	`, userID)
 
+	// Three equity funds — a flexi cap and a large cap for active,
+	// benchmark-beating exposure, plus a Nifty 50 index fund for passive
+	// exposure (migration 000040) so the Allocation screen's "Equity
+	// Exposure" index-fund percentage — and the "Investors Like You" peer
+	// benchmark in peerIndexFundPct, which is asset-weighted across every
+	// seeded user's folios — has real, non-zero data instead of reading 0%
+	// because no catalog fund's name/category ever matched index/nifty/
+	// sensex. All three scheme_codes match fund_catalog exactly so viewing
+	// any fund's profile finds a real catalog row.
 	var f1, f2, f3 uuid.UUID
 	_ = r.db.Pool.QueryRow(ctx, `
 		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-BAL-01', 'PPFAS Mutual Fund', 'PARAG-FLX-G', 'Parag Parikh Flexi Cap Fund - Growth', 'INF879O01027', 350.000, 74.9012, CURRENT_DATE, 22000.00, 'Equity - Flexi Cap', 'DIRECT')
+		VALUES ($1, 'FOL-GOOD-01', 'PPFAS Mutual Fund', 'PARAG-FLX-G', 'Parag Parikh Flexi Cap Fund', 'INF879O01027', 350.000, 74.9012, CURRENT_DATE, 22000.00, 'Equity - Flexi Cap', 'DIRECT')
 		RETURNING id
 	`, userID).Scan(&f1)
 
 	_ = r.db.Pool.QueryRow(ctx, `
 		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-BAL-02', 'SBI Mutual Fund', 'SBI-BLC-G', 'SBI Bluechip Fund - Growth', 'INF200K01158', 210.000, 78.4521, CURRENT_DATE, 14000.00, 'Equity - Large Cap', 'DIRECT')
+		VALUES ($1, 'FOL-GOOD-02', 'SBI Mutual Fund', 'SBI-BLC-G', 'SBI Bluechip Fund', 'INF200K01158', 210.000, 78.4521, CURRENT_DATE, 14000.00, 'Equity - Large Cap', 'DIRECT')
 		RETURNING id
 	`, userID).Scan(&f2)
 
 	_ = r.db.Pool.QueryRow(ctx, `
 		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-BAL-03', 'ICICI Prudential Mutual Fund', 'ICICI-BAF-G', 'ICICI Prudential Balanced Advantage Fund - Growth', 'INF109K01AA1', 280.000, 61.2290, CURRENT_DATE, 15000.00, 'Hybrid - Balanced Advantage', 'DIRECT')
+		VALUES ($1, 'FOL-GOOD-03', 'UTI Mutual Fund', 'UTI-N50-G', 'UTI Nifty 50 Index Fund', 'INF789F01XA1', 120.000, 285.4210, CURRENT_DATE, 30000.00, 'Equity - Large Cap', 'DIRECT')
 		RETURNING id
 	`, userID).Scan(&f3)
 
-	for i := 0; i < 8; i++ {
+	// 12 months of unbroken monthly SIPs across all three funds — no missed
+	// months across the entire 12-month window Discipline() and the RM
+	// inflow/composition queries scan, which is exactly what should read as
+	// "good discipline" on the discipline gauge instead of a middling score.
+	// transaction_type must be exactly 'SIP' (not 'SIP_PURCHASE') — every
+	// reader (portfolio_analysis.go Discipline/yearlyInvestmentHistory,
+	// rm_composition.go, rm_advisory.go, rm_analytics.go) filters on
+	// transaction_type IN ('PURCHASE','SIP'), so a mismatched literal here
+	// silently drops every seeded transaction from every one of those calcs.
+	for i := 0; i < 12; i++ {
 		tDate := time.Now().AddDate(0, -i, -5)
 		if f1 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 5000.00, 66.75, 74.90)`, f1, tDate)
+			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP', $2, 5000.00, 66.75, 74.90)`, f1, tDate)
 		}
 		if f2 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 3000.00, 38.24, 78.45)`, f2, tDate)
+			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP', $2, 3000.00, 38.24, 78.45)`, f2, tDate)
+		}
+		if f3 != uuid.Nil {
+			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP', $2, 2000.00, 7.01, 285.42)`, f3, tDate)
 		}
 	}
 
@@ -461,183 +383,38 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 		ON CONFLICT DO NOTHING
 	`, userID)
 
-	// Seed 180 days of portfolio history.
+	// Seed 180 days of a steady, realistic upward net worth trend.
 	return r.seedPortfolioSnapshots(ctx, userID, 180, 1650000.0, 2480000.0)
 }
 
-// seedBalancedWealthBankData — see seedTechGrowthBankData.
-func (r *PostgresUserRepository) seedBalancedWealthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+// seedGoodInvestorBankData creates the demo FD + mandates tied to a real,
+// user-approved bank account (see SeedBankDependentData) instead of a
+// hardcoded bank_accounts row inserted at signup before the user ever
+// consented to linking anything. Every good-investor user always gets an
+// FD here — it's the one consistent debt/safety-net sleeve behind the
+// equity funds above, not something only some personas had.
+func (r *PostgresUserRepository) seedGoodInvestorBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-BAL-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
+		VALUES ('FD-GOOD-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
 		ON CONFLICT DO NOTHING
 	`, userID, bankAccountID)
 
+	// category = 'SIP' (not the 'OTHER' default) so the "SIPs & Mandates"
+	// screen — which shows only category='SIP' mandates, see
+	// seedDemoSubscriptions in provider/payments/recurring.go for the
+	// separate category='SUBSCRIPTION' seed that screen deliberately
+	// excludes — actually finds these two rows.
 	_, err := r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, category, max_amount, frequency, mandate_start_date, next_debit_date, status)
 		VALUES
-		('MND-BAL-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
-		('MND-BAL-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
+		('MND-GOOD-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 'SIP', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
+		('MND-GOOD-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 'SIP', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
 		ON CONFLICT DO NOTHING
 	`, userID, bankAccountID)
 	return err
 }
 
-// Archetype 2: Global Markets, Gold & REITs Diversifier
-func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Context, userID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
-		VALUES
-		($1, 'INE249Z01012', 'MAZDOCK', 'NSE', 'CNC', 12, 2180.00, 2340.50, 2305.00, CURRENT_DATE - 100),
-		($1, 'INE255X01014', 'MSTCLTD', 'NSE', 'CNC', 90, 690.00, 745.00, 730.00, CURRENT_DATE - 40)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
-		VALUES
-		('ORD-GLOB-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 12, 'CNC', 'LIMIT', 2180.00, 'COMPLETE', 12, 2180.00, NOW() - INTERVAL '100 days'),
-		('ORD-GLOB-02', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 90, 'CNC', 'LIMIT', 690.00, 'COMPLETE', 90, 690.00, NOW() - INTERVAL '40 days')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	var f1, f2, f3, f4 uuid.UUID
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-GLOB-01', 'Motilal Oswal Mutual Fund', 'MOTILAL-NASDAQ100-G', 'Motilal Oswal Nasdaq 100 FOF - Growth', 'INF247L01AQ2', 480.000, 28.4521, CURRENT_DATE, 11500.00, 'Equity - Global', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f1)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-GLOB-02', 'Kotak Mutual Fund', 'KOTAK-GOLD-G', 'Kotak Gold Fund - Growth', 'INF174K01LS3', 420.000, 28.3345, CURRENT_DATE, 10000.00, 'Other - Gold', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f2)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-GLOB-03', 'Kotak Mutual Fund', 'KOTAK-REIT-G', 'Kotak International REIT Fund of Fund - Growth', 'INF174KA1RT3', 650.000, 12.3456, CURRENT_DATE, 7500.00, 'Other - REIT', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f3)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-GLOB-04', 'Edelweiss Mutual Fund', 'EDEL-EUROPE-G', 'Edelweiss Europe Dynamic Equity Offshore Fund - Growth', 'INF754K01DZ9', 250.000, 22.7789, CURRENT_DATE, 5200.00, 'Equity - Global', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f4)
-
-	for i := 0; i < 7; i++ {
-		tDate := time.Now().AddDate(0, -i, -3)
-		if f1 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 7500.00, 263.60, 28.45)`, f1, tDate)
-		}
-		if f2 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 2500.00, 88.23, 28.33)`, f2, tDate)
-		}
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
-		VALUES
-		($1, 'European Sabbatical', 'TRAVEL', 800000.00, 450000.00, CURRENT_DATE + 540, 'IN_PROGRESS'),
-		($1, 'Global Portfolio Corpus', 'WEALTH', 8000000.00, 2200000.00, CURRENT_DATE + 2190, 'IN_PROGRESS')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	// Seed 90 days of portfolio history.
-	return r.seedPortfolioSnapshots(ctx, userID, 90, 2100000.0, 2650000.0)
-}
-
-// seedGlobalMultiAssetBankData — see seedTechGrowthBankData.
-func (r *PostgresUserRepository) seedGlobalMultiAssetBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-GLOB-301', $1, $2, 60000.00, 7.40, 24, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 120, CURRENT_DATE + 610, 69450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-
-	_, err := r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-GLOB-01', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Nasdaq 100 Index SIP', 'motilal@upi', 7500.00, 'MONTHLY', CURRENT_DATE - 210, CURRENT_DATE + 3, 'ACTIVE'),
-		('MND-GLOB-02', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Kotak Gold SIP', 'kotak@upi', 2500.00, 'MONTHLY', CURRENT_DATE - 150, CURRENT_DATE + 18, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-	return err
-}
-
-// Archetype 3: Conservative Hybrid & Capital Preservation Planner
-func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Context, userID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
-		VALUES
-		($1, 'INE249Z01012', 'MAZDOCK', 'NSE', 'CNC', 8, 2140.00, 2340.50, 2305.00, CURRENT_DATE - 120)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
-		VALUES
-		('ORD-CONS-01', $1, 'NSE', 'MAZDOCK', 'INE249Z01012', 'BUY', 8, 'CNC', 'LIMIT', 2140.00, 'COMPLETE', 8, 2140.00, NOW() - INTERVAL '120 days')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	var f1, f2, f3 uuid.UUID
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-CONS-01', 'HDFC Mutual Fund', 'HDFC-CORPBOND-G', 'HDFC Corporate Bond Fund - Growth', 'INF179K01BM3', 550.000, 32.5601, CURRENT_DATE, 16500.00, 'Debt - Corporate Bond', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f1)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-CONS-02', 'SBI Mutual Fund', 'SBI-CONSHYBRID-G', 'SBI Conservative Hybrid Fund - Growth', 'INF200K01582', 290.000, 68.3345, CURRENT_DATE, 18000.00, 'Hybrid - Conservative', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f2)
-
-	_ = r.db.Pool.QueryRow(ctx, `
-		INSERT INTO mf_folios (user_id, folio_number, amc_name, scheme_code, scheme_name, isin, units_held, nav, nav_date, cost_value, category, plan_type)
-		VALUES ($1, 'FOL-CONS-03', 'HDFC Mutual Fund', 'HDFC-LIQ-G', 'HDFC Liquid Fund - Growth', 'INF179K01158', 8.000, 4521.6634, CURRENT_DATE, 32000.00, 'Debt - Liquid', 'DIRECT')
-		RETURNING id
-	`, userID).Scan(&f3)
-
-	for i := 0; i < 6; i++ {
-		tDate := time.Now().AddDate(0, -i, -10)
-		if f1 != uuid.Nil {
-			_, _ = r.db.Pool.Exec(ctx, `INSERT INTO mf_transactions (folio_id, transaction_type, transaction_date, amount, units, price) VALUES ($1, 'SIP_PURCHASE', $2, 5000.00, 153.56, 32.56)`, f1, tDate)
-		}
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
-		VALUES
-		($1, 'Child Higher Education', 'EDUCATION', 4000000.00, 2100000.00, CURRENT_DATE + 1825, 'IN_PROGRESS'),
-		($1, 'Retirement Safety Net', 'RETIREMENT', 12000000.00, 4800000.00, CURRENT_DATE + 5475, 'IN_PROGRESS')
-		ON CONFLICT DO NOTHING
-	`, userID)
-
-	// Seed 30 days of portfolio history.
-	return r.seedPortfolioSnapshots(ctx, userID, 30, 3400000.0, 3720000.0)
-}
-
-// seedConservativeIncomeBankData — see seedTechGrowthBankData.
-func (r *PostgresUserRepository) seedConservativeIncomeBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES
-		('FD-CONS-401', $1, $2, 120000.00, 7.50, 36, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 90, CURRENT_DATE + 1005, 149850.00, 'ACTIVE'),
-		('FD-CONS-402', $1, $2, 80000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 30, CURRENT_DATE + 335, 85830.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-
-	_, err := r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-CONS-01', $1, $2, 'UPI_AUTOPAY', 'user@oksbi', 'HDFC Corporate Bond SIP', 'hdfc@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 20, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
-	return err
-}
 
 // seedPortfolioSnapshots backfills `days` daily rows in portfolio_snapshots,
 // linearly growing from `startValue` to `endValue` with slight daily noise.

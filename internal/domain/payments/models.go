@@ -31,7 +31,7 @@ type MandateRequest struct {
 	MandateType      string  `json:"mandate_type,omitempty"` // defaults to UPI_AUTOPAY
 	PayeeName        string  `json:"payee_name,omitempty"`
 	PayeeVPAOrID     string  `json:"payee_vpa_or_id,omitempty"`
-	Category         string  `json:"category,omitempty"` // SUBSCRIPTION / BILL / OTHER; defaults to OTHER
+	Category         string  `json:"category,omitempty"` // SIP / SUBSCRIPTION / BILL / OTHER; defaults to OTHER
 	MandateAmount    float64 `json:"mandate_amount"`
 	MandateFrequency string  `json:"mandate_frequency"`          // MONTHLY / QUARTERLY / YEARLY
 	MandateStartDate int64   `json:"mandate_start_date"`         // epoch seconds
