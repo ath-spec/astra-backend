@@ -155,7 +155,7 @@ func (h *RMHandler) clientNarrative(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
-	apiresponse.OK(w, map[string]interface{}{"narratives": res})
+	apiresponse.OK(w, map[string]interface{}{"narratives": res.Narratives, "is_llm": res.IsLLM})
 }
 
 func (h *RMHandler) bookComposition(w http.ResponseWriter, r *http.Request) {

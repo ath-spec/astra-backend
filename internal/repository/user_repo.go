@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/yourusername/astra-backend/internal/database"
+	"github.com/yourusername/astra-backend/internal/discoverypool"
 )
 
 type User struct {
@@ -319,10 +320,44 @@ func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID
 		return err
 	}
 
+	// Every archetype starts with a couple of bank accounts already linked
+	// (from the front of that archetype's discovery pool), matching how
+	// MF/stocks/spend history are also pre-seeded — a brand new user isn't
+	// left staring at a completely empty "Bank Accounts" section before
+	// they've done anything. Everything past these two is still opt-in via
+	// "CONNECT MORE ACCOUNTS".
+	if err := r.seedInitialBankAccounts(ctx, userID, archetype); err != nil {
+		return err
+	}
+
 	// Layer on ~6 months of categorized spend history matching this
 	// archetype's income/spending persona, so the budget feature has real
 	// data to diagnose against from first login.
 	return r.seedSpendHistory(ctx, userID, spendProfiles[archetype])
+}
+
+// seedInitialBankAccounts pre-links discoverypool.SeedAccountCount accounts
+// (the first N banks in this archetype's discovery pool, slot 1 each) using
+// the exact same deterministic generator DiscoverAccounts uses — so once
+// seeded, these accounts are correctly recognized as already-linked (by
+// bank_name + account_number) and never reappear as duplicate candidates in
+// "CONNECT MORE ACCOUNTS".
+func (r *PostgresUserRepository) seedInitialBankAccounts(ctx context.Context, userID uuid.UUID, archetype int) error {
+	bankPool := discoverypool.BankPoolByArchetype[archetype]
+	count := discoverypool.SeedAccountCount
+	if count > len(bankPool) {
+		count = len(bankPool)
+	}
+	for _, bankName := range bankPool[:count] {
+		acc := discoverypool.Generate(userID, bankName, 1)
+		if _, err := r.db.Pool.Exec(ctx, `
+			INSERT INTO bank_accounts (user_id, bank_name, account_type, balance, account_number)
+			VALUES ($1, $2, $3, $4, $5)
+		`, userID, acc.BankName, acc.AccountType, acc.Balance, acc.AccountNumber); err != nil {
+			return fmt.Errorf("seed initial bank account %s: %w", bankName, err)
+		}
+	}
+	return nil
 }
 
 // Archetype 0: Tech & Semiconductor Growth Investor

@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
-	"hash/fnv"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
+	"github.com/yourusername/astra-backend/internal/discoverypool"
 	"github.com/yourusername/astra-backend/internal/events"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/provider/idbi"
@@ -25,32 +26,6 @@ import (
 // idbiAcctNamespace derives a stable UUID for an IDBI account number so it can
 // occupy the "id" field the accounts screen already expects.
 var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
-
-// discoveryAcctNamespace namespaces synthetic IDs for DiscoverAccounts —
-// separate from idbiAcctNamespace so a discovered-but-unlinked candidate's
-// ID can never collide with a real IDBI-synced account's ID.
-var discoveryAcctNamespace = uuid.MustParse("7d3b6e2a-9c41-4b8f-8e2d-5a1f9c6b0d47")
-
-// discoveryBankPool is the small set of banks DiscoverAccounts can offer as
-// "found via Account Aggregator" candidates. There is no real cross-bank AA
-// discovery integration (IDBI's sandbox can only simulate IDBI's own
-// accounts, not other banks'), so this stands in for it the same way the
-// stocks/MF/FD MockProviders stand in for their real vendors: a real
-// backend endpoint with deterministic, per-user output, not hardcoded
-// client-side data.
-//
-// This pool is indexed by the same 0-3 investor archetype used everywhere
-// else mock data varies per user (seedInitialUserData, SeedBankDependentData)
-// — each row is a rotation of the same 4 banks. Without this, every user got
-// index [0,1,2,3] verbatim, so the first two unlinked candidates were always
-// ICICI then HDFC for literally everyone; rotating per archetype means the
-// discovered pair actually differs by persona while staying deterministic.
-var discoveryBankPoolByArchetype = [4][]string{
-	{"Axis Bank", "ICICI Bank", "HDFC Bank", "State Bank of India"},
-	{"ICICI Bank", "HDFC Bank", "Axis Bank", "State Bank of India"},
-	{"State Bank of India", "Axis Bank", "HDFC Bank", "ICICI Bank"},
-	{"HDFC Bank", "State Bank of India", "ICICI Bank", "Axis Bank"},
-}
 
 // archetypeForUser reproduces the same phone+userID hash used at signup
 // (seedInitialUserData) so discovery ordering matches the persona the user
@@ -64,13 +39,17 @@ func archetypeForUser(pool *pgxpool.Pool, ctx context.Context, userID uuid.UUID)
 	return int(binary.BigEndian.Uint32(sum[:4]) % 4)
 }
 
-// DiscoverAccounts simulates an AA discovery step: it returns up to two
-// bank accounts the user hasn't already linked, with a deterministic
-// (stable per user+bank, not random per call) balance derived from their
-// user ID — so re-opening the linking screen shows the same candidates
-// instead of a new set each time. Discovered accounts are never written to
-// bank_accounts; the user still has to select them and hit APPROVE AND
-// CONNECT (which calls AddAccount) for that.
+// DiscoverAccounts simulates an AA discovery step: it returns the FULL
+// inventory of candidate accounts (every bank in the user's archetype pool,
+// discoveryAccountsPerBank accounts each) the user hasn't already linked,
+// with a deterministic (stable per user+bank+slot, not random per call)
+// account number and balance — so re-opening the linking screen shows the
+// same candidates instead of a new set each time. This is the single source
+// of "accounts available to link": there is no separate manual bank-search
+// path anymore, so a user who wants a second account at a bank they already
+// linked one at just sees that bank's second slot still available here.
+// Discovered accounts are never written to bank_accounts; the user still
+// has to select them and hit APPROVE AND CONNECT (AddAccount) for that.
 func (h *AAHandler) DiscoverAccounts(w http.ResponseWriter, r *http.Request) {
 	userID, ok := authmw.GetUserID(r.Context())
 	if !ok {
@@ -79,43 +58,67 @@ func (h *AAHandler) DiscoverAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT bank_name FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
+		SELECT bank_name, COALESCE(account_number, '') FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
 	`, userID)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
 	}
+	// Keyed by "bank name|account number" so multiple accounts at the same
+	// bank are tracked independently — keying by bank name alone would make
+	// linking one account at a bank hide every other candidate at that same
+	// bank, even though the user might hold several real accounts there.
 	linked := map[string]bool{}
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
+		var name, acctNum string
+		if err := rows.Scan(&name, &acctNum); err != nil {
 			rows.Close()
 			apiresponse.Error(w, err)
 			return
 		}
-		linked[name] = true
+		linked[name+"|"+acctNum] = true
 	}
 	rows.Close()
 
-	bankPool := discoveryBankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
-	accounts := make([]BankAccountResponse, 0, 2)
-	for _, bankName := range bankPool {
-		if linked[bankName] || len(accounts) >= 2 {
-			continue
+	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	// The "CONNECT MORE ACCOUNTS" picker checks banks first, then calls this
+	// endpoint again with ?banks=Bank1,Bank2 to fetch just those banks'
+	// candidate accounts rather than returning the entire inventory every
+	// time — same discovery data, scoped down to what the user actually
+	// asked to see.
+	if banksParam := r.URL.Query().Get("banks"); banksParam != "" {
+		requested := map[string]bool{}
+		for _, name := range strings.Split(banksParam, ",") {
+			if trimmed := strings.TrimSpace(name); trimmed != "" {
+				requested[trimmed] = true
+			}
 		}
-		hasher := fnv.New64a()
-		_, _ = hasher.Write([]byte(userID.String() + bankName))
-		sum := hasher.Sum64()
-		balance := float64(80000+int(sum%220000)) / 1.0
+		filtered := bankPool[:0:0]
+		for _, bankName := range bankPool {
+			if requested[bankName] {
+				filtered = append(filtered, bankName)
+			}
+		}
+		bankPool = filtered
+	}
+	accounts := make([]BankAccountResponse, 0, len(bankPool)*discoverypool.AccountsPerBank)
+	for _, bankName := range bankPool {
+		for slot := 1; slot <= discoverypool.AccountsPerBank; slot++ {
+			cand := discoverypool.Generate(userID, bankName, slot)
+			if linked[cand.BankName+"|"+cand.AccountNumber] {
+				continue
+			}
 
-		accounts = append(accounts, BankAccountResponse{
-			ID:          uuid.NewSHA1(discoveryAcctNamespace, []byte(userID.String()+bankName)),
-			BankName:    bankName,
-			AccountType: "SAVINGS",
-			Balance:     balance,
-			CreatedAt:   time.Now(),
-			IsLinked:    false,
-		})
+			accounts = append(accounts, BankAccountResponse{
+				ID:            cand.ID,
+				BankName:      cand.BankName,
+				AccountType:   cand.AccountType,
+				Balance:       cand.Balance,
+				CreatedAt:     time.Now(),
+				IsLinked:      false,
+				AccountNumber: cand.AccountNumber,
+			})
+		}
 	}
 
 	apiresponse.OK(w, map[string]any{
@@ -188,9 +191,10 @@ func (h *AAHandler) WithSeeder(s bankDependentSeeder) *AAHandler {
 }
 
 type AddBankAccountRequest struct {
-	BankName    string  `json:"bank_name"`
-	AccountType string  `json:"account_type"`
-	Balance     float64 `json:"balance"`
+	BankName      string  `json:"bank_name"`
+	AccountType   string  `json:"account_type"`
+	Balance       float64 `json:"balance"`
+	AccountNumber string  `json:"account_number"`
 }
 
 type BankAccountResponse struct {
@@ -286,7 +290,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.pool.Query(r.Context(), `
-		SELECT id, bank_name, account_type, balance, created_at
+		SELECT id, bank_name, account_type, balance, created_at, COALESCE(account_number, '')
 		FROM bank_accounts
 		WHERE user_id = $1 AND unlinked_at IS NULL
 		ORDER BY created_at ASC
@@ -299,7 +303,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var acc BankAccountResponse
-		if err := rows.Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance, &acc.CreatedAt); err != nil {
+		if err := rows.Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance, &acc.CreatedAt, &acc.AccountNumber); err != nil {
 			apiresponse.Error(w, err)
 			return
 		}
@@ -355,15 +359,16 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 
 	var acc BankAccountResponse
 	err := h.pool.QueryRow(r.Context(), `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, $2, $3, $4)
-		RETURNING id, bank_name, account_type, balance, created_at
-	`, userID, req.BankName, req.AccountType, req.Balance).Scan(
+		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance, account_number)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		RETURNING id, bank_name, account_type, balance, created_at, COALESCE(account_number, '')
+	`, userID, req.BankName, req.AccountType, req.Balance, req.AccountNumber).Scan(
 		&acc.ID,
 		&acc.BankName,
 		&acc.AccountType,
 		&acc.Balance,
 		&acc.CreatedAt,
+		&acc.AccountNumber,
 	)
 	if err != nil {
 		apiresponse.Error(w, err)

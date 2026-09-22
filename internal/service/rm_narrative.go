@@ -88,30 +88,43 @@ Rules: use only the given figures, invent nothing; no fund, stock, ETF or produc
 
 Reply ONLY in valid JSON format with a compact JSON object mapping each topic to its paragraph string. Example: {"risk": "your paragraph", "cost": "your paragraph"}`
 
+// NarrativeResult bundles the narrative paragraphs with a flag that tells the
+// caller whether the content is genuinely LLM-generated (cacheable long-term)
+// or a deterministic rule-based fallback that should not be cached — the client
+// should retry on the next visit so it can pick up the LLM response once the
+// model is warm again.
+type NarrativeResult struct {
+	Narratives map[string]string
+	// IsLLM is true when the content came from the LLM (new generation or a
+	// persisted DB-cached LLM result). False means deterministic fallback only.
+	IsLLM bool
+}
+
 // ClientNarrative returns AI-written, figure-grounded report paragraphs per
 // analytic topic. A cheap fingerprint query gates everything: while the
 // fingerprint and cache age are unchanged, the cached JSON is returned with no
 // analytics recompute and no model call.
-func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID, group string, force bool) (map[string]string, error) {
+func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID, group string, force bool) (NarrativeResult, error) {
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
-		return nil, err
+		return NarrativeResult{}, err
 	}
 
 	topics := topicsForGroup(group)
 	needPortfolio := group == "" || group == NarrativeGroupPortfolio
 	needSpend := group == "" || group == NarrativeGroupSpend
 
-	// The fingerprint query is just as capable of hitting a transient DB
-	// hiccup (pool exhaustion under a Client360-page burst of concurrent
-	// requests, a slow connection acquire) as any of the analytics calls
-	// below — but unlike those, this one used to abort the whole request
-	// with a hard error before ever reaching the deterministic fallback.
-	// That's exactly what made a transient failure here look like "no
-	// fallback ran at all": it never got the chance to. Degrade the same
-	// way the rest of this function does — skip the cache (we have no valid
-	// fingerprint to compare against or persist) and fall through to a live
-	// recompute + deterministic narrative instead of erroring out.
-	fp, fpErr := s.narrativeFingerprint(ctx, userID)
+	// Detach ALL heavy computation from the HTTP request context right here.
+	// On page load the browser fires ~8 concurrent requests; DB pool exhaustion
+	// or a navigating-away browser cancels ctx before the fingerprint query,
+	// errgroup data fetches, or Groq call can finish — causing all of pa/an/adv/si
+	// to be nil, making buildDeterministicNarratives return an empty map, and
+	// blanking every Pro Tip. A 60s hard wall-clock deadline is enforced so
+	// this never leaks indefinitely. The auth check above intentionally still
+	// uses the original ctx so unauthorized requests fail fast.
+	compCtx, compCancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
+	defer compCancel()
+
+	fp, fpErr := s.narrativeFingerprint(compCtx, userID)
 	if fpErr != nil {
 		slog.Warn("rm narrative: fingerprint query failed, skipping cache", "user", userID, "error", fpErr)
 		force = true
@@ -123,7 +136,7 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		updatedAt time.Time
 	)
 	if fpErr == nil {
-		_ = s.pool.QueryRow(ctx,
+		_ = s.pool.QueryRow(compCtx,
 			`SELECT fingerprint, topics, updated_at FROM rm_client_narratives WHERE user_id = $1`, userID,
 		).Scan(&cachedFP, &cachedRaw, &updatedAt)
 	}
@@ -135,7 +148,8 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 
 	fresh := cachedFP == fp && time.Since(updatedAt) < narrativeMaxAge
 	if !force && fresh && hasAnyTopic(cachedAll, topics) {
-		return filterTopics(cachedAll, topics), nil
+		// DB only ever stores LLM-generated content (see persist path below).
+		return NarrativeResult{Narratives: filterTopics(cachedAll, topics), IsLLM: true}, nil
 	}
 
 	// Fingerprint moved (or forced / aged / never generated for this group)
@@ -150,12 +164,8 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	// them (sparse data, a missing snapshot, an analyzer edge case) must
 	// never blank out the whole report. Each keeps its slice nil on error and
 	// the deterministic builder below (and the model prompt) simply omits
-	// whatever wasn't available — it does not abort the request. This used
-	// to only apply to SpendIntelligence; PortfolioAnalysis/ClientAnalytics/
-	// ClientAdvisory erroring here used to fail g.Wait() and take down every
-	// Pro Tip on every tab for the client, with no deterministic fallback at
-	// all.
-	g, gctx := errgroup.WithContext(ctx)
+	// whatever wasn't available — it does not abort the request.
+	g, gctx := errgroup.WithContext(compCtx)
 	if needPortfolio {
 		g.Go(func() error {
 			v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID)
@@ -198,12 +208,6 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	}
 	_ = g.Wait()
 
-	// authorizeClient runs first inside each of the calls above, so if
-	// the caller genuinely isn't allowed to see this client, surface that
-	// instead of silently returning an empty narrative.
-	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
-		return nil, err
-	}
 
 	blob := buildFiguresBlob(pa, an, adv, si)
 
@@ -215,7 +219,9 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	// builder below.
 	var m map[string]string
 	if s.llm != nil && strings.TrimSpace(blob) != "" {
-		m, _ = s.generateNarrative(ctx, blob, topics)
+		// compCtx is already detached from the HTTP request context with a
+		// 60s hard deadline — use it directly for the LLM call.
+		m, _ = s.generateNarrative(compCtx, blob, topics)
 	}
 
 	// If the model successfully generated this group's narrative, merge it
@@ -236,26 +242,30 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		// look stale-but-different forever, and vice versa.
 		if fpErr == nil {
 			raw, _ := json.Marshal(merged)
-			_, _ = s.pool.Exec(ctx, `
+			// compCtx is already detached — persist safely even if the
+			// browser has navigated away from the tab.
+			_, _ = s.pool.Exec(compCtx, `
 				INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
 				VALUES ($1, $2, $3, now())
 				ON CONFLICT (user_id) DO UPDATE
 				SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
 			`, userID, fp, raw)
 		}
-		return filterTopics(merged, topics), nil
+		// LLM path — genuinely AI-generated, safe to cache on the frontend.
+		return NarrativeResult{Narratives: filterTopics(merged, topics), IsLLM: true}, nil
 	}
 
 	// 2. If Groq failed or is unconfigured:
 	// If an earlier Groq narrative exists in cache for this group, serve it
-	// rather than a blank/deterministic-only result.
+	// (it was LLM-generated when it was stored) — still mark IsLLM true so
+	// the frontend treats it as cacheable.
 	if hasAnyTopic(cachedAll, topics) {
-		return filterTopics(cachedAll, topics), nil
+		return NarrativeResult{Narratives: filterTopics(cachedAll, topics), IsLLM: true}, nil
 	}
 
-	// 3. Compute dynamic deterministic fallback on the fly (NOT cached, always
-	// live) so the RM always sees *something* rather than an empty Pro Tip.
-	return filterTopics(buildDeterministicNarratives(pa, an, adv, si), topics), nil
+	// 3. Deterministic rule-based fallback — NOT cached on the frontend so
+	// the next tab visit retries the LLM once it's warm again.
+	return NarrativeResult{Narratives: filterTopics(buildDeterministicNarratives(pa, an, adv, si), topics), IsLLM: false}, nil
 }
 
 // narrativeFingerprint is a single round-trip digest of the client's material
@@ -311,15 +321,13 @@ func (s *RMService) generateNarrative(ctx context.Context, figures string, topic
 		return nil, fmt.Errorf("llm provider not set")
 	}
 
-	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
+	// ctx is already a detached 45s context supplied by the caller (ClientNarrative).
 	system := narrativeSystemPrompt + "\n\nOnly write these topics: " + strings.Join(topics, ", ") + "."
 	req := s.agents.Get(agents.KeyRMNarrator).Request(
 		system,
 		[]llm.Message{{Role: llm.RoleUser, Content: figures}},
 	)
-	resp, err := s.llm.Complete(callCtx, req)
+	resp, err := s.llm.Complete(ctx, req)
 	if err != nil {
 		return nil, err
 	}
