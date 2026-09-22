@@ -52,7 +52,9 @@ var spendProfiles = [4]spendArchetypeProfile{
 			{"Food & Dining", "Swiggy", 9, 16, 350, 1600},
 			{"Shopping", "Amazon", 4, 8, 1500, 12000},
 			{"Entertainment", "BookMyShow", 2, 5, 400, 2200},
-			{"Subscriptions", "Notion + GitHub + Netflix", 3, 4, 200, 1800},
+			{"Subscriptions", "Notion", 1, 1, 200, 1200},
+			{"Subscriptions", "GitHub", 1, 1, 200, 800},
+			{"Subscriptions", "Netflix", 1, 1, 199, 649},
 			{"Transport", "Uber", 6, 12, 150, 700},
 			{"Bills & Utilities", "Tata Power", 2, 3, 1400, 3800},
 			{"Health", "Cult.fit", 1, 3, 800, 3000},
@@ -69,9 +71,11 @@ var spendProfiles = [4]spendArchetypeProfile{
 			{"Groceries", "DMart", 4, 7, 700, 2200},
 			{"Food & Dining", "Zomato", 6, 10, 250, 1200},
 			{"Shopping", "Myntra", 2, 5, 800, 5000},
-			{"Entertainment", "Netflix + PVR", 2, 4, 300, 1500},
+			{"Entertainment", "Netflix", 1, 1, 199, 649},
+			{"Entertainment", "PVR", 1, 3, 300, 1500},
 			{"Transport", "Ola", 6, 10, 120, 600},
-			{"Bills & Utilities", "Airtel + Electricity", 3, 4, 500, 2600},
+			{"Bills & Utilities", "Airtel", 1, 1, 500, 1200},
+			{"Bills & Utilities", "Electricity", 1, 1, 1200, 2600},
 			{"Health", "Apollo Pharmacy", 1, 3, 300, 1600},
 		},
 	},
@@ -85,10 +89,13 @@ var spendProfiles = [4]spendArchetypeProfile{
 			{"Travel", "MakeMyTrip", 1, 3, 6000, 42000},
 			{"Food & Dining", "Fine Dining", 8, 14, 600, 3500},
 			{"Groceries", "Nature's Basket", 4, 6, 1200, 3200},
-			{"Shopping", "Nykaa + Apple", 3, 6, 2000, 15000},
+			{"Shopping", "Nykaa", 2, 4, 800, 4000},
+			{"Shopping", "Apple", 1, 2, 2000, 15000},
 			{"Transport", "Uber", 8, 14, 200, 900},
-			{"Bills & Utilities", "Broadband + Power", 3, 4, 900, 3200},
-			{"Entertainment", "Concerts + OTT", 2, 4, 500, 3000},
+			{"Bills & Utilities", "Broadband", 1, 1, 900, 1500},
+			{"Bills & Utilities", "Electricity", 1, 1, 1800, 3200},
+			{"Entertainment", "BookMyShow", 0, 1, 1500, 4000},
+			{"Entertainment", "Netflix", 1, 1, 199, 649},
 			{"Health", "Max Healthcare", 1, 2, 900, 4000},
 		},
 	},
@@ -101,8 +108,10 @@ var spendProfiles = [4]spendArchetypeProfile{
 			{"Rent", "Landlord - Rent", 1, 1, 16000, 19000},
 			{"Groceries", "DMart", 4, 6, 600, 1800},
 			{"Food & Dining", "Local Restaurants", 3, 6, 200, 800},
-			{"Transport", "Metro + Bus", 8, 14, 30, 220},
-			{"Bills & Utilities", "Electricity + Mobile", 3, 4, 400, 2000},
+			{"Transport", "Metro", 5, 8, 30, 120},
+			{"Transport", "Bus", 3, 6, 15, 60},
+			{"Bills & Utilities", "Electricity", 1, 1, 800, 2000},
+			{"Bills & Utilities", "Mobile Recharge", 1, 1, 200, 500},
 			{"Health", "Jan Aushadhi", 1, 3, 200, 1200},
 			{"Entertainment", "Netflix", 1, 2, 199, 649},
 			{"Shopping", "Reliance Trends", 1, 3, 500, 2500},
@@ -142,26 +151,51 @@ func (r *PostgresUserRepository) seedSpendHistory(ctx context.Context, userID uu
 		`, userID, round2Money(amount), typ, category, merchant, at)
 	}
 
-	for m := 1; m <= spendHistoryMonths; m++ {
+	// m=0 is the current, still-in-progress month — included so the newest
+	// seeded transaction lands near "today" instead of the loop stopping
+	// dead at the end of last month. Its day range and category counts are
+	// scaled down to the days actually elapsed so it doesn't look like a
+	// full month's worth of activity crammed into a partial one.
+	for m := 0; m <= spendHistoryMonths; m++ {
 		monthStart := firstOfThisMonth.AddDate(0, -m, 0)
 		daysInMonth := monthStart.AddDate(0, 1, -1).Day()
+		isCurrentMonth := m == 0
+		daySpan := daysInMonth
+		if isCurrentMonth {
+			daySpan = now.Day() // only days that have actually happened
+		}
 
-		// Monthly salary credit, first few days of the month.
-		salary := prof.monthlyIncome * (0.97 + rng.Float64()*0.06)
-		queue(salary, "CREDIT", "Salary", prof.incomeMerchant,
-			atRandomHour(monthStart.AddDate(0, 0, rng.Intn(3)), rng))
+		// Monthly salary credit, first few days of the month — skip it for
+		// the current month if payday (day 1-3) hasn't happened yet.
+		if !isCurrentMonth || daySpan >= 3 {
+			salary := prof.monthlyIncome * (0.97 + rng.Float64()*0.06)
+			queue(salary, "CREDIT", "Salary", prof.incomeMerchant,
+				atRandomHour(monthStart.AddDate(0, 0, rng.Intn(3)), rng))
+		}
 
 		for _, c := range prof.categories {
 			n := c.perMonthMin
 			if c.perMonthMax > c.perMonthMin {
 				n += rng.Intn(c.perMonthMax - c.perMonthMin + 1)
 			}
+			if isCurrentMonth {
+				n = n * daySpan / daysInMonth
+			}
 			for i := 0; i < n; i++ {
-				day := monthStart.AddDate(0, 0, rng.Intn(daysInMonth))
+				day := monthStart.AddDate(0, 0, rng.Intn(daySpan))
 				amt := c.amountMin + rng.Float64()*(c.amountMax-c.amountMin)
 				queue(amt, "DEBIT", c.name, c.merchant, atRandomHour(day, rng))
 			}
 		}
+	}
+
+	// The random draws above can land short of today by chance even with
+	// the current month included — guarantee at least one transaction on
+	// each of the last 2 days so "today" is never an empty gap.
+	for i, daysAgo := range []int{0, 1} {
+		c := prof.categories[i%len(prof.categories)]
+		amt := c.amountMin + rng.Float64()*(c.amountMax-c.amountMin)
+		queue(amt, "DEBIT", c.name, c.merchant, atRandomHour(now.AddDate(0, 0, -daysAgo), rng))
 	}
 
 	br := r.db.Pool.SendBatch(ctx, batch)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -8,17 +9,26 @@ import (
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	paymentsdomain "github.com/yourusername/astra-backend/internal/domain/payments"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/httpx"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
 type PaymentsHandler struct {
-	svc *service.PaymentsService
+	svc    *service.PaymentsService
+	events *events.Publisher
 }
 
 func NewPaymentsHandler(svc *service.PaymentsService) *PaymentsHandler {
 	return &PaymentsHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher so a new payment/transaction
+// or a mandate pause/resume/cancel pushes an invalidation to the RM portal.
+func (h *PaymentsHandler) WithEvents(pub *events.Publisher) *PaymentsHandler {
+	h.events = pub
+	return h
 }
 
 func (h *PaymentsHandler) Routes() chi.Router {
@@ -48,6 +58,9 @@ func (h *PaymentsHandler) initiatePayment(w http.ResponseWriter, r *http.Request
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeTransaction)
 	}
 	apiresponse.Created(w, payment)
 }
@@ -82,6 +95,9 @@ func (h *PaymentsHandler) createMandate(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeSubscriptionChanged)
 	}
 	apiresponse.Created(w, mandate)
 }
@@ -118,6 +134,9 @@ func (h *PaymentsHandler) mandateAction(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeSubscriptionChanged)
 	}
 	apiresponse.OK(w, result)
 }

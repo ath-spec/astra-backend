@@ -92,10 +92,36 @@ var defaults = map[Key]Agent{
 	},
 	KeyRMNarrator: {
 		Key: KeyRMNarrator, Label: "RM Narrative Writer",
-		Models:         []string{"llama-3.3-70b-versatile", "llama-3.1-8b-instant", "openai/gpt-oss-120b"},
-		Temperature:    llm.Temp(0.2),
-		MaxTokens:      2048,
-		ResponseFormat: "json_object",
+		// llama-3.3-70b-versatile and llama-3.1-8b-instant are discontinued
+		// on Groq — routing to them just burns the fallback chain on
+		// guaranteed failures before ever reaching a live model.
+		//
+		// No ResponseFormat here on purpose. Groq's `response_format:
+		// json_object` is "best-effort" JSON mode — per Groq's own docs it
+		// can independently fail with a 400 json_validate_failed
+		// ("Failed to generate JSON. Please adjust your prompt.") even when
+		// the model's actual text would have parsed fine, and that failure
+		// used to take down every Pro Tip on the tab at once (see
+		// rm_narrative.go's ClientNarrative, which now degrades to a
+		// deterministic fallback anyway — but the point is to not trigger
+		// this failure class at all). z-backend's Groq calls never request
+		// response_format and have never hit this error. We already ask for
+		// JSON in the prompt and already strip any leading/trailing prose
+		// around the { ... } block before json.Unmarshal in
+		// generateNarrative, so dropping this costs us nothing.
+		//
+		// MaxTokens 4096 was itself a self-imposed cap, not a Groq limit —
+		// both gpt-oss models allow up to 65,536 output tokens. gpt-oss-20b
+		// alone (no fallback) was previously hitting MaxTokens=2048 exactly
+		// on a chunk of real requests (confirmed from Groq's own console:
+		// output_tokens=2048 on every failing row) and getting cut off
+		// mid-JSON. 8192 gives real headroom above our own ~10-topic,
+		// ~55-words-each ceiling without leaving the cap anywhere near
+		// Groq's actual max (a model that finishes early costs nothing extra
+		// either way — Groq bills actual tokens generated, not the cap).
+		Models:      []string{"openai/gpt-oss-20b", "openai/gpt-oss-120b"},
+		Temperature: llm.Temp(0.2),
+		MaxTokens:   8192,
 	},
 	KeyMemory: {
 		Key: KeyMemory, Label: "Memory Extractor",

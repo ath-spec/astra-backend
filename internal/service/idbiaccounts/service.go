@@ -42,6 +42,7 @@ type Repo interface {
 	UpsertCustomerLink(ctx context.Context, userID uuid.UUID, cifID, custID, source string) error
 	ReplaceAccounts(ctx context.Context, userID uuid.UUID, accs []idbimap.Account) error
 	ListAccounts(ctx context.Context, userID uuid.UUID) ([]repository.MirroredAccount, error)
+	DeleteCustomerLink(ctx context.Context, userID uuid.UUID) error
 }
 
 // Config tunes the service. Zero values are fine.
@@ -122,6 +123,18 @@ func (s *Service) ResolveLinkByAccount(ctx context.Context, userID uuid.UUID, ac
 		return "", err
 	}
 	return resp.CustID, nil
+}
+
+// Revoke ends this user's IDBI account sync: deletes the customer link and
+// every mirrored account, and evicts the in-process cache entry so the next
+// List() call reflects the change immediately instead of serving the old
+// []Account for up to CacheTTL.
+func (s *Service) Revoke(ctx context.Context, userID uuid.UUID) error {
+	if err := s.repo.DeleteCustomerLink(ctx, userID); err != nil {
+		return err
+	}
+	s.cache.delete(userID.String())
+	return nil
 }
 
 // Refresh pulls the customer's accounts from IDBI and replaces the local

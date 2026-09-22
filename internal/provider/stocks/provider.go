@@ -21,6 +21,8 @@ type Provider interface {
 	// GetQuote returns a live-style quote for a single instrument.
 	GetQuote(ctx context.Context, exchange, tradingSymbol string) (*stocks.Quote, error)
 
+	GetProfile(ctx context.Context, exchange, tradingSymbol string) (*stocks.StockProfile, error)
+
 	// PlaceOrder validates and places a new order, simulating an
 	// exchange fill where applicable and updating holdings accordingly.
 	PlaceOrder(ctx context.Context, userID uuid.UUID, req stocks.OrderRequest) (*stocks.Order, error)

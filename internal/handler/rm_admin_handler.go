@@ -9,8 +9,10 @@ import (
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	rmdomain "github.com/yourusername/astra-backend/internal/domain/rm"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/httpx"
 	"github.com/yourusername/astra-backend/internal/middleware"
+	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
@@ -18,11 +20,23 @@ import (
 // oversight, and assignment operations. Mounted at /api/rm/admin behind
 // RequireRMAuth + RequireAdmin.
 type RMAdminHandler struct {
-	svc *service.RMAdminService
+	svc        *service.RMAdminService
+	events     *events.Publisher
+	assignRepo repository.AssignmentRepository
 }
 
 func NewRMAdminHandler(svc *service.RMAdminService) *RMAdminHandler {
 	return &RMAdminHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher (and the assignment lookup
+// it needs to find the OLD owner before a transfer/remove overwrites it) so
+// an assign/transfer/remove pushes an immediate "your book changed" event
+// to both the gaining and losing RM's open portal sessions.
+func (h *RMAdminHandler) WithEvents(pub *events.Publisher, assignRepo repository.AssignmentRepository) *RMAdminHandler {
+	h.events = pub
+	h.assignRepo = assignRepo
+	return h
 }
 
 // Register mounts the admin routes onto an already-authenticated,
@@ -172,6 +186,10 @@ func (h *RMAdminHandler) assign(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	if h.events != nil {
+		rmID := req.RMID
+		go h.events.AssignmentChanged(req.UserID, nil, &rmID)
+	}
 	apiresponse.OK(w, map[string]string{"message": "assigned"})
 }
 
@@ -181,9 +199,17 @@ func (h *RMAdminHandler) transfer(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, apiresponse.Validation("invalid request body: %v", err))
 		return
 	}
+	var oldRMID *uuid.UUID
+	if h.assignRepo != nil {
+		oldRMID, _, _ = h.assignRepo.OwnerOf(r.Context(), req.UserID)
+	}
 	if err := h.svc.Transfer(r.Context(), h.actorID(r), req); err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		toRMID := req.ToRMID
+		go h.events.AssignmentChanged(req.UserID, oldRMID, &toRMID)
 	}
 	apiresponse.OK(w, map[string]string{"message": "transferred"})
 }
@@ -194,9 +220,16 @@ func (h *RMAdminHandler) remove(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, apiresponse.Validation("invalid request body: %v", err))
 		return
 	}
+	var oldRMID *uuid.UUID
+	if h.assignRepo != nil {
+		oldRMID, _, _ = h.assignRepo.OwnerOf(r.Context(), req.UserID)
+	}
 	if err := h.svc.Remove(r.Context(), h.actorID(r), req); err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.AssignmentChanged(req.UserID, oldRMID, nil)
 	}
 	apiresponse.OK(w, map[string]string{"message": "removed"})
 }

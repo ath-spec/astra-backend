@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
@@ -27,10 +28,16 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	out := &rmdomain.ClientSpendIntelligence{}
 	g, gCtx := errgroup.WithContext(ctx)
 
+	// Each analyzer below logs and skips on its own error instead of
+	// returning it to the errgroup — one analyzer choking on a client's
+	// edge-case data (e.g. too little history) must never blank out every
+	// other card, and must never take down budget_health/spend_overview etc.
+	// in the RM narrative, which requires this whole struct to be non-nil.
 	g.Go(func() error {
 		v, err := s.spend.WeekdayVsWeekend(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: weekday/weekend failed", "user", userID, "error", err)
+			return nil
 		}
 		if v.WeekdayTotal > 0 || v.WeekendTotal > 0 {
 			out.WeekdayWeekend = &v
@@ -40,7 +47,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.Trends(gCtx, userID, "daily")
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: trends failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.Points) > 0 {
 			out.Trend = &v
@@ -50,7 +58,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.CategoryTrend(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: category trend failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.Categories) > 0 {
 			out.CategoryTrend = &v
@@ -60,7 +69,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.CategoryMomentum(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: category momentum failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.Rising) > 0 || len(v.Falling) > 0 {
 			out.CategoryMomentum = &v
@@ -70,7 +80,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.AverageStats(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: average stats failed", "user", userID, "error", err)
+			return nil
 		}
 		if v.TransactionCount > 0 {
 			out.AverageStats = &v
@@ -80,7 +91,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.MerchantAnalysis(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: merchant analysis failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.TopMerchants) > 0 {
 			out.MerchantAnalysis = &v
@@ -90,7 +102,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.RecurringDetection(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: recurring detection failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.Recurring) > 0 {
 			out.Recurring = &v
@@ -100,7 +113,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.NightAndImpulse(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: night/impulse failed", "user", userID, "error", err)
+			return nil
 		}
 		out.NightImpulse = &v
 		return nil
@@ -108,7 +122,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.PatternSummary(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: pattern summary failed", "user", userID, "error", err)
+			return nil
 		}
 		if v.DailyAvg > 0 || v.MonthlyAvg > 0 {
 			out.PatternSummary = &v
@@ -118,7 +133,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.Snapshot(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: snapshot failed", "user", userID, "error", err)
+			return nil
 		}
 		out.Snapshot = &v
 		return nil
@@ -126,7 +142,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.Compare(gCtx, userID, "category", nil)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: category comparison failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.Entries) > 0 {
 			out.CategoryComparison = &v
@@ -136,7 +153,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.InvestmentConsistency(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: investment consistency failed", "user", userID, "error", err)
+			return nil
 		}
 		if v.MonthsTracked > 0 {
 			out.InvestmentConsistency = &v
@@ -146,7 +164,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.BNPLExposure(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: BNPL exposure failed", "user", userID, "error", err)
+			return nil
 		}
 		out.BNPLExposure = &v
 		return nil
@@ -154,7 +173,8 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.SubscriptionLoad(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: subscription load failed", "user", userID, "error", err)
+			return nil
 		}
 		if len(v.ActiveSubscriptions) > 0 {
 			out.SubscriptionLoad = &v
@@ -164,16 +184,15 @@ func (s *RMService) SpendIntelligence(ctx context.Context, callerRMID uuid.UUID,
 	g.Go(func() error {
 		v, err := s.spend.IncomeAnalysis(gCtx, userID)
 		if err != nil {
-			return err
+			slog.Warn("rm spend intelligence: income analysis failed", "user", userID, "error", err)
+			return nil
 		}
 		if v.CreditCount > 0 {
 			out.Income = &v
 		}
 		return nil
 	})
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	_ = g.Wait()
 
 	// Budget is a sibling read, not a spend-engine analyzer: a failure here
 	// (or simply no budget set) never fails the request — it just omits the

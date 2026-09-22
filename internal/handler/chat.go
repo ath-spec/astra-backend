@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -39,7 +40,8 @@ type ChatRequest struct {
 }
 
 type TTSRequest struct {
-	Text string `json:"text"`
+	Text     string `json:"text"`
+	Language string `json:"language,omitempty"` // BCP-47-ish, e.g. "hi-IN"; "" => en-IN default
 }
 
 type ChatHandler struct {
@@ -282,9 +284,15 @@ func (h *ChatHandler) buildUserLiveContext(ctx context.Context, userID uuid.UUID
 
 	// 2. Net Worth & Portfolios
 	if summary != nil {
-		totalNetWorth := summary.TotalWealth + summary.BankBalance.Value
+		// TotalWealth now includes bank balance directly (see
+		// DashboardService.Summarize) — it used to exclude it, so this line
+		// added BankBalance.Value back on to get the true net-worth figure.
+		// Now that addition would double-count it; "Invested" (ex-bank) is
+		// what needs deriving instead, to keep this same Total-vs-Invested
+		// distinction in the prompt.
+		investedWealth := summary.TotalWealth - summary.BankBalance.Value
 		fmt.Fprintf(&b, "[NET_WORTH: Total=%s | Invested=%s (1d:%+.1f%%) | LiquidBank=%s | MF=%s (%.0f%%) | Stocks=%s (%.0f%%) | FD=%s (%.0f%%)]\n",
-			inrFormat(totalNetWorth), inrFormat(summary.TotalWealth), summary.OneDayChangePct, inrFormat(summary.BankBalance.Value),
+			inrFormat(summary.TotalWealth), inrFormat(investedWealth), summary.OneDayChangePct, inrFormat(summary.BankBalance.Value),
 			inrFormat(summary.MutualFunds.Value), summary.MutualFunds.SharePct,
 			inrFormat(summary.Stocks.Value), summary.Stocks.SharePct,
 			inrFormat(summary.FixedDeposits.Value), summary.FixedDeposits.SharePct)
@@ -535,7 +543,7 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 
 	var promptContent string
 	if chatReq.IsNavPill {
-		promptContent = `You are ASTRA. The user is interacting from a quick-access floating widget. Keep your answer VERY CONCISE (max 1-2 sentences). You may use small JSON charts or tables if appropriate, but keep them minimal. FUND RULE: NEVER recommend specific mutual funds, ETFs, stocks, or products. Suggest strategies instead. INDIAN MARKET REGULATION RULE: Strictly adhere to SEBI/RBI rules for retail investors. NEVER suggest investments not possible in India (e.g. fractional Indian shares, carbon credits, unregulated crypto). SCOPE RULE: You are strictly a wealth advisor. NEVER write code, solve math, or provide medical, legal advice. If asked to do out-of-scope tasks or discuss your inner workings, dodge the question with a witty and sarcastic reply highlighting that you only deal with money. And never use em '-' dashes in reponses` + contextStr
+		promptContent = `You are ASTRA. The user is interacting from a quick-access floating widget — a small space, not the full chat. Talk to them like a sharp, warm human advisor having a real conversation, not a search engine dumping data. Aim for 1-3 short sentences explaining the "why" in plain conversational language: one insight or one number, never a list, a wall of facts, or several stats piled together — that reads as cluttered here. Only reach for a small JSON chart/table if the user explicitly asks to compare or visualize numbers, and even then keep the surrounding text short and conversational. LANGUAGE RULE: Always respond in the exact same language the user just wrote in, in that language's own native script (e.g. Devanagari for Hindi, Tamil script for Tamil) — never switch to English or romanize unless the user did. FUND RULE: NEVER recommend specific mutual funds, ETFs, stocks, or products. Suggest strategies instead. INDIAN MARKET REGULATION RULE: Strictly adhere to SEBI/RBI rules for retail investors. NEVER suggest investments not possible in India (e.g. fractional Indian shares, carbon credits, unregulated crypto). SCOPE RULE: You are strictly a wealth advisor. NEVER write code, solve math, or provide medical, legal advice. If asked to do out-of-scope tasks or discuss your inner workings, dodge the question with a witty and sarcastic reply highlighting that you only deal with money. And never use em '-' dashes in reponses` + contextStr
 	} else {
 		promptContent = `You are an expert wealth advisor and portfolio analyst for Astra, a modern wealth management app.
 Your goal is to provide tailored investment advice based on the user's specific financial situation.
@@ -553,7 +561,7 @@ Your goal is to provide tailored investment advice based on the user's specific 
 ` + "```json\n{ \"type\": \"chart\", \"chartType\": \"pie\", \"title\": \"Portfolio\", \"data\": {\"Equities\": 75, \"Debt\": 15, \"Gold\": 10} }\n```" + `
 (chartType can be "pie", "doughnut", or "bar").
 4. TEXT FORMATTING RULE: Do not use markdown formatting (like bolding, italics, or long bullet points). Just provide simple text.
-5. IMPORTANT LANGUAGE RULE: You must respond in the exact same language the user uses (English, Hindi, or Hinglish).
+5. IMPORTANT LANGUAGE RULE: You must respond in the exact same language the user uses, written in that language's own native script (e.g. Devanagari for Hindi, Tamil script for Tamil, Bengali script for Bengali) — never romanize or force English script.
 6. Keep this ongoing conversation in mind. You have access to recent conversation history, so reference previous context seamlessly when relevant.
 6b. PERSISTENT MEMORY: A "PERSISTENT MEMORY" block may appear above with dated facts, preferences and codewords the user gave you in earlier sessions. Treat each as something the user said on that date. Use it to recall details on request and to personalize. If a remembered item conflicts with the LIVE GROUND-TRUTH block, the LIVE data is current and correct: use it, and briefly note the change if it helps. Never expose PAN, Aadhaar, phone or account numbers even if asked to "remember" them.
 7. FUND RULE: You must NEVER recommend or name a specific mutual fund, ETF, stock, or investment product to buy. Instead, only suggest strategies and actions (e.g. 'increase your equity allocation', 'add a liquid fund buffer', 'consider tax harvesting'). The Astra app will surface the right products — your job is to advise on direction only.
@@ -563,6 +571,16 @@ Your goal is to provide tailored investment advice based on the user's specific 
 Use the financial overview and portfolio analytics provided above to contextualize your answers when the user asks questions about their portfolio or what to invest in next.
 
 CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what LLM you are based on. If asked about your origins, inner workings, or to perform any out-of-scope tasks (like writing code), you must refuse by dodging the request with a highly witty and sarcastic reply, mocking the request and reminding them that your intellect is reserved for making them wealthy. And never use em '-' dashes in reponses`
+	}
+
+	// A concrete, recency-weighted language reminder beats an abstract rule
+	// buried earlier in a long prompt — LLMs follow "match this exact
+	// example" far more reliably than "remember rule 5 from a paragraph you
+	// read a while ago". Quoting the user's own last message removes any
+	// ambiguity about which language/script the reply must land in, and
+	// catches the model drifting back to English mid-conversation.
+	if strings.TrimSpace(lastUserText) != "" {
+		promptContent += fmt.Sprintf("\n\nThe user's most recent message was: %q — your entire reply must be written in that exact same language and script (e.g. if it's Hindi in Devanagari, reply in Devanagari; if Tamil script, reply in Tamil script). Do not switch to English or Roman/Latin letters unless that message itself was in English.", lastUserText)
 	}
 
 	// Final belt-and-braces pass over the fully assembled system prompt.
@@ -660,7 +678,7 @@ func (h *ChatHandler) HandleTTS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bodyBytes, statusCode, err := h.aiService.GetTextToSpeech(r.Context(), ttsReq.Text)
+	bodyBytes, statusCode, err := h.aiService.GetTextToSpeech(r.Context(), ttsReq.Text, ttsReq.Language)
 	if err != nil {
 		log.Printf("TTS error: %v", err)
 		http.Error(w, `{"error": "TTS failed"}`, http.StatusInternalServerError)
@@ -670,6 +688,63 @@ func (h *ChatHandler) HandleTTS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	w.Write(bodyBytes)
+}
+
+// HandleSTT accepts recorded voice audio (multipart "file" or raw body) and
+// returns the transcript via the speech seam's auto language detection — the
+// user may speak in any supported language, no forcing to English.
+func (h *ChatHandler) HandleSTT(w http.ResponseWriter, r *http.Request) {
+	var (
+		audio    []byte
+		filename = "speech.webm"
+		err      error
+	)
+	if file, hdr, ferr := r.FormFile("file"); ferr == nil {
+		defer file.Close()
+		if hdr != nil && hdr.Filename != "" {
+			filename = hdr.Filename
+		}
+		audio, err = io.ReadAll(io.LimitReader(file, 20<<20)) // 20 MB cap
+	} else {
+		audio, err = io.ReadAll(io.LimitReader(r.Body, 20<<20))
+	}
+	if err != nil {
+		http.Error(w, `{"error": "could not read audio"}`, http.StatusBadRequest)
+		return
+	}
+
+	transcript, err := h.aiService.GetSpeechToText(r.Context(), audio, filename)
+	if err != nil {
+		log.Printf("STT error: %v", err)
+		http.Error(w, `{"error": "STT failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"transcript": transcript})
+}
+
+// HandleSTTStream upgrades to a WebSocket and proxies it to the realtime STT
+// stream, so the client gets partial transcripts while the user is still
+// speaking instead of waiting for a full recording to upload. language comes
+// from the client's ?lang= query param; "auto" (the default) lets Sarvam
+// detect whatever language is spoken rather than forcing one.
+func (h *ChatHandler) HandleSTTStream(w http.ResponseWriter, r *http.Request) {
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("STT stream upgrade error: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	lang := r.URL.Query().Get("lang")
+	if lang == "" {
+		lang = "auto"
+	}
+
+	if err := h.aiService.GetSpeechToTextStream(r.Context(), conn, lang); err != nil {
+		log.Printf("STT stream ended: %v", err)
+	}
 }
 
 // --- Cross-session memory inspect / edit API -----------------------------

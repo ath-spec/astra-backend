@@ -21,6 +21,7 @@ import (
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
+	"github.com/yourusername/astra-backend/internal/service/idbiaccounts"
 )
 
 // DashboardService composes the Stocks, MF, FD and bank-account domains'
@@ -30,32 +31,57 @@ import (
 // "today's" totals is intrinsic to computing the summary, not a separate
 // domain of its own.
 type DashboardService struct {
-	stocks   stocksprovider.Provider
-	mf       mfprovider.Provider
-	fd       fdprovider.Provider
-	userRepo repository.UserRepository
-	pool     *pgxpool.Pool
+	stocks       stocksprovider.Provider
+	mf           mfprovider.Provider
+	fd           fdprovider.Provider
+	userRepo     repository.UserRepository
+	pool         *pgxpool.Pool
+	idbiAccounts *idbiaccounts.Service
 }
 
 func NewDashboardService(stocks stocksprovider.Provider, mf mfprovider.Provider, fd fdprovider.Provider, userRepo repository.UserRepository, pool *pgxpool.Pool) *DashboardService {
 	return &DashboardService{stocks: stocks, mf: mf, fd: fd, userRepo: userRepo, pool: pool}
 }
 
-func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dashboarddomain.Summary, error) {
-	// The four sources below are fully independent (different tables, no
-	// data dependency between them), so they're fetched concurrently rather
-	// than as four sequential round trips — each writes only to its own
-	// local variable, so there's no shared mutable state between goroutines.
-	var (
-		holdings     []stocksdomain.Holding
-		mfResult     *mfdomain.HoldingsResult
-		fdAccounts   []fddomain.Account
-		bankAccounts []repository.BankAccount
-	)
+// WithIDBIAccounts wires the IDBI-synced deposit accounts (feature 1) into
+// the dashboard's bank balance total. Without this, the Home screen's Bank
+// Accounts figure was computed from the bank_accounts table alone while
+// GET /api/v1/aa/accounts (the screen you land on when you tap it) also
+// folds in the user's real IDBI accounts — so a user with IDBI accounts
+// synced saw two different totals and two different account counts for the
+// same "linked accounts" depending on which screen they were looking at.
+func (s *DashboardService) WithIDBIAccounts(svc *idbiaccounts.Service) *DashboardService {
+	s.idbiAccounts = svc
+	return s
+}
+
+// PortfolioInputs is the raw, per-provider data a portfolio valuation is
+// built from. Fetch it once per request (FetchInputs) and reuse it for every
+// computation that needs it (Summarize, and any raw holdings lists a caller
+// also wants) — never fetch it twice in the same request. Two independent
+// fetches run concurrently in separate goroutines are not guaranteed to see
+// the same database state under Postgres's default READ COMMITTED isolation:
+// a concurrent write between them (e.g. an order fill updating last_price)
+// can make one goroutine's holdings disagree with the other's, so a single
+// response could report two different totals for the same portfolio.
+type PortfolioInputs struct {
+	Holdings     []stocksdomain.Holding
+	MF           *mfdomain.HoldingsResult
+	FDAccounts   []fddomain.Account
+	BankAccounts []repository.BankAccount
+}
+
+// FetchInputs loads the four independent data sources a portfolio valuation
+// needs, concurrently (different tables, no data dependency between them —
+// each goroutine writes only its own local, so there's no shared mutable
+// state races here).
+func (s *DashboardService) FetchInputs(ctx context.Context, userID uuid.UUID) (*PortfolioInputs, error) {
+	var in PortfolioInputs
+	var idbiBankAccounts []repository.BankAccount
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var err error
-		holdings, err = s.stocks.GetHoldings(gCtx, userID)
+		in.Holdings, err = s.stocks.GetHoldings(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load stocks for dashboard: %w", err)
 		}
@@ -63,7 +89,7 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		mfResult, err = s.mf.GetHoldings(gCtx, userID)
+		in.MF, err = s.mf.GetHoldings(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load mf for dashboard: %w", err)
 		}
@@ -71,7 +97,7 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		fdAccounts, err = s.fd.ListFDs(gCtx, userID)
+		in.FDAccounts, err = s.fd.ListFDs(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load fd for dashboard: %w", err)
 		}
@@ -79,18 +105,64 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	})
 	g.Go(func() error {
 		var err error
-		bankAccounts, err = s.userRepo.GetBankAccounts(gCtx, userID)
+		in.BankAccounts, err = s.userRepo.GetBankAccounts(gCtx, userID)
 		if err != nil {
 			return fmt.Errorf("load bank accounts for dashboard: %w", err)
 		}
 		return nil
 	})
+	if s.idbiAccounts != nil {
+		g.Go(func() error {
+			// Mirrors the same fold-in GetAccounts does — a failure here (no
+			// link yet, IDBI gateway down) must not fail the whole dashboard,
+			// it just means this user's total is bank_accounts-only for now.
+			// Written to its own local, then merged into in.BankAccounts only
+			// after g.Wait() below — appending directly to in.BankAccounts
+			// here would race the GetBankAccounts goroutine writing that same
+			// field concurrently.
+			idbiAccs, ierr := s.idbiAccounts.List(gCtx, userID)
+			if ierr != nil {
+				return nil
+			}
+			for _, a := range idbiAccs {
+				bal := a.LedgerBalance
+				if bal == 0 {
+					bal = a.AvailableBalance
+				}
+				idbiBankAccounts = append(idbiBankAccounts, repository.BankAccount{
+					BankName:    "IDBI Bank",
+					AccountType: a.AccountType,
+					Balance:     bal,
+				})
+			}
+			return nil
+		})
+	}
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+	in.BankAccounts = append(in.BankAccounts, idbiBankAccounts...)
+	return &in, nil
+}
+
+func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dashboarddomain.Summary, error) {
+	in, err := s.FetchInputs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return s.Summarize(ctx, userID, in)
+}
+
+// Summarize computes the dashboard summary from already-fetched inputs and
+// records today's portfolio_snapshots row. Callers that already fetched
+// PortfolioInputs for another reason (e.g. RMService.GetClient also needs
+// the raw holdings lists) should call this directly instead of Summary, so
+// the data is only ever read from the database once per request.
+func (s *DashboardService) Summarize(ctx context.Context, userID uuid.UUID, in *PortfolioInputs) (*dashboarddomain.Summary, error) {
+	mfResult, fdAccounts, bankAccounts := in.MF, in.FDAccounts, in.BankAccounts
 
 	var stocksBucket dashboarddomain.AssetBucket
-	for _, h := range holdings {
+	for _, h := range in.Holdings {
 		qty := float64(h.Quantity)
 		stocksBucket.Value += qty * h.LastPrice
 		stocksBucket.InvestedValue += qty * h.AveragePrice
@@ -126,15 +198,16 @@ func (s *DashboardService) Summary(ctx context.Context, userID uuid.UUID) (*dash
 	fillDerivedFields(&fdBucket)
 	fillDerivedFields(&bankBucket)
 
-	totalWealth := round2(stocksBucket.Value + mfBucket.Value + fdBucket.Value)
+	// Total wealth / net worth is every asset the user holds: stocks + MF +
+	// FDs + bank balances. Bank balance used to be left out of this sum
+	// entirely (only folded into the *denominator* below for its own share%,
+	// never into the total itself) — so a user's reported net worth was
+	// missing however much cash they had in linked bank accounts.
+	totalWealth := round2(stocksBucket.Value + mfBucket.Value + fdBucket.Value + bankBucket.Value)
 	shareOf(&stocksBucket, totalWealth)
 	shareOf(&mfBucket, totalWealth)
 	shareOf(&fdBucket, totalWealth)
-	// Bank balance's share is reported against total wealth + bank itself,
-	// matching how the frontend's own asset-row percentages are laid out
-	// (MF / Stocks / Bank splitting 100% together) rather than against
-	// investment wealth alone.
-	shareOf(&bankBucket, totalWealth+bankBucket.Value)
+	shareOf(&bankBucket, totalWealth)
 
 	oneDayChange := round2(stocksBucket.OneDayChangeAmount + mfBucket.OneDayChangeAmount)
 	prevTotal := totalWealth - oneDayChange
@@ -181,7 +254,14 @@ func (s *DashboardService) recordSnapshot(ctx context.Context, userID uuid.UUID,
 // GrowthHistory returns up to `days` of recorded daily snapshots, oldest
 // first, for the Home screen's growth chart. History only exists from
 // whenever this user's first dashboard read happened onward.
-func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, days int) ([]dashboarddomain.SnapshotPoint, error) {
+//
+// prefetched lets a caller that already has this user's PortfolioInputs pass
+// them in (nil otherwise) — RMService.GetClient needs both this and the
+// dashboard summary for its own portfolio-inputs branch, and without this,
+// the <=30-days-of-history backfill below called Summary(ctx, userID), which
+// silently re-ran the exact same FetchInputs query that caller had already
+// done seconds earlier in a sibling goroutine.
+func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, days int, prefetched *PortfolioInputs) ([]dashboarddomain.SnapshotPoint, error) {
 	if days <= 0 || days > 3650 {
 		days = 180
 	}
@@ -216,13 +296,33 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 	}
 
 	if len(points) <= 30 {
-		// Calculate current portfolio wealth from real holdings
-		var mfVal, stockVal, fdVal float64
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(current_value), 0) FROM mutual_fund_folios WHERE user_id = $1`, userID).Scan(&mfVal)
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(quantity * last_price), 0) FROM stock_holdings WHERE user_id = $1`, userID).Scan(&stockVal)
-		_ = s.pool.QueryRow(ctx, `SELECT COALESCE(SUM(principal_amount), 0) FROM fixed_deposits WHERE user_id = $1 AND status = 'ACTIVE'`, userID).Scan(&fdVal)
+		// Current portfolio wealth, from the same single source of truth as
+		// the Home screen's headline number (Summary/Summarize) — this used
+		// to run its own raw SQL against mutual_fund_folios/stock_holdings/
+		// fixed_deposits, none of which exist (the real tables are
+		// mf_folios/demat_holdings/fd_accounts), so every query silently
+		// errored, mfVal/stockVal/fdVal stayed 0, and every user fell into
+		// the currTotal<=0 branch below — fabricating a growth curve seeded
+		// from a hardcoded ₹245,000 that had nothing to do with their real
+		// portfolio and could visibly disagree with the real total shown
+		// elsewhere in the same screen.
+		var summary *dashboarddomain.Summary
+		if prefetched != nil {
+			s2, err := s.Summarize(ctx, userID, prefetched)
+			if err != nil {
+				return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+			}
+			summary = s2
+		} else {
+			s2, err := s.Summary(ctx, userID)
+			if err != nil {
+				return nil, fmt.Errorf("compute current wealth for growth backfill: %w", err)
+			}
+			summary = s2
+		}
+		mfVal, stockVal, fdVal := summary.MutualFunds.Value, summary.Stocks.Value, summary.FixedDeposits.Value
 
-		currTotal := mfVal + stockVal + fdVal
+		currTotal := summary.TotalWealth
 		if currTotal <= 0 {
 			currTotal = 245000.0
 		}
@@ -259,6 +359,8 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 		}
 
 		allPoints := make([]dashboarddomain.SnapshotPoint, totalDays)
+		dates := make([]time.Time, totalDays)
+		vals := make([]float64, totalDays)
 		for i := 0; i < totalDays; i++ {
 			d := now.AddDate(0, 0, -(totalDays - 1 - i))
 			val := simValues[i]
@@ -266,12 +368,20 @@ func (s *DashboardService) GrowthHistory(ctx context.Context, userID uuid.UUID, 
 				Date:        apitime.New(d),
 				TotalWealth: val,
 			}
-			_, _ = s.pool.Exec(ctx, `
-				INSERT INTO portfolio_snapshots
-					(user_id, snapshot_date, total_wealth, mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value)
-				VALUES ($1, $2, $3, $3 * 0.65, $3 * 0.25, $3 * 0.10, 0)
-				ON CONFLICT (user_id, snapshot_date) DO UPDATE SET total_wealth = EXCLUDED.total_wealth
-			`, userID, d, val)
+			dates[i] = d
+			vals[i] = val
+		}
+		// One batched statement instead of 365 sequential round-trips — this
+		// backfill only runs once per user (their first 30 days), but it used
+		// to block the request on 365 individual blocking Execs.
+		if _, err := s.pool.Exec(ctx, `
+			INSERT INTO portfolio_snapshots
+				(user_id, snapshot_date, total_wealth, mutual_funds_value, stocks_value, fixed_deposits_value, bank_balance_value)
+			SELECT $1, d, v, v * 0.65, v * 0.25, v * 0.10, 0
+			FROM unnest($2::date[], $3::float8[]) AS t(d, v)
+			ON CONFLICT (user_id, snapshot_date) DO UPDATE SET total_wealth = EXCLUDED.total_wealth
+		`, userID, dates, vals); err != nil {
+			return nil, fmt.Errorf("batch insert growth backfill: %w", err)
 		}
 
 		if days < totalDays && days > 0 {

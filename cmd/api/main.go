@@ -19,6 +19,7 @@ import (
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/config"
 	"github.com/yourusername/astra-backend/internal/database"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/handler"
 	authmw "github.com/yourusername/astra-backend/internal/middleware"
 	analyticsprovider "github.com/yourusername/astra-backend/internal/provider/analytics"
@@ -293,6 +294,15 @@ func main() {
 	rmAdminService := service.NewRMAdminService(rmUserRepo, assignmentRepo)
 	rmChatService := service.NewRMChatService(llmProvider, speechProvider, agentCatalog, rmChatRepo, rmService, rmAdminService)
 
+	// Live update push: an in-process pub/sub that mutation handlers publish
+	// to after a write commits, and the RM portal's WebSocket connection
+	// (rmEventsHandler below) subscribes to — replaces the portal's previous
+	// "fetch once on mount, never again until a hard refresh" behaviour with
+	// real invalidation pushes.
+	eventsHub := events.NewHub()
+	eventsPublisher := events.NewPublisher(eventsHub, assignmentRepo.OwnerOf)
+	rmEventsHandler := handler.NewRMEventsHandler(eventsHub, assignmentRepo)
+
 	// 5. Initialize Handlers
 	chatHandler := handler.NewChatHandler(
 		aiService, userRepo, chatRepo, memoryService,
@@ -300,23 +310,28 @@ func main() {
 		stocksProvider, mfProvider, fdProvider, watchlistService, spendAnalyticsService,
 		db.Pool,
 	)
-	authHandler := handler.NewAuthHandler(authService, userRepo)
-	stocksHandler := handler.NewStocksHandler(stocksService)
+	authHandler := handler.NewAuthHandler(authService, userRepo).WithEvents(eventsPublisher)
+	stocksHandler := handler.NewStocksHandler(stocksService).WithEvents(eventsPublisher)
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	fdHandler := handler.NewFDHandler(fdService)
-	paymentsHandler := handler.NewPaymentsHandler(paymentsService)
+	paymentsHandler := handler.NewPaymentsHandler(paymentsService).WithEvents(eventsPublisher)
 	analyticsHandler := handler.NewAnalyticsHandler(spendAnalyticsService)
-	budgetHandler := handler.NewBudgetHandler(budgetService)
+	budgetHandler := handler.NewBudgetHandler(budgetService).WithEvents(eventsPublisher)
 	goalsHandler := handler.NewGoalsHandler(goalsService)
-	aaHandler := handler.NewAAHandler(db.Pool)
+	aaHandler := handler.NewAAHandler(db.Pool).WithEvents(eventsPublisher).WithSeeder(userRepo)
 	if idbiAASvc != nil {
 		aaHandler.WithIDBI(idbiAASvc)
 	}
 	if idbiAccountsSvc != nil {
 		aaHandler.WithIDBIAccounts(idbiAccountsSvc)
+		// Same fold-in as GetAccounts above — without this the Home screen's
+		// Bank Accounts total (dashboardService) stayed bank_accounts-only
+		// while the "linked bank accounts" screen (aaHandler.GetAccounts)
+		// also counted IDBI-synced accounts, so the two screens disagreed.
+		dashboardService.WithIDBIAccounts(idbiAccountsSvc)
 	}
-	kycHandler := handler.NewKYCHandler(idbiKYCSvc)
-	mfHandler := handler.NewMFHandler(mfService)
+	kycHandler := handler.NewKYCHandler(idbiKYCSvc).WithEvents(eventsPublisher)
+	mfHandler := handler.NewMFHandler(mfService).WithEvents(eventsPublisher)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 	portfolioAnalysisHandler := handler.NewPortfolioAnalysisHandler(portfolioAnalysisService)
 	if advisorTipsSvc != nil {
@@ -325,7 +340,7 @@ func main() {
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
 	rmHandler := handler.NewRMHandler(rmService)
-	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService)
+	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService).WithEvents(eventsPublisher, assignmentRepo)
 	rmChatHandler := handler.NewRMChatHandler(rmChatService)
 
 	// 6. Setup Router
@@ -362,7 +377,7 @@ func main() {
 
 	if allowedOriginsStr == "" {
 		// Secure default lockdown based on your exact provided domain
-		allowedOrigins = []string{"https://astraaaaaa.netlify.app", "http://localhost:*", "http://127.0.0.1:*"}
+		allowedOrigins = []string{"https://astrafin.netlify.app", "https://astrafinrm.netlify.app", "http://localhost:*", "http://127.0.0.1:*"}
 	} else {
 		// Split by comma in case multiple frontend URLs are passed in the environment variable
 		for _, origin := range strings.Split(allowedOriginsStr, ",") {
@@ -371,7 +386,7 @@ func main() {
 	}
 
 	// Always allow the known production frontend and local development
-	allowedOrigins = append(allowedOrigins, "https://astraaaaaa.netlify.app", "http://localhost:*", "http://127.0.0.1:*")
+	allowedOrigins = append(allowedOrigins, "https://astrafin.netlify.app", "https://astrafinrm.netlify.app", "http://localhost:*", "http://127.0.0.1:*")
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: allowedOrigins,
@@ -407,9 +422,17 @@ func main() {
 		}
 	})
 
+	// Realtime STT stream: a WebSocket upgrade, so it needs RequireAuthWS's
+	// query-token fallback (browsers can't set custom headers on the native
+	// WebSocket API) instead of the header-only RequireAuth used below.
+	r.Group(func(r chi.Router) {
+		r.Use(authmw.RequireAuthWS(authService, userRepo))
+		r.Get("/api/chat/stt/stream", chatHandler.HandleSTTStream)
+	})
+
 	// Protected Routes (Requires JWT Bearer Token)
 	r.Group(func(r chi.Router) {
-		r.Use(authmw.RequireAuth(authService))
+		r.Use(authmw.RequireAuth(authService, userRepo))
 		r.Get("/api/auth/me", authHandler.Me)
 		r.Patch("/api/auth/me", authHandler.UpdateMe)
 		r.Post("/api/chat", chatHandler.HandleChat)
@@ -418,6 +441,7 @@ func main() {
 		r.Post("/api/chat/memory", chatHandler.AddMemory)
 		r.Delete("/api/chat/memory/{id}", chatHandler.DeleteMemory)
 		r.Post("/api/tts", chatHandler.HandleTTS) // Moved to JWT-protected route
+		r.Post("/api/stt", chatHandler.HandleSTT)
 
 		// v1 financial domain APIs (see the IDBI sandbox spec doc).
 		r.Mount("/api/v1/stocks", stocksHandler.Routes())
@@ -467,6 +491,16 @@ func main() {
 				rmAdminHandler.Register(r)
 			})
 		})
+
+		// Realtime STT stream: needs RequireRMAuthWS's query-token fallback,
+		// same reasoning as the app chat's stream route above.
+		r.Group(func(r chi.Router) {
+			r.Use(authmw.RequireRMAuthWS(rmAuthService))
+			r.Get("/chat/stt/stream", rmChatHandler.STTStream)
+			// Live update push: one long-lived socket per RM session, see
+			// internal/events and internal/handler/rm_events_handler.go.
+			r.Get("/events", rmEventsHandler.Stream)
+		})
 	})
 
 	// Optional month-rollover scheduler: opt in with BUDGET_ROLLOVER_SCHEDULER=true.
@@ -483,6 +517,31 @@ func main() {
 			}
 		}()
 		slog.Info("BUDGET_ROLLOVER_SCHEDULER: daily budget rollover enabled")
+	}
+
+	// Optional nightly IDBI spend-transaction sync: opt in with
+	// IDBI_SPEND_SYNC_SCHEDULER=true (requires IDBI_SPEND_ENABLED). Pulls real
+	// transaction history for every linked user, aligned to 12:00 AM local
+	// server time, so Transactions/Analytics/Budget (all three read the same
+	// spend_transactions table) stay fresh without depending on the client
+	// ever calling /spend/refresh or on a user happening to log in that day.
+	if idbiSpendSvc != nil && os.Getenv("IDBI_SPEND_SYNC_SCHEDULER") == "true" {
+		go func() {
+			defer func() { _ = recover() }()
+			now := time.Now()
+			nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).AddDate(0, 0, 1)
+			timer := time.NewTimer(time.Until(nextMidnight))
+			defer timer.Stop()
+			<-timer.C
+
+			idbiSpendSvc.SyncAllLinkedUsers(context.Background())
+			t := time.NewTicker(24 * time.Hour)
+			defer t.Stop()
+			for range t.C {
+				idbiSpendSvc.SyncAllLinkedUsers(context.Background())
+			}
+		}()
+		slog.Info("IDBI_SPEND_SYNC_SCHEDULER: nightly spend transaction sync enabled")
 	}
 
 	// 7. Start Server with Graceful Shutdown

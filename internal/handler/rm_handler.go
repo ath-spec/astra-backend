@@ -149,12 +149,13 @@ func (h *RMHandler) clientNarrative(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	force := r.URL.Query().Get("refresh") == "1" || r.URL.Query().Get("refresh") == "true"
-	res, err := h.svc.ClientNarrative(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID, force)
+	group := r.URL.Query().Get("group")
+	res, err := h.svc.ClientNarrative(r.Context(), rmID, middleware.IsAdmin(r.Context()), userID, group, force)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
 	}
-	apiresponse.OK(w, map[string]interface{}{"narratives": res})
+	apiresponse.OK(w, map[string]interface{}{"narratives": res.Narratives, "is_llm": res.IsLLM})
 }
 
 func (h *RMHandler) bookComposition(w http.ResponseWriter, r *http.Request) {

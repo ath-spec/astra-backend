@@ -58,7 +58,7 @@ func (h *DashboardHandler) growth(w http.ResponseWriter, r *http.Request) {
 		}
 		days = n
 	}
-	points, err := h.svc.GrowthHistory(r.Context(), userID, days)
+	points, err := h.svc.GrowthHistory(r.Context(), userID, days, nil)
 	if err != nil {
 		apiresponse.Error(w, err)
 		return

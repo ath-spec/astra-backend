@@ -1,23 +1,33 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	stocksdomain "github.com/yourusername/astra-backend/internal/domain/stocks"
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/httpx"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/service"
 )
 
 type StocksHandler struct {
-	svc *service.StocksService
+	svc    *service.StocksService
+	events *events.Publisher
 }
 
 func NewStocksHandler(svc *service.StocksService) *StocksHandler {
 	return &StocksHandler{svc: svc}
+}
+
+// WithEvents attaches the live-update publisher so a placed/modified/
+// cancelled order pushes a portfolio invalidation to the RM portal.
+func (h *StocksHandler) WithEvents(pub *events.Publisher) *StocksHandler {
+	h.events = pub
+	return h
 }
 
 // Routes mounts the Demat & Exchange endpoints. Every route here requires
@@ -26,6 +36,7 @@ func (h *StocksHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/holdings", h.getHoldings)
 	r.Get("/quote", h.getQuote)
+	r.Get("/profile", h.getProfile)
 	r.Post("/orders", h.placeOrder)
 	r.Get("/orders", h.listOrders)
 	r.Get("/orders/{orderID}", h.getOrder)
@@ -64,6 +75,22 @@ func (h *StocksHandler) getQuote(w http.ResponseWriter, r *http.Request) {
 	apiresponse.OK(w, quote)
 }
 
+func (h *StocksHandler) getProfile(w http.ResponseWriter, r *http.Request) {
+	symbol := r.URL.Query().Get("trading_symbol")
+	if symbol == "" {
+		apiresponse.Error(w, apiresponse.Validation("trading_symbol query parameter is required"))
+		return
+	}
+	exchange := r.URL.Query().Get("exchange")
+
+	profile, err := h.svc.GetProfile(r.Context(), exchange, symbol)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	apiresponse.OK(w, profile)
+}
+
 func (h *StocksHandler) placeOrder(w http.ResponseWriter, r *http.Request) {
 	userID, ok := middleware.GetUserID(r.Context())
 	if !ok {
@@ -79,6 +106,9 @@ func (h *StocksHandler) placeOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
 	}
 	apiresponse.Created(w, order)
 }
@@ -101,6 +131,9 @@ func (h *StocksHandler) modifyOrder(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
+	}
 	apiresponse.OK(w, order)
 }
 
@@ -116,6 +149,9 @@ func (h *StocksHandler) cancelOrder(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		apiresponse.Error(w, err)
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypePortfolioChanged)
 	}
 	apiresponse.OK(w, order)
 }

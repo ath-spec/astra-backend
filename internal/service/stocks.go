@@ -29,6 +29,10 @@ func (s *StocksService) GetQuote(ctx context.Context, exchange, tradingSymbol st
 	return s.provider.GetQuote(ctx, exchange, tradingSymbol)
 }
 
+func (s *StocksService) GetProfile(ctx context.Context, exchange, tradingSymbol string) (*stocksdomain.StockProfile, error) {
+	return s.provider.GetProfile(ctx, exchange, tradingSymbol)
+}
+
 func (s *StocksService) PlaceOrder(ctx context.Context, userID uuid.UUID, req stocksdomain.OrderRequest) (*stocksdomain.Order, error) {
 	return s.provider.PlaceOrder(ctx, userID, req)
 }

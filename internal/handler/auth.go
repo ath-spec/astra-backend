@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/yourusername/astra-backend/internal/events"
 	"github.com/yourusername/astra-backend/internal/middleware"
 	"github.com/yourusername/astra-backend/internal/repository"
 	"github.com/yourusername/astra-backend/internal/service"
@@ -20,13 +22,18 @@ type VerifyRequest struct {
 	PhoneNumber string                   `json:"phone_number"`
 	OTP         string                   `json:"otp"`
 	Name        string                   `json:"name"`
-	WantsRM     bool                     `json:"wants_rm"` // advisory opt-in from the signup form
+	// WantsRM is a pointer so a call that omits the field (e.g. the nav-pill
+	// chat's background re-auth ping) doesn't get decoded as "false" and
+	// silently unassign an RM the user already opted into on the real
+	// signup form. Only an explicit true/false in the payload changes it.
+	WantsRM     *bool                    `json:"wants_rm"`
 	Banks       []repository.BankAccount `json:"banks"`    // Dynamic UI accounts
 }
 
 type AuthHandler struct {
 	authService *service.AuthService
 	userRepo    repository.UserRepository
+	events      *events.Publisher
 }
 
 func NewAuthHandler(authService *service.AuthService, userRepo repository.UserRepository) *AuthHandler {
@@ -34,6 +41,14 @@ func NewAuthHandler(authService *service.AuthService, userRepo repository.UserRe
 		authService: authService,
 		userRepo:    userRepo,
 	}
+}
+
+// WithEvents attaches the live-update publisher so profile edits push an
+// invalidation to the RM portal instead of it seeing stale data until a
+// manual refresh.
+func (h *AuthHandler) WithEvents(pub *events.Publisher) *AuthHandler {
+	h.events = pub
+	return h
 }
 
 // SendOTP handles the POST /api/auth/otp/send endpoint
@@ -88,6 +103,15 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		respondAuthError(w, http.StatusInternalServerError, "Error identifying user")
 		return
 	}
+	// FindOrCreateUser auto-assigns a new signup to an RM internally (see
+	// PostgresUserRepository.assigner) when the user opted in — there's no
+	// separate "assign" call here to hook a publish onto, so push the event
+	// from the one place that knows a brand-new user just came through.
+	// UserChanged does its own OwnerOf lookup, so this is a no-op push if
+	// the user didn't opt into an RM (no owner found) or no RM had capacity.
+	if isNewUser && h.events != nil {
+		go h.events.UserChanged(context.Background(), user.ID, events.TypeClientAssigned)
+	}
 
 	// 2. Generate JWT for the verified user
 	tokenString, err := h.authService.GenerateToken(user.ID)
@@ -120,6 +144,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		"token":         tokenString,
 		"refresh_token": refreshToken,
 		"is_new_user":   isNewUser,
+		"name":          user.Name,
 	})
 }
 
@@ -140,40 +165,34 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := service.HashRefreshToken(req.RefreshToken)
-	rt, err := h.userRepo.GetRefreshToken(r.Context(), hash)
-	if err != nil {
-		middleware.L(r.Context()).Error("get refresh token", "error", err)
-		respondAuthError(w, http.StatusInternalServerError, "Error validating refresh token")
-		return
-	}
-	if rt == nil || rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
-		respondAuthError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
-		return
-	}
-
-	// Rotate: revoke the token that was just used before issuing its
-	// replacement, so it can't be exchanged a second time.
-	if err := h.userRepo.RevokeRefreshToken(r.Context(), hash); err != nil {
-		middleware.L(r.Context()).Error("revoke refresh token", "error", err)
-		respondAuthError(w, http.StatusInternalServerError, "Error rotating refresh token")
-		return
-	}
-
-	accessToken, err := h.authService.GenerateToken(rt.UserID)
-	if err != nil {
-		middleware.L(r.Context()).Error("generate access token (refresh)", "error", err)
-		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
-		return
-	}
 	newRefreshToken, newRefreshHash, err := h.authService.GenerateRefreshToken()
 	if err != nil {
 		middleware.L(r.Context()).Error("generate new refresh token", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error generating refresh token")
 		return
 	}
-	if err := h.userRepo.CreateRefreshToken(r.Context(), rt.UserID, newRefreshHash, time.Now().Add(service.RefreshTokenTTL)); err != nil {
-		middleware.L(r.Context()).Error("persist new refresh token", "error", err)
-		respondAuthError(w, http.StatusInternalServerError, "Error persisting refresh token")
+
+	// RotateRefreshToken validates, revokes the old token, and inserts the
+	// new one inside a single DB transaction: two concurrent requests
+	// replaying the same token can't both pass a separate validity check
+	// before either write lands, and a failure partway through (e.g. the
+	// insert failing right after the revoke succeeded) rolls back instead of
+	// stranding the user with a burned token and nothing to replace it.
+	userID, ok, err := h.userRepo.RotateRefreshToken(r.Context(), hash, newRefreshHash, time.Now().Add(service.RefreshTokenTTL))
+	if err != nil {
+		middleware.L(r.Context()).Error("rotate refresh token", "error", err)
+		respondAuthError(w, http.StatusInternalServerError, "Error validating refresh token")
+		return
+	}
+	if !ok {
+		respondAuthError(w, http.StatusUnauthorized, "Invalid or expired refresh token")
+		return
+	}
+
+	accessToken, err := h.authService.GenerateToken(userID)
+	if err != nil {
+		middleware.L(r.Context()).Error("generate access token (refresh)", "error", err)
+		respondAuthError(w, http.StatusInternalServerError, "Error generating token")
 		return
 	}
 
@@ -219,6 +238,10 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		respondAuthError(w, http.StatusUnauthorized, "Session is no longer valid")
 		return
 	}
+	// Best-effort: a user who hasn't completed PAN verification simply gets
+	// "" back, same as an unset name — never fail the whole session-restore
+	// call over this.
+	pan, _ := h.userRepo.GetLatestVerifiedPAN(r.Context(), userID)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]any{
@@ -226,6 +249,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		"astra_user_id": user.AstraUserID,
 		"phone_number":  user.PhoneNumber,
 		"name":          user.Name,
+		"pan":           pan,
 		"wants_rm":      user.WantsRM,
 		"created_at":    user.CreatedAt,
 	})
@@ -258,6 +282,9 @@ func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 		middleware.L(r.Context()).Error("update user name", "error", err)
 		respondAuthError(w, http.StatusInternalServerError, "Error updating profile")
 		return
+	}
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeProfileUpdated)
 	}
 
 	user, err := h.userRepo.GetByID(r.Context(), userID)

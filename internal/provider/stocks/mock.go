@@ -24,21 +24,130 @@ import (
 // this mock exchange knows how to quote and trade. A real provider would
 // resolve this from the exchange/broker instrument master instead.
 type instrument struct {
-	token     string
-	isin      string
-	exchange  string
-	basePrice float64
-	lotSize   int
-	tickSize  float64
+	token       string
+	isin        string
+	exchange    string
+	basePrice   float64
+	lotSize     int
+	tickSize    float64
+	companyName string
+	sector      string
 }
 
 var instruments = map[string]instrument{
-	"RELIANCE":   {token: "738561", isin: "INE002A01018", exchange: "NSE", basePrice: 2921.40, lotSize: 1, tickSize: 0.05},
-	"TCS":        {token: "2953217", isin: "INE467B01029", exchange: "NSE", basePrice: 4152.30, lotSize: 1, tickSize: 0.05},
-	"INFY":       {token: "408065", isin: "INE009A01021", exchange: "NSE", basePrice: 1876.90, lotSize: 1, tickSize: 0.05},
-	"HDFCBANK":   {token: "341249", isin: "INE040A01034", exchange: "NSE", basePrice: 1689.55, lotSize: 1, tickSize: 0.05},
-	"ICICIBANK":  {token: "1270529", isin: "INE090A01021", exchange: "NSE", basePrice: 1234.75, lotSize: 1, tickSize: 0.05},
-	"TATAMOTORS": {token: "884737", isin: "INE155A01022", exchange: "NSE", basePrice: 967.20, lotSize: 1, tickSize: 0.05},
+	"RELIANCE":   {token: "738561", isin: "INE002A01018", exchange: "NSE", basePrice: 2921.40, lotSize: 1, tickSize: 0.05, companyName: "Reliance Industries", sector: "Energy & Conglomerate"},
+	"TCS":        {token: "2953217", isin: "INE467B01029", exchange: "NSE", basePrice: 4152.30, lotSize: 1, tickSize: 0.05, companyName: "Tata Consultancy Services", sector: "Information Technology"},
+	"INFY":       {token: "408065", isin: "INE009A01021", exchange: "NSE", basePrice: 1876.90, lotSize: 1, tickSize: 0.05, companyName: "Infosys", sector: "Information Technology"},
+	"HDFCBANK":   {token: "341249", isin: "INE040A01034", exchange: "NSE", basePrice: 1689.55, lotSize: 1, tickSize: 0.05, companyName: "HDFC Bank", sector: "Financial Services"},
+	"ICICIBANK":  {token: "1270529", isin: "INE090A01021", exchange: "NSE", basePrice: 1234.75, lotSize: 1, tickSize: 0.05, companyName: "ICICI Bank", sector: "Financial Services"},
+	"TATAMOTORS": {token: "884737", isin: "INE155A01022", exchange: "NSE", basePrice: 967.20, lotSize: 1, tickSize: 0.05, companyName: "Tata Motors", sector: "Automobiles"},
+	// These three are the only symbols the demo archetype seeding in
+	// user_repo.go actually writes into demat_holdings — without entries
+	// here, GetQuote/GetProfile 404'd ("instrument not found") for every
+	// real seeded stock holding a user could ever have, which is the root
+	// cause of the /stocks/profile 404s seen in the app.
+	"MAZDOCK":    {token: "533280", isin: "INE249Z01012", exchange: "NSE", basePrice: 2305.00, lotSize: 1, tickSize: 0.05, companyName: "Mazagon Dock Shipbuilders", sector: "Defence & Shipbuilding"},
+	"COCHINSHIP": {token: "540678", isin: "INE704P01017", exchange: "NSE", basePrice: 1480.00, lotSize: 1, tickSize: 0.05, companyName: "Cochin Shipyard", sector: "Defence & Shipbuilding"},
+	"MSTCLTD":    {token: "542597", isin: "INE255X01014", exchange: "NSE", basePrice: 730.00, lotSize: 1, tickSize: 0.05, companyName: "MSTC Limited", sector: "Trading & Government Services"},
+}
+
+// sectorProfile holds the per-sector narrative building blocks GetProfile
+// varies content by, so two stocks in different sectors never read like the
+// same canned paragraph with the name swapped.
+type sectorProfile struct {
+	descriptionTemplate string // %s is filled with company name
+	primaryRole         string
+	secondaryRole       string
+	strengths           []string
+	tradeOffs           []string
+	whyGetFund          []string
+	suitableFor         []string
+	avoidIf             []string
+	impactText          string
+}
+
+var sectorProfiles = map[string]sectorProfile{
+	"Financial Services": {
+		descriptionTemplate: "%s is a leading financial institution offering retail banking, corporate banking, and wealth management services, with a large branch and digital footprint across India.",
+		primaryRole:         "Core Portfolio Builder",
+		secondaryRole:       "Dividend Yield",
+		strengths:           []string{"Large, sticky deposit base", "Strong capital adequacy", "Diversified loan book"},
+		tradeOffs:           []string{"Sensitive to interest rate cycles", "Regulatory and asset-quality risk"},
+		whyGetFund:          []string{"Provides stability to your equity allocation", "Consistent compounder in the financial sector"},
+		suitableFor:         []string{"Long-term wealth creation", "Core holding in large-cap financials"},
+		avoidIf:             []string{"You already have heavy exposure to banking stocks"},
+		impactText:          "Adding this stock increases exposure to India's financial sector, a core driver of the broader economy.",
+	},
+	"Information Technology": {
+		descriptionTemplate: "%s is a major IT services company providing consulting, digital transformation, and outsourcing services to global enterprise clients.",
+		primaryRole:         "Growth & Export Play",
+		secondaryRole:       "Dollar Revenue Hedge",
+		strengths:           []string{"High-margin, asset-light business", "Strong dollar-denominated revenue", "Large deal pipeline"},
+		tradeOffs:           []string{"Sensitive to US/Europe IT spending cycles", "Currency and visa-policy risk"},
+		whyGetFund:          []string{"Adds export-oriented, dollar-earning exposure to your portfolio", "Historically resilient margins across cycles"},
+		suitableFor:         []string{"Diversifying away from domestic-only businesses", "Long-term growth allocation"},
+		avoidIf:             []string{"You need short-term stability during a global tech slowdown"},
+		impactText:          "Adding this stock increases your portfolio's exposure to global IT services demand.",
+	},
+	"Energy & Conglomerate": {
+		descriptionTemplate: "%s is a diversified conglomerate with interests spanning energy, retail, and digital services, among India's largest companies by market capitalization.",
+		primaryRole:         "Core Portfolio Builder",
+		secondaryRole:       "Diversification Anchor",
+		strengths:           []string{"Diversified revenue across sectors", "Scale advantages", "Strong balance sheet"},
+		tradeOffs:           []string{"Complex conglomerate structure", "Capital-intensive expansion plans"},
+		whyGetFund:          []string{"Gives broad exposure across energy, retail and digital in a single stock", "Large-cap stability with growth optionality"},
+		suitableFor:         []string{"Core, long-term large-cap holding", "Investors wanting diversified sector exposure"},
+		avoidIf:             []string{"You want a pure-play bet on a single sector"},
+		impactText:          "Adding this stock increases diversification across energy, retail, and digital businesses.",
+	},
+	"Automobiles": {
+		descriptionTemplate: "%s designs and manufactures commercial and passenger vehicles, with a growing footprint in electric mobility.",
+		primaryRole:         "Cyclical Growth Play",
+		secondaryRole:       "EV Transition Exposure",
+		strengths:           []string{"Strong domestic market share", "Growing EV portfolio", "Improving margins"},
+		tradeOffs:           []string{"Cyclical demand tied to the broader economy", "Input cost (commodity) sensitivity"},
+		whyGetFund:          []string{"Adds exposure to India's auto and EV transition story", "Benefits from rising discretionary spending"},
+		suitableFor:         []string{"Cyclical/growth allocation", "Investors betting on EV adoption"},
+		avoidIf:             []string{"You are looking for a defensive, low-volatility holding"},
+		impactText:          "Adding this stock increases your portfolio's exposure to the automobile and EV transition cycle.",
+	},
+	"Defence & Shipbuilding": {
+		descriptionTemplate: "%s is a defence-sector shipbuilder engaged in the construction and repair of naval vessels and commercial ships, benefiting from India's defence indigenization push.",
+		primaryRole:         "Thematic Growth Play",
+		secondaryRole:       "Order-Book Visibility",
+		strengths:           []string{"Strong order book from government contracts", "Beneficiary of defence indigenization policy", "High entry barriers"},
+		tradeOffs:           []string{"Revenue concentrated in government contracts", "Execution and project-timeline risk"},
+		whyGetFund:          []string{"Gives thematic exposure to India's defence and shipbuilding push", "Long revenue visibility from order backlogs"},
+		suitableFor:         []string{"Thematic/satellite allocation", "Investors bullish on defence indigenization"},
+		avoidIf:             []string{"You want low government-policy-dependency in your holdings"},
+		impactText:          "Adding this stock increases your portfolio's exposure to the defence and shipbuilding theme.",
+	},
+	"Trading & Government Services": {
+		descriptionTemplate: "%s operates as a government-linked trading and e-commerce services company, facilitating auctions and trade of metal scrap, e-waste, and other commodities.",
+		primaryRole:         "Satellite / Tactical Holding",
+		secondaryRole:       "Government-Policy Beneficiary",
+		strengths:           []string{"Government-backed business model", "Low capital intensity", "Niche market position"},
+		tradeOffs:           []string{"Revenue tied to commodity/scrap trading cycles", "Limited pricing power"},
+		whyGetFund:          []string{"Adds a niche, government-linked trading business to your portfolio", "Low capital-intensity model"},
+		suitableFor:         []string{"Small satellite allocation", "Investors seeking niche PSU exposure"},
+		avoidIf:             []string{"You want a core, high-conviction long-term holding"},
+		impactText:          "Adding this stock adds a niche, government-linked trading exposure to your portfolio.",
+	},
+}
+
+// defaultSectorProfile covers any symbol whose sector isn't in
+// sectorProfiles above, so an unrecognized instrument still gets sensible,
+// non-empty content instead of an empty struct.
+var defaultSectorProfile = sectorProfile{
+	descriptionTemplate: "%s is a publicly listed company on the Indian stock exchanges.",
+	primaryRole:         "Satellite Holding",
+	secondaryRole:       "Diversification",
+	strengths:           []string{"Listed on a major exchange", "Part of a diversified portfolio"},
+	tradeOffs:           []string{"Limited company-specific data available"},
+	whyGetFund:          []string{"Adds diversification to your equity holdings"},
+	suitableFor:         []string{"Diversified equity allocation"},
+	avoidIf:             []string{"You prefer only well-covered, large-cap names"},
+	impactText:          "Adding this stock changes your sector diversification.",
 }
 
 func lookupInstrument(symbol string) (instrument, bool) {
@@ -84,10 +193,6 @@ func NewMockProvider(pool *pgxpool.Pool) *MockProvider {
 }
 
 func (p *MockProvider) GetHoldings(ctx context.Context, userID uuid.UUID) ([]stocks.Holding, error) {
-	if err := p.seedHoldings(ctx, userID); err != nil {
-		return nil, err
-	}
-
 	rows, err := p.pool.Query(ctx, `
 		SELECT isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date
 		FROM demat_holdings
@@ -116,32 +221,6 @@ func (p *MockProvider) GetHoldings(ctx context.Context, userID uuid.UUID) ([]sto
 		return nil, fmt.Errorf("iterate holdings: %w", err)
 	}
 	return holdings, nil
-}
-
-func (p *MockProvider) seedHoldings(ctx context.Context, userID uuid.UUID) error {
-	seed := []struct {
-		symbol   string
-		qty      int
-		avgPrice float64
-	}{
-		{"RELIANCE", 42, 2380.55},
-		{"TCS", 10, 3890.00},
-		{"HDFCBANK", 60, 1550.20},
-	}
-	for _, s := range seed {
-		inst, ok := lookupInstrument(s.symbol)
-		if !ok {
-			continue
-		}
-		if _, err := p.pool.Exec(ctx, `
-			INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
-			VALUES ($1, $2, $3, $4, 'CNC', $5, $6, $7, $7, CURRENT_DATE - INTERVAL '400 days')
-			ON CONFLICT (user_id, isin, product) DO NOTHING
-		`, userID, inst.isin, s.symbol, inst.exchange, s.qty, s.avgPrice, inst.basePrice); err != nil {
-			return fmt.Errorf("seed holding %s: %w", s.symbol, err)
-		}
-	}
-	return nil
 }
 
 func (p *MockProvider) GetQuote(ctx context.Context, exchange, tradingSymbol string) (*stocks.Quote, error) {
@@ -174,6 +253,99 @@ func (p *MockProvider) GetQuote(ctx context.Context, exchange, tradingSymbol str
 		LotSize:         inst.lotSize,
 		TickSize:        inst.tickSize,
 		Timestamp:       apitime.New(time.Now().UTC()),
+	}, nil
+}
+
+func (p *MockProvider) GetProfile(ctx context.Context, exchange, tradingSymbol string) (*stocks.StockProfile, error) {
+	quote, err := p.GetQuote(ctx, exchange, tradingSymbol)
+	if err != nil {
+		return nil, err
+	}
+	// GetQuote already validated the symbol via lookupInstrument, so this
+	// is guaranteed to be present.
+	inst, _ := lookupInstrument(tradingSymbol)
+
+	companyName := inst.companyName
+	if companyName == "" {
+		companyName = fmt.Sprintf("%s Limited", quote.TradingSymbol)
+	}
+	sector := inst.sector
+	if sector == "" {
+		sector = "Diversified"
+	}
+	sp, ok := sectorProfiles[sector]
+	if !ok {
+		sp = defaultSectorProfile
+	}
+
+	// Generate some fake historical chart points based on the current price
+	var points []stocks.ChartPoint
+	now := time.Now().Unix()
+	basePrice := quote.LastPrice
+	for i := 180; i >= 0; i-- {
+		// Mock a semi-random walk backwards
+		dayPrice := basePrice * (1.0 + (float64(180-i-90)/1000.0)) // slight curve
+		points = append(points, stocks.ChartPoint{
+			Timestamp: now - int64(i*86400),
+			Price:     dayPrice,
+		})
+	}
+
+	// Deterministic-per-symbol fundamentals/shareholding, same hash pattern
+	// used elsewhere in the mock providers (fnv over the symbol) — every
+	// stock gets its own plausible-but-fixed numbers instead of the exact
+	// same PE/PB/ROE/shareholding split for every single company.
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(strings.ToUpper(tradingSymbol)))
+	seed := h.Sum64()
+	pct := func(offset uint64, base, spread float64) float64 {
+		return round2(base + float64((seed>>offset)%1000)/1000.0*spread)
+	}
+	promoterPct := pct(0, 35.0, 30.0)   // 35-65%
+	fiiPct := pct(8, 8.0, 20.0)         // 8-28%
+	diiPct := pct(16, 8.0, 18.0)        // 8-26%
+	publicPct := round2(math.Max(0, 100.0-promoterPct-fiiPct-diiPct))
+
+	sectorLabel := strings.ToLower(sector)
+	impactText := sp.impactText
+	whatBuyingMore := fmt.Sprintf("Buying more will increase your concentration in %s, taking your sector exposure higher.", sector)
+
+	return &stocks.StockProfile{
+		Quote:       *quote,
+		CompanyName: companyName,
+		Sector:      sector,
+		Description: fmt.Sprintf(sp.descriptionTemplate, companyName),
+		ChartPoints: points,
+		Fundamentals: stocks.Fundamentals{
+			MarketCap: round2(float64(inst.lotSize) * quote.LastPrice * float64(500000+seed%4500000)),
+			PERatio:   round2(10.0 + float64((seed>>24)%2500)/100.0),  // 10-35
+			PBRatio:   round2(1.0 + float64((seed>>32)%400)/100.0),    // 1-5
+			DivYield:  round2(float64((seed>>40)%400) / 100.0),        // 0-4%
+			ROE:       round2(8.0 + float64((seed>>48)%2200)/100.0),   // 8-30%
+			High52W:   round2(quote.LastPrice * 1.2),
+			Low52W:    round2(quote.LastPrice * 0.8),
+		},
+		ShareholdingPattern: stocks.ShareholdingPattern{
+			Promoter: []stocks.ShareholderInfo{{Title: "Promoters", Percentage: promoterPct}},
+			FII:      []stocks.ShareholderInfo{{Title: "Foreign Inst.", Percentage: fiiPct}},
+			DII:      []stocks.ShareholderInfo{{Title: "Domestic Inst.", Percentage: diiPct}},
+			Public:   []stocks.ShareholderInfo{{Title: "Retail", Percentage: publicPct}},
+		},
+		InstrumentDeepDive: stocks.InstrumentDeepDive{
+			PrimaryRole:   sp.primaryRole,
+			SecondaryRole: sp.secondaryRole,
+			Strengths:     sp.strengths,
+			TradeOffs:     sp.tradeOffs,
+		},
+		PortfolioInsights: stocks.PortfolioInsights{
+			IsPositiveImpact:     true,
+			WhyGetFund:           sp.whyGetFund,
+			SuitableFor:          sp.suitableFor,
+			AvoidIf:              sp.avoidIf,
+			ImpactText:           impactText,
+			WhatItDoesRightNow:   fmt.Sprintf("It currently provides %s exposure within the %s sector, based on its role as a %s.", sectorLabel, sector, strings.ToLower(sp.primaryRole)),
+			WhatBuyingMoreWillDo: whatBuyingMore,
+		},
 	}, nil
 }
 

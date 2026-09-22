@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -50,6 +52,14 @@ type RMService struct {
 	spend        *analyticsservice.Service
 	budget       *budgetservice.Service
 	pool         *pgxpool.Pool
+
+	// snapshotRefresh dedupes concurrent background portfolio_snapshots
+	// refreshes per user, the same single-flight pattern idbiaccounts.Service
+	// uses for its own background sync (internal/service/idbiaccounts/
+	// service.go) — without it, two RMs opening overlapping client lists at
+	// the same moment would each spawn their own refresh goroutine per
+	// shared client.
+	snapshotRefresh sync.Map // userID -> struct{}
 }
 
 func NewRMService(
@@ -76,13 +86,44 @@ func NewRMService(
 	}
 }
 
-// ListClients returns the paginated book for one RM.
+// ListClients returns the paginated book for one RM. TotalWealth on each row
+// comes from portfolio_snapshots (see PostgresAssignmentRepository.
+// ListClients) rather than a live recompute — recomputing live for every row
+// on every page load would mean N holdings/NAV fetches per list view. So any
+// row whose snapshot isn't from today gets a background refresh kicked off
+// (deduped per user, see refreshSnapshotInBackground) — the list still
+// returns the slightly-stale number immediately, but the next load for that
+// client will be current.
 func (s *RMService) ListClients(ctx context.Context, rmID uuid.UUID, f rmdomain.ListFilters) (*rmdomain.ClientList, error) {
 	items, total, err := s.assign.ListClients(ctx, &rmID, nil, f)
 	if err != nil {
 		return nil, err
 	}
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	for _, it := range items {
+		if it.SnapshotDate == nil || it.SnapshotDate.Time().Before(today) {
+			s.refreshSnapshotInBackground(it.UserID)
+		}
+	}
 	return &rmdomain.ClientList{Items: items, Total: total}, nil
+}
+
+// refreshSnapshotInBackground recomputes and upserts one user's
+// portfolio_snapshots row (via dashboard.Summary) without blocking the
+// caller. Deduped per user via snapshotRefresh so concurrent list loads
+// covering the same client never spawn more than one in-flight refresh.
+func (s *RMService) refreshSnapshotInBackground(userID uuid.UUID) {
+	if _, busy := s.snapshotRefresh.LoadOrStore(userID, struct{}{}); busy {
+		return
+	}
+	go func() {
+		defer s.snapshotRefresh.Delete(userID)
+		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+		defer cancel()
+		if _, err := s.dashboard.Summary(ctx, userID); err != nil {
+			slog.Warn("rm: background portfolio snapshot refresh failed", "user", userID, "error", err)
+		}
+	}()
 }
 
 // authorizeClient ensures the caller may view this client: admins may view
@@ -115,16 +156,20 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 
 	// Each fetch writes only its own local; the *ClientDetail is assembled
 	// single-threaded after g.Wait() returns, so there is no shared mutable
-	// state between the goroutines at all.
+	// state between the goroutines at all. Portfolio holdings are fetched
+	// exactly once (FetchInputs) and reused for both the summary and the raw
+	// holdings lists below — this used to be two independent, concurrent
+	// fetches of the same stocks/mf/fd/bank data (one inside dashboard.
+	// Summary, one directly here), which was not just wasted work but a real
+	// consistency risk: under Postgres's default READ COMMITTED isolation, a
+	// write landing between the two fetches (e.g. an order fill updating
+	// last_price) could make this response's summary total disagree with
+	// its own holdings list for the same portfolio.
 	var (
 		profile   *rmdomain.ClientProfile
-		summary   *dashboarddomain.Summary
+		inputs    *PortfolioInputs
 		growth    []dashboarddomain.SnapshotPoint
-		stockH    []stocksdomain.Holding
-		mfFolios  []mfdomain.Folio
-		fdAccts   []fddomain.Account
 		goalsList []goalsdomain.Goal
-		bankAccts []repository.BankAccount
 		spend     rmdomain.SpendSummary
 		dna       *paDomain.AllocationResult
 	)
@@ -142,45 +187,25 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 		return nil
 	})
 	g.Go(func() error {
-		v, err := s.dashboard.Summary(gCtx, userID)
+		// GrowthHistory's <=30-days-of-history backfill path needs this
+		// user's current portfolio summary — merged into this same goroutine
+		// (rather than kept as its own parallel fetch) so it reuses the
+		// PortfolioInputs already fetched here instead of independently
+		// re-running the same stocks/mf/fd/bank query a second time. That
+		// used to make every client-profile open with under a month of
+		// history do the full portfolio fetch twice, concurrently, against
+		// the same tables — exactly the READ COMMITTED consistency risk this
+		// function's own comment above warns about, reintroduced here.
+		v, err := s.dashboard.FetchInputs(gCtx, userID)
 		if err != nil {
-			return fmt.Errorf("client summary: %w", err)
+			return fmt.Errorf("client portfolio inputs: %w", err)
 		}
-		summary = v
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.dashboard.GrowthHistory(gCtx, userID, growthDays)
+		inputs = v
+		g2, err := s.dashboard.GrowthHistory(gCtx, userID, growthDays, v)
 		if err != nil {
 			return fmt.Errorf("client growth: %w", err)
 		}
-		growth = v
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.stocks.GetHoldings(gCtx, userID)
-		if err != nil {
-			return fmt.Errorf("client stocks: %w", err)
-		}
-		stockH = v
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.mf.GetHoldings(gCtx, userID)
-		if err != nil {
-			return fmt.Errorf("client mf: %w", err)
-		}
-		if v != nil {
-			mfFolios = v.Folios
-		}
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.fd.ListFDs(gCtx, userID)
-		if err != nil {
-			return fmt.Errorf("client fd: %w", err)
-		}
-		fdAccts = v
+		growth = g2
 		return nil
 	})
 	g.Go(func() error {
@@ -189,14 +214,6 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 			return fmt.Errorf("client goals: %w", err)
 		}
 		goalsList = v
-		return nil
-	})
-	g.Go(func() error {
-		v, err := s.userRepo.GetBankAccounts(gCtx, userID)
-		if err != nil {
-			return fmt.Errorf("client bank accounts: %w", err)
-		}
-		bankAccts = v
 		return nil
 	})
 	g.Go(func() error {
@@ -221,6 +238,19 @@ func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+
+	summary, err := s.dashboard.Summarize(ctx, userID, inputs)
+	if err != nil {
+		return nil, fmt.Errorf("client summary: %w", err)
+	}
+
+	stockH := inputs.Holdings
+	var mfFolios []mfdomain.Folio
+	if inputs.MF != nil {
+		mfFolios = inputs.MF.Folios
+	}
+	fdAccts := inputs.FDAccounts
+	bankAccts := inputs.BankAccounts
 
 	banks := make([]rmdomain.BankAccount, 0, len(bankAccts))
 	for _, a := range bankAccts {
@@ -311,7 +341,7 @@ func (s *RMService) ClientGrowth(ctx context.Context, callerRMID uuid.UUID, isAd
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
 		return nil, err
 	}
-	return s.dashboard.GrowthHistory(ctx, userID, days)
+	return s.dashboard.GrowthHistory(ctx, userID, days, nil)
 }
 
 // PortfolioHistory returns how a client's asset allocation and portfolio

@@ -271,17 +271,22 @@ func (s *RMAuthService) Refresh(ctx context.Context, refreshToken string) (*rmdo
 		return nil, apiresponse.Validation("refresh_token is required")
 	}
 	hash := HashRefreshToken(refreshToken)
-	rt, err := s.repo.GetRefreshToken(ctx, hash)
+	refreshPlain, refreshHash, err := generateOpaqueToken()
 	if err != nil {
 		return nil, err
 	}
-	if rt == nil || rt.RevokedAt != nil || time.Now().After(rt.ExpiresAt) {
-		return nil, fmt.Errorf("invalid or expired refresh token: %w", apiresponse.ErrUnauthorized)
-	}
-	if err := s.repo.RevokeRefreshToken(ctx, hash); err != nil {
+	// RotateRefreshToken revokes the old token and inserts the new one in one
+	// transaction, so a failure partway through can't strand the staff
+	// member with a burned token and no replacement — see the app-side
+	// equivalent in internal/handler/auth.go for the full rationale.
+	rmID, ok, err := s.repo.RotateRefreshToken(ctx, hash, refreshHash, time.Now().Add(RefreshTokenTTL))
+	if err != nil {
 		return nil, err
 	}
-	staff, err := s.repo.GetByID(ctx, rt.RMID)
+	if !ok {
+		return nil, fmt.Errorf("invalid or expired refresh token: %w", apiresponse.ErrUnauthorized)
+	}
+	staff, err := s.repo.GetByID(ctx, rmID)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +296,16 @@ func (s *RMAuthService) Refresh(ctx context.Context, refreshToken string) (*rmdo
 	if staff.Status != rmdomain.StatusActive {
 		return nil, fmt.Errorf("account is inactive: %w", apiresponse.ErrForbidden)
 	}
-	return s.issueTokenPair(ctx, staff)
+	access, err := s.generateAccessToken(staff.ID, staff.Role)
+	if err != nil {
+		return nil, err
+	}
+	return &rmdomain.TokenPair{
+		AccessToken:  access,
+		RefreshToken: refreshPlain,
+		Role:         staff.Role,
+		RM:           staff.Public(),
+	}, nil
 }
 
 // Logout revokes the given refresh token.

@@ -117,10 +117,31 @@ func (s *Service) Generate(ctx context.Context, subject string, topic Topic, pay
 		MaxTokens:   s.cfg.MaxTokens,
 		Temperature: llm.Temp(s.cfg.Temperature),
 	})
-	if err != nil {
-		return Tip{}, err
-	}
-	if resp == nil || strings.TrimSpace(resp.Text) == "" {
+	if err != nil || resp == nil || strings.TrimSpace(resp.Text) == "" {
+		// Groq is the primary path; when it errors, times out, or comes back
+		// empty, fall back to a rule-based tip computed straight from the
+		// payload rather than surfacing "no tip" — the widget should degrade
+		// gracefully, not go blank.
+		if dt, ok := deterministicTip(topic, payload); ok {
+			s.log.Warn("advisortips: llm call failed, using deterministic fallback", "topic", topic, "error", err)
+			// Deliberately not cached: this is a degraded stand-in for the
+			// real tip, not a result worth locking in for CacheTTL. Caching
+			// it would mean a transient Groq blip (or this exact
+			// json_validate_failed class of error) keeps serving the
+			// rule-based tip for up to CacheTTL even after Groq recovers,
+			// instead of the next request just trying Groq again.
+			return Tip{
+				Topic:       topic,
+				Agent:       agent.Name,
+				Text:        dt,
+				Model:       "deterministic",
+				Provider:    "deterministic",
+				GeneratedAt: time.Now().UTC(),
+			}, nil
+		}
+		if err != nil {
+			return Tip{}, err
+		}
 		return Tip{}, fmt.Errorf("advisortips: %s agent returned an empty tip", agent.Name)
 	}
 

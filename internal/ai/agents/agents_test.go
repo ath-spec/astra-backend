@@ -29,11 +29,21 @@ func TestDefaults_PreserveInlineBehaviour(t *testing.T) {
 	}
 
 	nar := c.Get(KeyRMNarrator)
-	if nar.ResponseFormat != "json_object" {
-		t.Errorf("rm_narrator must request json_object, got %q", nar.ResponseFormat)
+	// Deliberately no response_format: Groq's json_object "best-effort" mode
+	// can itself 400 with json_validate_failed independent of whether the
+	// model's text would have parsed — we ask for JSON in the prompt and
+	// parse defensively instead (see generateNarrative), the same way
+	// z-backend's Groq calls (which never set response_format) never hit
+	// this error class.
+	if nar.ResponseFormat != "" {
+		t.Errorf("rm_narrator should not request a Groq response_format, got %q", nar.ResponseFormat)
 	}
-	if nar.MaxTokens != 2048 {
-		t.Errorf("rm_narrator max tokens = %d, want 2048", nar.MaxTokens)
+	// 4096 was itself a self-imposed cap (Groq allows up to 65,536 output
+	// tokens on both gpt-oss models) that started clipping again as the
+	// narrative prompt grew; 8192 gives real headroom without leaving the
+	// cap anywhere near Groq's actual max.
+	if nar.MaxTokens != 8192 {
+		t.Errorf("rm_narrator max tokens = %d, want 8192", nar.MaxTokens)
 	}
 	if nar.Temperature == nil || *nar.Temperature != 0.2 {
 		t.Errorf("rm_narrator temperature = %v, want 0.2", nar.Temperature)

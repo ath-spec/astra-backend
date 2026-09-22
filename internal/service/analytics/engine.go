@@ -188,38 +188,96 @@ func isWeekend(t time.Time) bool {
 	return wd == time.Saturday || wd == time.Sunday
 }
 
+// calendarBuckets returns numBuckets calendar-aligned [start, end] windows,
+// oldest first, for period "daily" (calendar days), "weekly" (Monday-Sunday
+// weeks) or "monthly" (calendar months). The last bucket is the current,
+// still-in-progress period — its end is capped at now rather than padded to
+// the period's natural end, so it never includes days that haven't happened.
+// Earlier buckets are full, closed periods.
+func calendarBuckets(now time.Time, period string, numBuckets int) (starts, ends []time.Time) {
+	starts = make([]time.Time, numBuckets)
+	ends = make([]time.Time, numBuckets)
+
+	switch period {
+	case "weekly":
+		// ISO week start (Monday) at midnight.
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		currentWeekStart := today.AddDate(0, 0, -(weekday - 1))
+		for i := numBuckets - 1; i >= 0; i-- {
+			back := numBuckets - 1 - i
+			start := currentWeekStart.AddDate(0, 0, -7*back)
+			end := start.AddDate(0, 0, 7).Add(-time.Nanosecond)
+			if i == numBuckets-1 {
+				end = now
+			}
+			starts[i], ends[i] = start, end
+		}
+	case "monthly":
+		currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		for i := numBuckets - 1; i >= 0; i-- {
+			back := numBuckets - 1 - i
+			start := currentMonthStart.AddDate(0, -back, 0)
+			end := start.AddDate(0, 1, 0).Add(-time.Nanosecond)
+			if i == numBuckets-1 {
+				end = now
+			}
+			starts[i], ends[i] = start, end
+		}
+	default: // "daily"
+		today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+		for i := numBuckets - 1; i >= 0; i-- {
+			back := numBuckets - 1 - i
+			start := today.AddDate(0, 0, -back)
+			end := start.AddDate(0, 0, 1).Add(-time.Nanosecond)
+			if i == numBuckets-1 {
+				end = now
+			}
+			starts[i], ends[i] = start, end
+		}
+	}
+	return starts, ends
+}
+
 // ============================== B: Trend analytics ==============================
 
 func TrendAnalytics(txns []txn, now time.Time, period string) analyticsdomain.TrendResult {
-	var bucketDays int
 	var numBuckets int
 	switch period {
 	case "weekly":
-		bucketDays, numBuckets = 7, 8
+		numBuckets = 8
 	case "monthly":
-		bucketDays, numBuckets = 30, 6
+		numBuckets = 6
 	default:
-		period, bucketDays, numBuckets = "daily", 1, 14
+		period, numBuckets = "daily", 14
 	}
 
-	windowStart := now.AddDate(0, 0, -bucketDays*numBuckets)
+	// Calendar-aligned buckets, not rolling N-day windows: each bucket is a
+	// real calendar day/week/month, and the most recent (current) bucket is
+	// naturally capped at "now" rather than padded out to a full period —
+	// so "this month"/"this week" here always matches what the Budget tab
+	// and every other calendar-period figure in the app shows for the same
+	// span, instead of a trailing-30-days window that silently bleeds into
+	// the previous period.
+	bucketStarts, bucketEnds := calendarBuckets(now, period, numBuckets)
+	windowStart := bucketStarts[0]
 	current := debitsInRange(txns, windowStart, now)
 
 	points := make([]analyticsdomain.TrendPoint, numBuckets)
 	totals := make([]float64, numBuckets)
 	for i := 0; i < numBuckets; i++ {
-		bucketStart := windowStart.AddDate(0, 0, i*bucketDays)
-		points[i] = analyticsdomain.TrendPoint{PeriodStart: apitime.New(bucketStart)}
+		points[i] = analyticsdomain.TrendPoint{PeriodStart: apitime.New(bucketStarts[i])}
 	}
 	for _, t := range current {
-		idx := int(t.OccurredAt.Sub(windowStart).Hours() / 24 / float64(bucketDays))
-		if idx < 0 {
-			idx = 0
+		for i := numBuckets - 1; i >= 0; i-- {
+			if inRange(t.OccurredAt, bucketStarts[i], bucketEnds[i]) {
+				totals[i] += t.Amount
+				break
+			}
 		}
-		if idx >= numBuckets {
-			idx = numBuckets - 1
-		}
-		totals[idx] += t.Amount
 	}
 	for i := range points {
 		points[i].Total = round2(totals[i])
@@ -267,7 +325,7 @@ func TrendAnalytics(txns []txn, now time.Time, period string) analyticsdomain.Tr
 		res.Direction = "FLAT"
 	}
 
-	windowTotalDays := float64(bucketDays * numBuckets)
+	windowTotalDays := math.Max(1, now.Sub(windowStart).Hours()/24)
 	res.SpendVelocityPerDay = round2(safeDiv(sumAmount(current), windowTotalDays))
 	res.Projected30Day = round2(res.SpendVelocityPerDay * 30)
 
@@ -296,8 +354,14 @@ func categoryTotals(txns []txn, from, to time.Time) map[string]float64 {
 }
 
 func CategoryTrend(txns []txn, now time.Time) analyticsdomain.CategoryTrendResult {
-	current := categoryTotals(txns, now.AddDate(0, 0, -30), now)
-	prior := categoryTotals(txns, now.AddDate(0, 0, -60), now.AddDate(0, 0, -30))
+	// Calendar month-to-date vs. the full previous calendar month — matches
+	// the Budget tab's "this month" figure exactly, instead of a trailing
+	// 30-day window that bleeds into last month's spend near the start of a
+	// new month and inflates the total relative to what Budget shows.
+	currentMonthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+	priorMonthStart := currentMonthStart.AddDate(0, -1, 0)
+	current := categoryTotals(txns, currentMonthStart, now)
+	prior := categoryTotals(txns, priorMonthStart, currentMonthStart.Add(-time.Nanosecond))
 
 	var currentTotal float64
 	for _, v := range current {
@@ -371,9 +435,17 @@ func CategoryMomentum(catTrend analyticsdomain.CategoryTrendResult) analyticsdom
 	}
 }
 
+// topN never returns nil, even for a nil/empty input: CategoryMomentum below
+// includes Rising or Falling in its response as soon as *either* one is
+// non-empty, so the other can independently reach the RM portal as a bare
+// nil slice (JSON `null`) while its sibling has entries — and the frontend
+// calls .length on both once the card renders at all.
 func topN(stats []analyticsdomain.CategoryStat, n int) []analyticsdomain.CategoryStat {
 	if len(stats) > n {
 		return stats[:n]
+	}
+	if stats == nil {
+		return []analyticsdomain.CategoryStat{}
 	}
 	return stats
 }
@@ -492,6 +564,22 @@ func MerchantAnalysis(txns []txn, now time.Time) analyticsdomain.MerchantAnalysi
 				Merchant: name, RecentTotal: round2(a.total), PriorVisitCount: olderVisits[name],
 			})
 		}
+	}
+
+	// FrequencySpikes/MoMSpikes/ReactivatedMerchants are only ever appended
+	// to above, so any of them staying at their nil zero-value (no spikes or
+	// reactivations found) serializes as JSON `null` instead of `[]`. The RM
+	// portal calls .length on these unconditionally once MerchantAnalysis
+	// itself is present (which only requires TopMerchants to be non-empty,
+	// not these siblings), so a null here crashes that screen.
+	if res.FrequencySpikes == nil {
+		res.FrequencySpikes = []analyticsdomain.MerchantStat{}
+	}
+	if res.MoMSpikes == nil {
+		res.MoMSpikes = []analyticsdomain.MerchantStat{}
+	}
+	if res.ReactivatedMerchants == nil {
+		res.ReactivatedMerchants = []analyticsdomain.ReactivatedMerchant{}
 	}
 
 	return res

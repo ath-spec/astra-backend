@@ -36,6 +36,8 @@ type RMUserRepository interface {
 	CreateRefreshToken(ctx context.Context, rmID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RMRefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (rmID uuid.UUID, ok bool, err error)
+	RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (rmID uuid.UUID, ok bool, err error)
 
 	// OTP login codes.
 	CreateOTP(ctx context.Context, rmID uuid.UUID, codeHash string, expiresAt time.Time) error
@@ -286,6 +288,63 @@ func (r *PostgresRMUserRepository) RevokeRefreshToken(ctx context.Context, token
 		return fmt.Errorf("revoke rm refresh token: %w", err)
 	}
 	return nil
+}
+
+// RotateRefreshToken atomically revokes oldHash and inserts newHash as its
+// replacement in one transaction — see the app-side
+// PostgresUserRepository.RotateRefreshToken for why revoke-then-separately-
+// create is unsafe without it.
+func (r *PostgresRMUserRepository) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (uuid.UUID, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("begin rm refresh rotation: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var rmID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE rm_refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING rm_id
+	`, oldHash).Scan(&rmID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume rm refresh token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO rm_refresh_tokens (rm_id, token_hash, expires_at) VALUES ($1, $2, $3)
+	`, rmID, newHash, newExpiresAt); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("create rm refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("commit rm refresh rotation: %w", err)
+	}
+	return rmID, true, nil
+}
+
+// ConsumeRefreshToken validates and revokes in one atomic statement — see the
+// app-side PostgresUserRepository.ConsumeRefreshToken for why the separate
+// GetRefreshToken+RevokeRefreshToken pair it replaces was a TOCTOU race.
+func (r *PostgresRMUserRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, bool, error) {
+	var rmID uuid.UUID
+	err := r.pool.QueryRow(ctx, `
+		UPDATE rm_refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING rm_id
+	`, tokenHash).Scan(&rmID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume rm refresh token: %w", err)
+	}
+	return rmID, true, nil
 }
 
 // --- Assignment repository ---
@@ -753,7 +812,7 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 		       hist.created_at AS assigned_at,
 		       (SELECT COUNT(*) FROM goals g WHERE g.user_id = u.id) AS goals_count,
 		       s.total_wealth, s.mutual_funds_value, s.stocks_value, s.fixed_deposits_value, s.bank_balance_value,
-		       prev.total_wealth AS prev_wealth
+		       s.snapshot_date, prev.total_wealth AS prev_wealth
 		FROM users u
 		LEFT JOIN rm_users r ON r.id = u.assigned_rm_id
 		LEFT JOIN LATERAL (
@@ -796,10 +855,11 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 			assignedT          *time.Time
 			total              *float64
 			mfv, stv, fdv, bkv *float64
+			snapshotDate       *time.Time
 			prev               *float64
 		)
 		if err := rows.Scan(&it.UserID, &name, &phone, &joined, &rmUUID, &rmName, &pan, &assignedT,
-			&it.GoalsCount, &total, &mfv, &stv, &fdv, &bkv, &prev); err != nil {
+			&it.GoalsCount, &total, &mfv, &stv, &fdv, &bkv, &snapshotDate, &prev); err != nil {
 			return nil, 0, fmt.Errorf("scan client row: %w", err)
 		}
 		if name != nil {
@@ -815,6 +875,10 @@ func (r *PostgresAssignmentRepository) ListClients(ctx context.Context, rmID *uu
 		if assignedT != nil {
 			at := apitime.New(*assignedT)
 			it.AssignedAt = &at
+		}
+		if snapshotDate != nil {
+			sd := apitime.New(*snapshotDate)
+			it.SnapshotDate = &sd
 		}
 		if total != nil {
 			it.TotalWealth = round2(*total)

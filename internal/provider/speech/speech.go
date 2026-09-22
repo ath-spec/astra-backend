@@ -10,6 +10,8 @@ package speech
 import (
 	"context"
 	"errors"
+
+	"github.com/gorilla/websocket"
 )
 
 // TTSRequest is a text-to-speech call.
@@ -44,6 +46,13 @@ type STTResult struct {
 type Provider interface {
 	TextToSpeech(ctx context.Context, req TTSRequest) (*TTSResult, error)
 	SpeechToText(ctx context.Context, req STTRequest) (*STTResult, error)
+	// SpeechToTextStream proxies a live, already-upgraded client WebSocket to
+	// the backend's realtime STT stream (Sarvam's speech-to-text-realtime
+	// today), pumping audio frames one way and transcript events the other,
+	// with no fixed language — the backend auto-detects as the user speaks.
+	// It blocks until either side disconnects or ctx is cancelled, and never
+	// closes clientConn (the caller owns and closes it).
+	SpeechToTextStream(ctx context.Context, clientConn *websocket.Conn, language string) error
 	Name() string
 }
 

@@ -14,6 +14,11 @@ COPY bin-prod/seed_idbi_customers .
 COPY start.sh .
 COPY internal/database/migrations ./migrations
 COPY ["docs/IDBI APIs - Data.csv", "./docs/IDBI APIs - Data.csv"]
+# MockTransport (internal/provider/idbi/mock_transport.go) reads these
+# captured request/response fixtures at runtime by relative path
+# (internal/provider/idbi/testdata) whenever IDBI_BASE_URL=mock://sandbox —
+# without this, every mocked IDBI gateway call 404s in production.
+COPY internal/provider/idbi/testdata ./internal/provider/idbi/testdata
 
 # Expose port 8080 to the outside world
 EXPOSE 8080

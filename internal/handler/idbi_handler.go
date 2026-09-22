@@ -1,11 +1,16 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 
 	"github.com/yourusername/astra-backend/internal/apiresponse"
 	"github.com/yourusername/astra-backend/internal/middleware"
@@ -26,10 +31,37 @@ type IDBIHandler struct {
 	loans    *idbiloans.Service
 	credit   *creditscore.Service
 	leads    *idbileads.Service
+
+	spendSyncInFlight sync.Map // userID -> struct{}
 }
 
 func NewIDBIHandler(accounts *idbiaccounts.Service, spend *statementsync.Service, loans *idbiloans.Service, credit *creditscore.Service, leads *idbileads.Service) *IDBIHandler {
 	return &IDBIHandler{accounts: accounts, spend: spend, loans: loans, credit: credit, leads: leads}
+}
+
+// triggerSpendSyncInBackground pulls the user's real transaction history into
+// spend_transactions right after their accounts are (re)mirrored, so the
+// Transactions screen shows data that matches the balances/accounts already
+// visible instead of staying empty until someone happens to call
+// POST /spend/refresh by hand — which nothing in the app ever does.
+// Deduped per user so overlapping account refreshes don't pile up syncs.
+func (h *IDBIHandler) triggerSpendSyncInBackground(userID uuid.UUID) {
+	if h.spend == nil {
+		return
+	}
+	if _, busy := h.spendSyncInFlight.LoadOrStore(userID, struct{}{}); busy {
+		return
+	}
+	go func() {
+		defer h.spendSyncInFlight.Delete(userID)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		if n, err := h.spend.SyncUser(ctx, userID); err != nil {
+			slog.Warn("idbi: background spend sync failed", "user", userID, "error", err)
+		} else {
+			slog.Info("idbi: background spend sync done", "user", userID, "rows", n)
+		}
+	}()
 }
 
 // Enabled reports whether at least one sub-feature is on (so main can decide
@@ -170,6 +202,7 @@ func (h *IDBIHandler) linkCustomer(w http.ResponseWriter, r *http.Request) {
 		} else {
 			accts, _ := h.accounts.List(r.Context(), userID)
 			resp["accounts"] = accts
+			h.triggerSpendSyncInBackground(userID)
 		}
 	}
 	apiresponse.OK(w, resp)
@@ -208,6 +241,7 @@ func (h *IDBIHandler) refreshAccounts(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	h.triggerSpendSyncInBackground(userID)
 	apiresponse.OK(w, map[string]any{"accounts": accts, "refreshed": true})
 }
 

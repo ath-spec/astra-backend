@@ -42,15 +42,33 @@ type RefreshToken struct {
 }
 
 type UserRepository interface {
-	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (user *User, isNew bool, err error)
+	// wantsRM is a pointer so a caller that omits the field (e.g. a re-auth
+	// call that isn't the signup form) leaves the user's existing opt-in
+	// untouched instead of silently resetting it to false and unassigning
+	// their RM. nil means "don't change it"; a new user with nil defaults
+	// to false (opted out) since there is nothing to preserve yet.
+	FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM *bool, uiBanks interface{}) (user *User, isNew bool, err error)
 	UpdateUserName(ctx context.Context, userID uuid.UUID, name string) error
 	GetByID(ctx context.Context, userID uuid.UUID) (*User, error)
+	GetLatestVerifiedPAN(ctx context.Context, userID uuid.UUID) (string, error)
 	GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error)
 	GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error)
 
 	CreateRefreshToken(ctx context.Context, userID uuid.UUID, tokenHash string, expiresAt time.Time) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
+	// ConsumeRefreshToken atomically validates and revokes a refresh token in
+	// one statement, returning the owning user ID only if this call is the
+	// one that flipped it from unused to revoked. Two concurrent replays of
+	// the same token (e.g. a leaked token used from two places at once, or a
+	// client-side race) can otherwise both pass a separate "is it revoked?"
+	// read before either write lands, and both mint a valid new token pair
+	// from what should be a single-use token. Callers MUST use this instead
+	// of GetRefreshToken+RevokeRefreshToken for the rotate-on-use flow.
+	ConsumeRefreshToken(ctx context.Context, tokenHash string) (userID uuid.UUID, ok bool, err error)
+	// RotateRefreshToken is ConsumeRefreshToken plus issuing the replacement,
+	// both in one transaction. Use this for the refresh-endpoint flow.
+	RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (userID uuid.UUID, ok bool, err error)
 	DeleteUserByPhone(ctx context.Context, phoneNumber string) error
 }
 
@@ -75,17 +93,21 @@ func (r *PostgresUserRepository) SetAssigner(a AssignmentRepository) {
 	r.assigner = a
 }
 
-func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM bool, uiBanks interface{}) (*User, bool, error) {
+func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUserID, phoneNumber, name string, wantsRM *bool, uiBanks interface{}) (*User, bool, error) {
 	if existing, err := r.findByPhone(ctx, phoneNumber); err != nil {
 		return nil, false, err
 	} else if existing != nil {
-		// Keep the stored name in sync with what the client sends on verify.
-		// The account row is created on the first OTP verify (often with a
-		// placeholder name), but the user sets / corrects their real name
-		// during onboarding, which happens after the row already exists and
-		// hits verify again. Only a non-empty, changed name is written — a
-		// blank never overwrites a good one.
-		if trimmed := strings.TrimSpace(name); trimmed != "" && (existing.Name == nil || *existing.Name != trimmed) {
+		// Fill in the name ONLY while none is set yet. The account row is
+		// created on the first OTP verify (often with a placeholder name),
+		// and the user corrects it during onboarding via a second verify
+		// call before any real name exists — that's the case this backfills.
+		// The mobile app sends *some* name on every verify call, including
+		// plain returning-user logins (it defaults to a placeholder like
+		// "Investor" when the login screen never asked for one), so once a
+		// real name is stored it must never be overwritten here again — a
+		// deliberate name change belongs to the dedicated profile-update
+		// endpoint, not the login path.
+		if trimmed := strings.TrimSpace(name); trimmed != "" && (existing.Name == nil || *existing.Name == "") {
 			if _, err := r.db.Pool.Exec(ctx,
 				`UPDATE users SET name = $1 WHERE id = $2`, trimmed, existing.ID); err != nil {
 				return nil, false, fmt.Errorf("update user name: %w", err)
@@ -94,16 +116,21 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		}
 		// Honour a change to the advisory opt-in: turning it on assigns an RM
 		// if the user has none; turning it off releases their current RM.
-		if wantsRM != existing.WantsRM {
+		// wantsRM == nil means the caller (e.g. a background re-auth call
+		// that isn't the signup form) has no opinion — leave it as-is rather
+		// than treating "field omitted" as "opt out".
+		if wantsRM != nil && *wantsRM != existing.WantsRM {
 			if _, err := r.db.Pool.Exec(ctx,
-				`UPDATE users SET wants_rm = $1 WHERE id = $2`, wantsRM, existing.ID); err != nil {
+				`UPDATE users SET wants_rm = $1 WHERE id = $2`, *wantsRM, existing.ID); err != nil {
 				return nil, false, fmt.Errorf("update user wants_rm: %w", err)
 			}
-			existing.WantsRM = wantsRM
-			r.syncRMAssignment(ctx, existing.ID, wantsRM)
+			existing.WantsRM = *wantsRM
+			r.syncRMAssignment(ctx, existing.ID, *wantsRM)
 		}
 		return existing, false, nil
 	}
+
+	newUserWantsRM := wantsRM != nil && *wantsRM
 
 	var user User
 	var isNew bool
@@ -112,7 +139,7 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 		VALUES (gen_random_uuid(), $1, $2, $3, $4)
 		ON CONFLICT (phone_number) DO UPDATE SET phone_number = EXCLUDED.phone_number
 		RETURNING id, astra_user_id, phone_number, name, wants_rm, created_at, (xmax = 0) AS is_new
-	`, astraUserID, phoneNumber, name, wantsRM).Scan(
+	`, astraUserID, phoneNumber, name, newUserWantsRM).Scan(
 		&user.ID,
 		&user.AstraUserID,
 		&user.PhoneNumber,
@@ -138,7 +165,7 @@ func (r *PostgresUserRepository) FindOrCreateUser(ctx context.Context, astraUser
 	// a failure here (no active RMs, transient DB error) must never block
 	// signup — the user is created either way and, if they wanted an RM,
 	// shows up in the admin console's unassigned pool.
-	if wantsRM && r.assigner != nil {
+	if newUserWantsRM && r.assigner != nil {
 		if _, err := r.assigner.AssignNextRM(ctx, user.ID); err != nil && !errors.Is(err, ErrNoActiveRM) {
 			fmt.Printf("user_repo: auto-assign RM for user %s failed: %v\n", user.ID, err)
 		}
@@ -199,6 +226,26 @@ func (r *PostgresUserRepository) GetByID(ctx context.Context, userID uuid.UUID) 
 	return &user, nil
 }
 
+// GetLatestVerifiedPAN returns the PAN from this user's most recent CKYC
+// verification (idbi_ckyc, written by POST /api/v1/kyc/pan/verify), or ""
+// if they've never completed that step. This is the only place a user's PAN
+// is actually persisted server-side — the account-details screen previously
+// relied solely on a client-side value collected during onboarding that was
+// never sent anywhere and never survived an app restart.
+func (r *PostgresUserRepository) GetLatestVerifiedPAN(ctx context.Context, userID uuid.UUID) (string, error) {
+	var pan string
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT pan FROM idbi_ckyc WHERE user_id = $1 ORDER BY verified_at DESC LIMIT 1
+	`, userID).Scan(&pan)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("get latest verified pan: %w", err)
+	}
+	return pan, nil
+}
+
 func (r *PostgresUserRepository) findByPhone(ctx context.Context, phoneNumber string) (*User, error) {
 	var user User
 	err := r.db.Pool.QueryRow(ctx, `
@@ -219,6 +266,36 @@ func (r *PostgresUserRepository) findByPhone(ctx context.Context, phoneNumber st
 func (r *PostgresUserRepository) DeleteUserByPhone(ctx context.Context, phoneNumber string) error {
 	_, err := r.db.Pool.Exec(ctx, `DELETE FROM users WHERE phone_number = $1`, phoneNumber)
 	return err
+}
+
+// SeedBankDependentData creates this user's demo FD + mandate rows against a
+// bank account they actually linked themselves (discover -> APPROVE AND
+// CONNECT, or the manual "connect more accounts" picker) — never a
+// hardcoded bank_accounts row inserted at signup before any consent. Called
+// by AAHandler.AddAccount the first time a user's bank_accounts goes from
+// zero to one; a no-op (every insert here is ON CONFLICT DO NOTHING, keyed
+// off fixed demo IDs) if called again for a later account. Uses the same
+// phone-number archetype hash as seedInitialUserData so a given user always
+// gets the FD/mandate flavor matching whatever holdings/goals they were
+// already seeded with.
+func (r *PostgresUserRepository) SeedBankDependentData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	user, err := r.GetByID(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("seed bank dependent data: %w", err)
+	}
+	sum := sha256.Sum256([]byte(user.PhoneNumber + userID.String()))
+	archetype := int(binary.BigEndian.Uint32(sum[:4]) % 4)
+
+	switch archetype {
+	case 0:
+		return r.seedTechGrowthBankData(ctx, userID, bankAccountID)
+	case 1:
+		return r.seedBalancedWealthBankData(ctx, userID, bankAccountID)
+	case 2:
+		return r.seedGlobalMultiAssetBankData(ctx, userID, bankAccountID)
+	default:
+		return r.seedConservativeIncomeBankData(ctx, userID, bankAccountID)
+	}
 }
 
 // seedInitialUserData selects from 4 distinct, rich investor archetypes based on phone number hash,
@@ -248,24 +325,9 @@ func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID
 	return r.seedSpendHistory(ctx, userID, spendProfiles[archetype])
 }
 
+
 // Archetype 0: Tech & Semiconductor Growth Investor
 func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'ICICI Bank - Wealth', 'SAVINGS', 345000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'HDFC Bank - Savings', 'SAVINGS', 185000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -312,20 +374,6 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-TECH-901', $1, $2, 75000.00, 7.25, 18, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 40, CURRENT_DATE + 505, 83450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-TECH-01', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'Mirae AI & Tech SIP', 'mirae@upi', 6000.00, 'MONTHLY', CURRENT_DATE - 270, CURRENT_DATE + 5, 'ACTIVE'),
-		('MND-TECH-02', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'ICICI Tech Fund SIP', 'icici@upi', 4000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 12, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'AI Venture Angel Fund', 'INVESTMENT', 5000000.00, 1850000.00, CURRENT_DATE + 1460, 'IN_PROGRESS'),
@@ -337,24 +385,29 @@ func (r *PostgresUserRepository) seedTechGrowthArchetype(ctx context.Context, us
 	return r.seedPortfolioSnapshots(ctx, userID, 365, 2850000.0, 3950000.0)
 }
 
+// seedTechGrowthBankData creates the demo FD + mandates tied to a real,
+// user-approved bank account (see SeedBankDependentData) instead of a
+// hardcoded bank_accounts row inserted at signup before the user ever
+// consented to linking anything.
+func (r *PostgresUserRepository) seedTechGrowthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-TECH-901', $1, $2, 75000.00, 7.25, 18, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 40, CURRENT_DATE + 505, 83450.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-TECH-01', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'Mirae AI & Tech SIP', 'mirae@upi', 6000.00, 'MONTHLY', CURRENT_DATE - 270, CURRENT_DATE + 5, 'ACTIVE'),
+		('MND-TECH-02', $1, $2, 'UPI_AUTOPAY', 'user@okicici', 'ICICI Tech Fund SIP', 'icici@upi', 4000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 12, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 1: Balanced Bluechip & Flexicap Wealth Builder
 func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'HDFC Bank - Salary', 'SAVINGS', 265000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'State Bank of India - Savings', 'SAVINGS', 95000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -401,20 +454,6 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-BAL-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-BAL-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
-		('MND-BAL-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'Home Down Payment', 'HOME', 3500000.00, 1250000.00, CURRENT_DATE + 1095, 'IN_PROGRESS'),
@@ -426,24 +465,26 @@ func (r *PostgresUserRepository) seedBalancedWealthArchetype(ctx context.Context
 	return r.seedPortfolioSnapshots(ctx, userID, 180, 1650000.0, 2480000.0)
 }
 
+// seedBalancedWealthBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedBalancedWealthBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-BAL-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-BAL-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
+		('MND-BAL-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 2: Global Markets, Gold & REITs Diversifier
 func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Axis Bank - Priority', 'SAVINGS', 390000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'Bank of Baroda - Savings', 'SAVINGS', 140000.00)
-		ON CONFLICT DO NOTHING
-	`, userID)
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -496,20 +537,6 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-GLOB-301', $1, $2, 60000.00, 7.40, 24, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 120, CURRENT_DATE + 610, 69450.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-GLOB-01', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Nasdaq 100 Index SIP', 'motilal@upi', 7500.00, 'MONTHLY', CURRENT_DATE - 210, CURRENT_DATE + 3, 'ACTIVE'),
-		('MND-GLOB-02', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Kotak Gold SIP', 'kotak@upi', 2500.00, 'MONTHLY', CURRENT_DATE - 150, CURRENT_DATE + 18, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'European Sabbatical', 'TRAVEL', 800000.00, 450000.00, CURRENT_DATE + 540, 'IN_PROGRESS'),
@@ -521,18 +548,26 @@ func (r *PostgresUserRepository) seedGlobalMultiAssetArchetype(ctx context.Conte
 	return r.seedPortfolioSnapshots(ctx, userID, 90, 2100000.0, 2650000.0)
 }
 
+// seedGlobalMultiAssetBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedGlobalMultiAssetBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES ('FD-GLOB-301', $1, $2, 60000.00, 7.40, 24, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 120, CURRENT_DATE + 610, 69450.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-GLOB-01', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Nasdaq 100 Index SIP', 'motilal@upi', 7500.00, 'MONTHLY', CURRENT_DATE - 210, CURRENT_DATE + 3, 'ACTIVE'),
+		('MND-GLOB-02', $1, $2, 'UPI_AUTOPAY', 'user@okaxis', 'Kotak Gold SIP', 'kotak@upi', 2500.00, 'MONTHLY', CURRENT_DATE - 150, CURRENT_DATE + 18, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
+}
+
 // Archetype 3: Conservative Hybrid & Capital Preservation Planner
 func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Context, userID uuid.UUID) error {
-	var primaryBankID uuid.UUID
-	err := r.db.Pool.QueryRow(ctx, `
-		INSERT INTO bank_accounts (user_id, bank_name, account_type, balance)
-		VALUES ($1, 'State Bank of India - Savings', 'SAVINGS', 480000.00)
-		RETURNING id
-	`, userID).Scan(&primaryBankID)
-	if err != nil {
-		return err
-	}
-
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -574,21 +609,6 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 	}
 
 	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES
-		('FD-CONS-401', $1, $2, 120000.00, 7.50, 36, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 90, CURRENT_DATE + 1005, 149850.00, 'ACTIVE'),
-		('FD-CONS-402', $1, $2, 80000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 30, CURRENT_DATE + 335, 85830.00, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
-		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
-		VALUES
-		('MND-CONS-01', $1, $2, 'UPI_AUTOPAY', 'user@oksbi', 'HDFC Corporate Bond SIP', 'hdfc@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 20, 'ACTIVE')
-		ON CONFLICT DO NOTHING
-	`, userID, primaryBankID)
-
-	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO goals (user_id, title, category, target_amount, current_amount, target_date, status)
 		VALUES
 		($1, 'Child Higher Education', 'EDUCATION', 4000000.00, 2100000.00, CURRENT_DATE + 1825, 'IN_PROGRESS'),
@@ -598,6 +618,25 @@ func (r *PostgresUserRepository) seedConservativeIncomeArchetype(ctx context.Con
 
 	// Seed 30 days of portfolio history.
 	return r.seedPortfolioSnapshots(ctx, userID, 30, 3400000.0, 3720000.0)
+}
+
+// seedConservativeIncomeBankData — see seedTechGrowthBankData.
+func (r *PostgresUserRepository) seedConservativeIncomeBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	_, _ = r.db.Pool.Exec(ctx, `
+		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
+		VALUES
+		('FD-CONS-401', $1, $2, 120000.00, 7.50, 36, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 90, CURRENT_DATE + 1005, 149850.00, 'ACTIVE'),
+		('FD-CONS-402', $1, $2, 80000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 30, CURRENT_DATE + 335, 85830.00, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, max_amount, frequency, mandate_start_date, next_debit_date, status)
+		VALUES
+		('MND-CONS-01', $1, $2, 'UPI_AUTOPAY', 'user@oksbi', 'HDFC Corporate Bond SIP', 'hdfc@upi', 5000.00, 'MONTHLY', CURRENT_DATE - 180, CURRENT_DATE + 20, 'ACTIVE')
+		ON CONFLICT DO NOTHING
+	`, userID, bankAccountID)
+	return err
 }
 
 // seedPortfolioSnapshots backfills `days` daily rows in portfolio_snapshots,
@@ -629,7 +668,7 @@ func (r *PostgresUserRepository) seedPortfolioSnapshots(
 }
 
 func (r *PostgresUserRepository) GetBankAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccount, error) {
-	rows, err := r.db.Pool.Query(ctx, `SELECT id, bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1 ORDER BY created_at`, userID)
+	rows, err := r.db.Pool.Query(ctx, `SELECT id, bank_name, account_type, balance FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL ORDER BY created_at`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("query bank accounts: %w", err)
 	}
@@ -682,11 +721,79 @@ func (r *PostgresUserRepository) RevokeRefreshToken(ctx context.Context, tokenHa
 	return nil
 }
 
+// RotateRefreshToken atomically revokes oldHash and inserts newHash as its
+// replacement in a single DB transaction. Without the transaction, a caller
+// doing "ConsumeRefreshToken, then separately CreateRefreshToken" could have
+// the revoke succeed and the create fail (a dropped connection, a full disk,
+// any transient DB error between the two calls) — leaving the user's old
+// token burned and no new one issued, stranding them with no way back in
+// except a full re-login. Wrapping both in one transaction means either the
+// whole rotation lands or none of it does; the old token stays valid to
+// retry against if the create step fails.
+func (r *PostgresUserRepository) RotateRefreshToken(ctx context.Context, oldHash, newHash string, newExpiresAt time.Time) (uuid.UUID, bool, error) {
+	tx, err := r.db.Pool.Begin(ctx)
+	if err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("begin refresh rotation: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var userID uuid.UUID
+	err = tx.QueryRow(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING user_id
+	`, oldHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume refresh token: %w", err)
+	}
+
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+		VALUES ($1, $2, $3)
+	`, userID, newHash, newExpiresAt); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("create refresh token: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return uuid.UUID{}, false, fmt.Errorf("commit refresh rotation: %w", err)
+	}
+	return userID, true, nil
+}
+
+// ConsumeRefreshToken validates and revokes in a single atomic statement: the
+// WHERE clause re-checks not-revoked/not-expired at the same instant the row
+// is claimed, so of any number of concurrent callers passing the same
+// tokenHash, exactly one gets ok=true (and the user ID), and the rest get
+// ok=false immediately — no separate read-then-write window for two callers
+// to both see "still valid" before either commits. Prefer RotateRefreshToken
+// above for the rotate-on-refresh flow; this is kept for logout-style
+// call sites that only need to revoke without issuing a replacement.
+func (r *PostgresUserRepository) ConsumeRefreshToken(ctx context.Context, tokenHash string) (uuid.UUID, bool, error) {
+	var userID uuid.UUID
+	err := r.db.Pool.QueryRow(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = now()
+		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+		RETURNING user_id
+	`, tokenHash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.UUID{}, false, nil
+		}
+		return uuid.UUID{}, false, fmt.Errorf("consume refresh token: %w", err)
+	}
+	return userID, true, nil
+}
+
 func (r *PostgresUserRepository) GetPrimaryBankAccount(ctx context.Context, userID uuid.UUID) (*BankAccount, error) {
 	var acc BankAccount
 	err := r.db.Pool.QueryRow(ctx, `
 		SELECT id, bank_name, account_type, balance
-		FROM bank_accounts WHERE user_id = $1
+		FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
 		ORDER BY created_at LIMIT 1
 	`, userID).Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance)
 	if err != nil {

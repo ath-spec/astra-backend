@@ -263,7 +263,7 @@ func (s *RMService) ClientAdvisory(ctx context.Context, callerRMID uuid.UUID, is
 func (s *RMService) computeIdleCash(ctx context.Context, userID uuid.UUID) (*rmdomain.IdleCashResult, error) {
 	var bank, debit90 float64
 	if err := s.pool.QueryRow(ctx,
-		`SELECT COALESCE(SUM(balance),0) FROM bank_accounts WHERE user_id = $1`, userID,
+		`SELECT COALESCE(SUM(balance),0) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID,
 	).Scan(&bank); err != nil {
 		return nil, fmt.Errorf("idle cash bank: %w", err)
 	}
@@ -670,7 +670,7 @@ func (s *RMService) BookInsights(ctx context.Context, rmID uuid.UUID) (*rmdomain
 				GROUP BY user_id
 			), bank AS (
 				SELECT user_id, COALESCE(SUM(balance), 0) AS bal
-				FROM bank_accounts GROUP BY user_id
+				FROM bank_accounts WHERE unlinked_at IS NULL GROUP BY user_id
 			)
 			SELECT b.user_id, u.name, COALESCE(u.phone_number, ''), b.bal, COALESCE(s.avg_monthly, 0)
 			FROM bank b

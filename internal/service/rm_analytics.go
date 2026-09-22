@@ -390,22 +390,39 @@ func (s *RMService) computeCohort(ctx context.Context, userID uuid.UUID) ([]rmdo
 	// Two cheap, comparable proxies per client:
 	//   growth6m  = latest / (<=180d ago) wealth - 1
 	//   invest90d = MF+stock buys in the last 90 days
+	// peers is filtered first and joined into every CTE below so each one
+	// only ever touches this RM's own clients. Without it, latest/prior/
+	// invest each did a DISTINCT ON / SUM over portfolio_snapshots,
+	// mf_transactions and stock_orders for EVERY user in the system on
+	// every single cohort request, then threw away everyone but this RM's
+	// clients in the final WHERE — a full-table scan repeated per request
+	// that only gets worse as the user base grows, for output that only
+	// ever needed a handful of rows.
 	rows, err := s.pool.Query(ctx, `
-		WITH latest AS (
-			SELECT DISTINCT ON (user_id) user_id, total_wealth
-			FROM portfolio_snapshots ORDER BY user_id, snapshot_date DESC
+		WITH peers AS (
+			SELECT id FROM users WHERE assigned_rm_id = $1
+		), latest AS (
+			SELECT DISTINCT ON (ps.user_id) ps.user_id, ps.total_wealth
+			FROM portfolio_snapshots ps
+			JOIN peers pe ON pe.id = ps.user_id
+			ORDER BY ps.user_id, ps.snapshot_date DESC
 		), prior AS (
-			SELECT DISTINCT ON (user_id) user_id, total_wealth
-			FROM portfolio_snapshots WHERE snapshot_date <= CURRENT_DATE - 180
-			ORDER BY user_id, snapshot_date DESC
+			SELECT DISTINCT ON (ps.user_id) ps.user_id, ps.total_wealth
+			FROM portfolio_snapshots ps
+			JOIN peers pe ON pe.id = ps.user_id
+			WHERE ps.snapshot_date <= CURRENT_DATE - 180
+			ORDER BY ps.user_id, ps.snapshot_date DESC
 		), invest AS (
 			SELECT user_id, SUM(amt) AS v FROM (
 				SELECT f.user_id, t.amount AS amt
-				FROM mf_transactions t JOIN mf_folios f ON f.id = t.folio_id
+				FROM mf_transactions t
+				JOIN mf_folios f ON f.id = t.folio_id
+				JOIN peers pe ON pe.id = f.user_id
 				WHERE t.transaction_type IN ('PURCHASE','SIP') AND t.transaction_date >= CURRENT_DATE - 90
 				UNION ALL
 				SELECT o.user_id, o.quantity * COALESCE(o.average_price, o.price, 0)
 				FROM stock_orders o
+				JOIN peers pe ON pe.id = o.user_id
 				WHERE o.transaction_type = 'BUY' AND o.status = 'COMPLETE' AND o.order_timestamp >= now() - INTERVAL '90 days'
 			) x GROUP BY user_id
 		)

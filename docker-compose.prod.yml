@@ -37,10 +37,16 @@ services:
       - LLM_PROVIDER=groq
       - GROQ_API_KEY=${GROQ_API_KEY}
       - SARVAM_API_KEY=${SARVAM_API_KEY}
+      - MASTER_INTERNAL_KEY=${MASTER_INTERNAL_KEY:-}
+      - RM_SEED_ON_BOOT=${RM_SEED_ON_BOOT:-false}
+      - RM_OTP_DEV_CODE=${RM_OTP_DEV_CODE:-}
+      - BUDGET_ML_BASE_URL=${BUDGET_ML_BASE_URL:-}
+      - BUDGET_ML_TOKEN=${BUDGET_ML_TOKEN:-}
       # Production IDBI / Mocks
       - IDBI_BASE_URL=mock://sandbox
       - IDBI_ACCOUNTS_ENABLED=true
       - IDBI_SPEND_ENABLED=true
+      - IDBI_SPEND_SYNC_SCHEDULER=true
       - IDBI_LOANS_ENABLED=true
       - IDBI_KYC_ENABLED=true
       - IDBI_CREDIT_SCORE_ENABLED=true
