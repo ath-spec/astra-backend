@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/yourusername/astra-backend/internal/database"
-	"github.com/yourusername/astra-backend/internal/discoverypool"
 )
 
 type User struct {
