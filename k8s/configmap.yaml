@@ -27,3 +27,4 @@ data:
   IDBI_AA_PRODUCT_ID: "TEST"
   IDBI_AA_VUA_SUFFIX: "@onemoney"
   RM_OTP_DEV_CODE: "123456"
+  RM_SEED_ON_BOOT: "true"
