@@ -48,6 +48,12 @@ type memChatRepo struct{ saved *repository.ChatSession }
 func (m *memChatRepo) GetSessionForUser(_ context.Context, uid uuid.UUID) (*repository.ChatSession, error) {
 	return &repository.ChatSession{UserID: uid}, nil
 }
+func (m *memChatRepo) GetSessionByID(_ context.Context, uid, sid uuid.UUID) (*repository.ChatSession, error) {
+	return &repository.ChatSession{ID: sid, UserID: uid}, nil
+}
+func (m *memChatRepo) ListSessionsForUser(_ context.Context, _ uuid.UUID) ([]repository.ChatSessionSummary, error) {
+	return nil, nil
+}
 func (m *memChatRepo) SaveSession(_ context.Context, s *repository.ChatSession) error {
 	m.saved = s
 	return nil
@@ -69,7 +75,7 @@ func TestGetChatCompletion_ReWrapsIntoOpenAIEnvelope(t *testing.T) {
 		{"role": "system", "content": "you are ASTRA"},
 		{"role": "user", "content": "market fell 3%"},
 	}
-	body, status, err := svc.GetChatCompletion(context.Background(), uuid.New(), msgs, false)
+	body, status, err := svc.GetChatCompletion(context.Background(), uuid.New(), uuid.New(), msgs, false)
 	if err != nil || status != 200 {
 		t.Fatalf("status=%d err=%v", status, err)
 	}
@@ -119,7 +125,7 @@ func TestGetChatCompletion_QuickSelectsNavPillAgent(t *testing.T) {
 	p := &fakeLLMProvider{resp: &llm.Response{Text: "ok"}}
 	svc := newTestAI(p, &fakeSpeech{}, &memChatRepo{})
 
-	_, _, err := svc.GetChatCompletion(context.Background(), uuid.New(),
+	_, _, err := svc.GetChatCompletion(context.Background(), uuid.New(), uuid.New(),
 		[]map[string]interface{}{{"role": "user", "content": "hi"}}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -134,7 +140,7 @@ func TestGetChatCompletion_UnconfiguredDegradesTo503(t *testing.T) {
 	p := &fakeLLMProvider{err: llm.ErrNotConfigured}
 	svc := newTestAI(p, &fakeSpeech{}, &memChatRepo{})
 
-	body, status, err := svc.GetChatCompletion(context.Background(), uuid.New(),
+	body, status, err := svc.GetChatCompletion(context.Background(), uuid.New(), uuid.New(),
 		[]map[string]interface{}{{"role": "user", "content": "hi"}}, false)
 	if err != nil {
 		t.Errorf("ErrNotConfigured should not surface as a hard error, got %v", err)
@@ -151,7 +157,7 @@ func TestGetChatCompletion_ProviderErrorIsReported(t *testing.T) {
 	p := &fakeLLMProvider{err: errors.New("groq 500")}
 	svc := newTestAI(p, &fakeSpeech{}, &memChatRepo{})
 
-	_, status, err := svc.GetChatCompletion(context.Background(), uuid.New(),
+	_, status, err := svc.GetChatCompletion(context.Background(), uuid.New(), uuid.New(),
 		[]map[string]interface{}{{"role": "user", "content": "hi"}}, false)
 	if err == nil || status != 502 {
 		t.Errorf("want 502 + error, got status=%d err=%v", status, err)

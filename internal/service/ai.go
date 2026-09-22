@@ -20,9 +20,13 @@ import (
 // AIService powers the in-app ASTRA wealth-advisor chat and its text-to-speech.
 type AIService interface {
 	// GetChatCompletion runs one advisor turn. quick selects the terse
-	// nav-pill agent instead of the full advisor. The returned bytes are the
-	// OpenAI-style chat-completions envelope the frontend already parses.
-	GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error)
+	// nav-pill agent instead of the full advisor. sessionID is the specific
+	// thread this turn is saved into (the handler already resolved it) —
+	// without this, every save re-resolved "the most recent session for this
+	// user" itself, which meant there could only ever be one growing thread
+	// per user no matter what the caller intended. The returned bytes are
+	// the OpenAI-style chat-completions envelope the frontend already parses.
+	GetChatCompletion(ctx context.Context, userID, sessionID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error)
 	// GetTextToSpeech synthesizes text in the caller-supplied language/script
 	// (BCP-47-ish, e.g. "hi-IN", "ta-IN"); empty falls back to "en-IN".
 	GetTextToSpeech(ctx context.Context, text string, language string) ([]byte, int, error)
@@ -56,7 +60,7 @@ func NewGroqAIService(llmProvider llm.Provider, speechProvider speech.Provider, 
 	}
 }
 
-func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error) {
+func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID, sessionID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error) {
 	agentKey := agents.KeyAppChat
 	if quick {
 		agentKey = agents.KeyAppQuickChat
@@ -88,10 +92,11 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 	if len(dialogue) > 20 {
 		dialogue = dialogue[len(dialogue)-20:]
 	}
-	if session, serr := s.chatRepo.GetSessionForUser(ctx, userID); serr == nil {
-		session.Messages = dialogue
-		_ = s.chatRepo.SaveSession(ctx, session)
-	}
+	_ = s.chatRepo.SaveSession(ctx, &repository.ChatSession{
+		ID:       sessionID,
+		UserID:   userID,
+		Messages: dialogue,
+	})
 
 	return marshalChatEnvelope(resp), http.StatusOK, nil
 }

@@ -37,6 +37,13 @@ import (
 type ChatRequest struct {
 	Messages  []map[string]interface{} `json:"messages"`
 	IsNavPill bool                     `json:"is_nav_pill"`
+	// SessionID identifies which thread this turn belongs to. Optional for
+	// backward compatibility: an empty value falls back to "the user's most
+	// recent session" (the old single-thread behaviour). A client starting a
+	// genuinely new chat should generate its own UUID and send it here from
+	// the first message onward so that thread is saved and resumable on its
+	// own, instead of continuing whatever thread was last active.
+	SessionID string `json:"session_id,omitempty"`
 }
 
 type TTSRequest struct {
@@ -483,26 +490,46 @@ func (h *ChatHandler) HandleChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// If client only sent the latest message, load prior dialogue history from database session
-	if len(cleanIncoming) <= 1 {
-		if sess, err := h.chatRepo.GetSessionForUser(r.Context(), userID); err == nil && len(sess.Messages) > 0 {
-			// Combine historical dialogue turns with the new message if not already present
-			if len(cleanIncoming) == 1 {
-				lastMsg := cleanIncoming[0]
-				lastContent, _ := lastMsg["content"].(string)
-				// Check if the last message in session matches
-				sessLen := len(sess.Messages)
-				if sessLen > 0 {
-					prevContent, _ := sess.Messages[sessLen-1]["content"].(string)
-					if prevContent != lastContent {
-						cleanIncoming = append(sess.Messages, lastMsg)
-					} else {
-						cleanIncoming = sess.Messages
-					}
-				}
-			} else {
-				cleanIncoming = sess.Messages
+	// Resolve which thread this turn belongs to. A client-supplied
+	// session_id is loaded (and validated as belonging to this user) via
+	// GetSessionByID; without one, fall back to the pre-multi-thread
+	// behaviour of continuing whatever session was most recently active —
+	// keeps older clients that don't send session_id yet working unchanged.
+	var sess *repository.ChatSession
+	if chatReq.SessionID != "" {
+		if parsed, perr := uuid.Parse(chatReq.SessionID); perr == nil {
+			if s, err := h.chatRepo.GetSessionByID(r.Context(), userID, parsed); err == nil {
+				sess = s
 			}
+		}
+	}
+	if sess == nil {
+		if s, err := h.chatRepo.GetSessionForUser(r.Context(), userID); err == nil {
+			sess = s
+		} else {
+			sess = &repository.ChatSession{ID: uuid.New(), UserID: userID}
+		}
+	}
+	sessionID := sess.ID
+
+	// If client only sent the latest message, load prior dialogue history from database session
+	if len(cleanIncoming) <= 1 && len(sess.Messages) > 0 {
+		// Combine historical dialogue turns with the new message if not already present
+		if len(cleanIncoming) == 1 {
+			lastMsg := cleanIncoming[0]
+			lastContent, _ := lastMsg["content"].(string)
+			// Check if the last message in session matches
+			sessLen := len(sess.Messages)
+			if sessLen > 0 {
+				prevContent, _ := sess.Messages[sessLen-1]["content"].(string)
+				if prevContent != lastContent {
+					cleanIncoming = append(sess.Messages, lastMsg)
+				} else {
+					cleanIncoming = sess.Messages
+				}
+			}
+		} else {
+			cleanIncoming = sess.Messages
 		}
 	}
 
@@ -597,7 +624,7 @@ CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what
 	messagesWithContext := append([]map[string]interface{}{systemPrompt}, cleanIncoming...)
 
 	// 5. Get the AI response
-	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, messagesWithContext, chatReq.IsNavPill)
+	responseBytes, statusCode, err := h.aiService.GetChatCompletion(r.Context(), userID, sessionID, messagesWithContext, chatReq.IsNavPill)
 	if err != nil {
 		log.Printf("[DEBUG] AI Service Network Error: %v", err)
 		respondWithError(w, statusCode, "Error processing chat request")
@@ -611,6 +638,12 @@ CRITICAL RULE: NEVER discuss how you work internally, your architecture, or what
 		log.Printf("[DEBUG] GROQ API SUCCESS (Status %d): Response received", statusCode)
 	}
 
+	// Echo back which thread this turn was actually saved into — a client
+	// that didn't send session_id (or sent one for a thread that turned out
+	// not to exist yet) needs to know the real ID to keep sending on
+	// subsequent turns, or it'll silently drift back to "most recent
+	// session" behaviour every time instead of building one coherent thread.
+	w.Header().Set("X-Chat-Session-Id", sessionID.String())
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_, _ = w.Write(responseBytes)
@@ -662,6 +695,67 @@ func (h *ChatHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
+		"messages": session.Messages,
+	})
+}
+
+// GetSessions lists every chat thread for the user, newest first — backs
+// the History screen. Lightweight: message bodies aren't included, only a
+// title and count (see GetSessionMessages for a specific thread's content).
+func (h *ChatHandler) GetSessions(w http.ResponseWriter, r *http.Request) {
+	userIDValue := r.Context().Value(middleware.UserIDKey)
+	if userIDValue == nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID := userIDValue.(uuid.UUID)
+
+	sessions, err := h.chatRepo.ListSessionsForUser(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to load chat sessions")
+		return
+	}
+
+	out := make([]map[string]interface{}, 0, len(sessions))
+	for _, s := range sessions {
+		out = append(out, map[string]interface{}{
+			"id":            s.ID,
+			"title":         s.Title,
+			"message_count": s.MessageCount,
+			"updated_at":    s.UpdatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"sessions": out})
+}
+
+// GetSessionMessages returns one specific thread's full message history —
+// what the History screen loads when the user taps into a past thread.
+func (h *ChatHandler) GetSessionMessages(w http.ResponseWriter, r *http.Request) {
+	userIDValue := r.Context().Value(middleware.UserIDKey)
+	if userIDValue == nil {
+		respondWithError(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	userID := userIDValue.(uuid.UUID)
+
+	sessionID, err := uuid.Parse(chi.URLParam(r, "sessionID"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid session id")
+		return
+	}
+
+	session, err := h.chatRepo.GetSessionByID(r.Context(), userID, sessionID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Failed to load chat session")
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"id":       session.ID,
+		"title":    session.Title,
 		"messages": session.Messages,
 	})
 }

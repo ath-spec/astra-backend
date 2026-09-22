@@ -430,6 +430,8 @@ func main() {
 		r.Patch("/api/auth/me", authHandler.UpdateMe)
 		r.Post("/api/chat", chatHandler.HandleChat)
 		r.Get("/api/chat/history", chatHandler.GetHistory)
+		r.Get("/api/chat/sessions", chatHandler.GetSessions)
+		r.Get("/api/chat/sessions/{sessionID}", chatHandler.GetSessionMessages)
 		r.Get("/api/chat/memory", chatHandler.GetMemory)
 		r.Post("/api/chat/memory", chatHandler.AddMemory)
 		r.Delete("/api/chat/memory/{id}", chatHandler.DeleteMemory)
