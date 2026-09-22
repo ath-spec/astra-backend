@@ -2,8 +2,6 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -26,18 +24,6 @@ import (
 // idbiAcctNamespace derives a stable UUID for an IDBI account number so it can
 // occupy the "id" field the accounts screen already expects.
 var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
-
-// archetypeForUser reproduces the same phone+userID hash used at signup
-// (seedInitialUserData) so discovery ordering matches the persona the user
-// was actually seeded with, instead of drifting from it.
-func archetypeForUser(pool *pgxpool.Pool, ctx context.Context, userID uuid.UUID) int {
-	var phoneNumber string
-	if err := pool.QueryRow(ctx, `SELECT phone_number FROM users WHERE id = $1`, userID).Scan(&phoneNumber); err != nil {
-		return 1 // default rotation (matches the original ICICI/HDFC order) if lookup fails
-	}
-	sum := sha256.Sum256([]byte(phoneNumber + userID.String()))
-	return int(binary.BigEndian.Uint32(sum[:4]) % 4)
-}
 
 // DiscoverAccounts simulates an AA discovery step: it returns the FULL
 // inventory of candidate accounts (every bank in the user's archetype pool,
@@ -80,7 +66,7 @@ func (h *AAHandler) DiscoverAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 
-	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	bankPool := discoverypool.BankPool
 	// The "CONNECT MORE ACCOUNTS" picker checks banks first, then calls this
 	// endpoint again with ?banks=Bank1,Bank2 to fetch just those banks'
 	// candidate accounts rather than returning the entire inventory every
@@ -355,7 +341,7 @@ func (h *AAHandler) DetectedAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	bankPool := discoverypool.BankPool
 	count := discoverypool.SeedAccountCount
 	if count > len(bankPool) {
 		count = len(bankPool)
@@ -403,7 +389,7 @@ func (h *AAHandler) AvailableBanks(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
-	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	bankPool := discoverypool.BankPool
 	count := discoverypool.SeedAccountCount
 	if count > len(bankPool) {
 		count = len(bankPool)
@@ -494,7 +480,7 @@ func (h *AAHandler) ConnectAccounts(w http.ResponseWriter, r *http.Request) {
 		wanted[id] = true
 	}
 	
-	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	bankPool := discoverypool.BankPool
 	var allBanks []string
 	allBanks = append(allBanks, bankPool...)
 

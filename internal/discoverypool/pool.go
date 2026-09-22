@@ -14,10 +14,15 @@ import (
 	"github.com/google/uuid"
 )
 
-// BankPoolByArchetype is indexed by the same 0-3 investor archetype used
-// everywhere else mock data varies per user (seedInitialUserData,
-// SeedBankDependentData) — each row is a rotation of the same banks, so
-// every user doesn't see (or start with) the same banks in the same order.
+// BankPool is every bank the discovery/connect flow can offer as a
+// candidate, in a single fixed order — every user sees the exact same list,
+// matching the app's one consistent "Good Investor" archetype instead of
+// varying cosmetically per user via a hash. This used to be 4 differently-
+// ordered rotations of the same list, selected by a phone+userID hash
+// (archetypeForUser in aa_handler.go); collapsed to one for the same reason
+// the investor-archetype seeding itself was collapsed to one — deterministic,
+// identical output for every user is easier to reason about and demo than
+// four cosmetically-different-but-functionally-identical variants.
 //
 // Deliberately every bank the frontend has a real, dedicated logo asset for
 // (see _getBankLogoAsset in banks_linking_screen.dart and _getBankLogo in
@@ -29,27 +34,10 @@ import (
 // "CONNECT MORE ACCOUNTS" is meant to be usable in a loop, picking one bank
 // at a time repeatedly until the user is done, so this pool needs enough
 // headroom that a real testing/demo session won't exhaust it.
-var BankPoolByArchetype = [4][]string{
-	{
-		"Axis Bank", "ICICI Bank", "HDFC Bank", "Kotak Mahindra Bank", "State Bank of India", "Punjab National Bank",
-		"Bank of Baroda", "Canara Bank", "Union Bank of India", "Bank of India", "Indian Bank",
-		"Indian Overseas Bank", "UCO Bank", "Bank of Maharashtra", "Punjab & Sind Bank", "IndusInd Bank", "Yes Bank",
-	},
-	{
-		"ICICI Bank", "HDFC Bank", "Axis Bank", "State Bank of India", "Kotak Mahindra Bank", "Bank of Baroda",
-		"Canara Bank", "Punjab National Bank", "Union Bank of India", "IndusInd Bank", "Bank of India",
-		"Indian Bank", "UCO Bank", "Indian Overseas Bank", "Bank of Maharashtra", "Punjab & Sind Bank", "Yes Bank",
-	},
-	{
-		"State Bank of India", "Axis Bank", "HDFC Bank", "Bank of Baroda", "ICICI Bank", "Canara Bank",
-		"Kotak Mahindra Bank", "Bank of India", "Indian Overseas Bank", "Union Bank of India", "IndusInd Bank",
-		"Punjab National Bank", "Bank of Maharashtra", "Indian Bank", "UCO Bank", "Punjab & Sind Bank", "Yes Bank",
-	},
-	{
-		"HDFC Bank", "State Bank of India", "ICICI Bank", "Punjab National Bank", "Axis Bank", "Kotak Mahindra Bank",
-		"Bank of Baroda", "Indian Bank", "Canara Bank", "Bank of Maharashtra", "UCO Bank",
-		"Union Bank of India", "IndusInd Bank", "Bank of India", "Indian Overseas Bank", "Punjab & Sind Bank", "Yes Bank",
-	},
+var BankPool = []string{
+	"Axis Bank", "ICICI Bank", "HDFC Bank", "Kotak Mahindra Bank", "State Bank of India", "Punjab National Bank",
+	"Bank of Baroda", "Canara Bank", "Union Bank of India", "Bank of India", "Indian Bank",
+	"Indian Overseas Bank", "UCO Bank", "Bank of Maharashtra", "Punjab & Sind Bank", "IndusInd Bank", "Yes Bank",
 }
 
 // AccountsPerBank is how many candidate account slots each bank in the pool

@@ -309,6 +309,15 @@ func (r *PostgresUserRepository) seedInitialUserData(ctx context.Context, userID
 // archetypes (aggressive thematic growth, balanced, globally diversified,
 // conservative) hashed off phone+userID; one consistent story now, always.
 func (r *PostgresUserRepository) seedGoodInvestorArchetype(ctx context.Context, userID uuid.UUID) error {
+	// order_id is a globally-UNIQUE column (not scoped per-user), so now that
+	// every user shares this one archetype, a hardcoded literal like
+	// 'ORD-GOOD-01' would only ever insert successfully for the very first
+	// user to reach this code — every user after that silently collides on
+	// the unique constraint and ON CONFLICT DO NOTHING swallows it with zero
+	// rows and no error. Suffixing with a per-user slice of their own UUID
+	// keeps every user's IDs both unique and deterministic.
+	idSuffix := strings.ReplaceAll(userID.String(), "-", "")[:12]
+
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO demat_holdings (user_id, isin, trading_symbol, exchange, product, quantity, average_price, last_price, close_price, authorized_date)
 		VALUES
@@ -320,10 +329,10 @@ func (r *PostgresUserRepository) seedGoodInvestorArchetype(ctx context.Context, 
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO stock_orders (order_id, user_id, exchange, trading_symbol, isin, transaction_type, quantity, product, order_type, price, status, filled_quantity, average_price, order_timestamp)
 		VALUES
-		('ORD-GOOD-01', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 75, 'CNC', 'LIMIT', 670.00, 'COMPLETE', 75, 670.00, NOW() - INTERVAL '60 days'),
-		('ORD-GOOD-02', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 18, 'CNC', 'LIMIT', 1440.00, 'COMPLETE', 18, 1440.00, NOW() - INTERVAL '30 days')
+		('ORD-'||$2||'-1', $1, 'NSE', 'MSTCLTD', 'INE255X01014', 'BUY', 75, 'CNC', 'LIMIT', 670.00, 'COMPLETE', 75, 670.00, NOW() - INTERVAL '60 days'),
+		('ORD-'||$2||'-2', $1, 'NSE', 'COCHINSHIP', 'INE704P01017', 'BUY', 18, 'CNC', 'LIMIT', 1440.00, 'COMPLETE', 18, 1440.00, NOW() - INTERVAL '30 days')
 		ON CONFLICT DO NOTHING
-	`, userID)
+	`, userID, idSuffix)
 
 	// Three equity funds — a flexi cap and a large cap for active,
 	// benchmark-beating exposure, plus a Nifty 50 index fund for passive
@@ -394,11 +403,24 @@ func (r *PostgresUserRepository) seedGoodInvestorArchetype(ctx context.Context, 
 // FD here — it's the one consistent debt/safety-net sleeve behind the
 // equity funds above, not something only some personas had.
 func (r *PostgresUserRepository) seedGoodInvestorBankData(ctx context.Context, userID, bankAccountID uuid.UUID) error {
+	// fd_account_number and mandate_id are both globally-UNIQUE columns (not
+	// scoped per-user). With every user now sharing this one archetype, a
+	// hardcoded literal like 'FD-GOOD-201' only ever inserts for the first
+	// user who ever reaches this code — every user after that silently
+	// collides on the unique constraint, ON CONFLICT DO NOTHING swallows it
+	// with zero rows and no error logged, and that user ends up with no FD
+	// and no mandates at all despite having linked a bank account. This was
+	// confirmed live: a second test user got 0 fd_accounts/0 mandates while
+	// an earlier user already held 'FD-GOOD-201'/'MND-GOOD-01'/'MND-GOOD-02'.
+	// Suffixing with a per-user slice of their own UUID keeps every user's
+	// IDs both unique and deterministic.
+	idSuffix := strings.ReplaceAll(userID.String(), "-", "")[:12]
+
 	_, _ = r.db.Pool.Exec(ctx, `
 		INSERT INTO fd_accounts (fd_account_number, user_id, bank_account_id, principal_amount, interest_rate, tenure_months, interest_payout, auto_renewal, nominee_name, booking_date, maturity_date, maturity_amount, status)
-		VALUES ('FD-GOOD-201', $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
+		VALUES ('FD-'||$3, $1, $2, 50000.00, 7.10, 12, 'ON_MATURITY', true, 'Self', CURRENT_DATE - 60, CURRENT_DATE + 305, 53645.00, 'ACTIVE')
 		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
+	`, userID, bankAccountID, idSuffix)
 
 	// category = 'SIP' (not the 'OTHER' default) so the "SIPs & Mandates"
 	// screen — which shows only category='SIP' mandates, see
@@ -408,10 +430,10 @@ func (r *PostgresUserRepository) seedGoodInvestorBankData(ctx context.Context, u
 	_, err := r.db.Pool.Exec(ctx, `
 		INSERT INTO mandates (mandate_id, user_id, bank_account_id, mandate_type, upi_id, payee_name, payee_vpa_or_id, category, max_amount, frequency, mandate_start_date, next_debit_date, status)
 		VALUES
-		('MND-GOOD-01', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 'SIP', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
-		('MND-GOOD-02', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 'SIP', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
+		('MND-'||$3||'-1', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'Parag Parikh Flexi Cap SIP', 'ppfas@upi', 'SIP', 5000.00, 'MONTHLY', CURRENT_DATE - 240, CURRENT_DATE + 10, 'ACTIVE'),
+		('MND-'||$3||'-2', $1, $2, 'UPI_AUTOPAY', 'user@okhdfc', 'SBI Bluechip SIP', 'sbi@upi', 'SIP', 3000.00, 'MONTHLY', CURRENT_DATE - 120, CURRENT_DATE + 15, 'ACTIVE')
 		ON CONFLICT DO NOTHING
-	`, userID, bankAccountID)
+	`, userID, bankAccountID, idSuffix)
 	return err
 }
 

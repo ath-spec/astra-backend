@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/yourusername/astra-backend/internal/ai/agents"
 	"github.com/yourusername/astra-backend/internal/provider/llm"
@@ -20,9 +22,13 @@ import (
 // AIService powers the in-app ASTRA wealth-advisor chat and its text-to-speech.
 type AIService interface {
 	// GetChatCompletion runs one advisor turn. quick selects the terse
-	// nav-pill agent instead of the full advisor. The returned bytes are the
-	// OpenAI-style chat-completions envelope the frontend already parses.
-	GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error)
+	// nav-pill agent instead of the full advisor. sessionID is the specific
+	// thread this turn is saved into (the handler already resolved it) —
+	// without this, every save re-resolved "the most recent session for this
+	// user" itself, which meant there could only ever be one growing thread
+	// per user no matter what the caller intended. The returned bytes are
+	// the OpenAI-style chat-completions envelope the frontend already parses.
+	GetChatCompletion(ctx context.Context, userID, sessionID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error)
 	// GetTextToSpeech synthesizes text in the caller-supplied language/script
 	// (BCP-47-ish, e.g. "hi-IN", "ta-IN"); empty falls back to "en-IN".
 	GetTextToSpeech(ctx context.Context, text string, language string) ([]byte, int, error)
@@ -45,18 +51,20 @@ type GroqAIService struct {
 	speech   speech.Provider
 	agents   *agents.Catalog
 	chatRepo repository.ChatRepository
+	pool     *pgxpool.Pool
 }
 
-func NewGroqAIService(llmProvider llm.Provider, speechProvider speech.Provider, cat *agents.Catalog, chatRepo repository.ChatRepository) *GroqAIService {
+func NewGroqAIService(llmProvider llm.Provider, speechProvider speech.Provider, cat *agents.Catalog, chatRepo repository.ChatRepository, pool *pgxpool.Pool) *GroqAIService {
 	return &GroqAIService{
 		llm:      llmProvider,
 		speech:   speechProvider,
 		agents:   cat,
 		chatRepo: chatRepo,
+		pool:     pool,
 	}
 }
 
-func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error) {
+func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID, sessionID uuid.UUID, messages []map[string]interface{}, quick bool) ([]byte, int, error) {
 	agentKey := agents.KeyAppChat
 	if quick {
 		agentKey = agents.KeyAppQuickChat
@@ -75,6 +83,34 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 			errors.New("ai: empty completion")
 	}
 
+	// Intercept Product Lead JSON if present
+	leadRegex := regexp.MustCompile("(?s)```json\\s*({[^}]*\"type\"\\s*:\\s*\"rm_lead\"[^}]*})\\s*```")
+	matches := leadRegex.FindStringSubmatch(resp.Text)
+	if len(matches) > 1 {
+		// Strip from text so frontend just sees standard dialogue
+		resp.Text = strings.TrimSpace(leadRegex.ReplaceAllString(resp.Text, ""))
+
+		var leadPayload map[string]interface{}
+		_ = json.Unmarshal([]byte(matches[1]), &leadPayload)
+
+		// Format the transcript (last 6 messages)
+		var transcriptBuilder strings.Builder
+		startIdx := 0
+		if len(messages) > 6 {
+			startIdx = len(messages) - 6
+		}
+		for i := startIdx; i < len(messages); i++ {
+			role, _ := messages[i]["role"].(string)
+			content, _ := messages[i]["content"].(string)
+			transcriptBuilder.WriteString(fmt.Sprintf("**%s**: %s\n\n", strings.ToUpper(role), content))
+		}
+		leadPayload["transcript"] = transcriptBuilder.String()
+		
+		if finalJSON, err := json.Marshal(leadPayload); err == nil {
+			go s.logLeadForRM(userID, string(finalJSON))
+		}
+	}
+
 	// Persist the clean dialogue history (dialogue turns only, sliding window
 	// of 20) exactly as before.
 	assistant := map[string]interface{}{"role": "assistant", "content": resp.Text}
@@ -88,10 +124,11 @@ func (s *GroqAIService) GetChatCompletion(ctx context.Context, userID uuid.UUID,
 	if len(dialogue) > 20 {
 		dialogue = dialogue[len(dialogue)-20:]
 	}
-	if session, serr := s.chatRepo.GetSessionForUser(ctx, userID); serr == nil {
-		session.Messages = dialogue
-		_ = s.chatRepo.SaveSession(ctx, session)
-	}
+	_ = s.chatRepo.SaveSession(ctx, &repository.ChatSession{
+		ID:       sessionID,
+		UserID:   userID,
+		Messages: dialogue,
+	})
 
 	return marshalChatEnvelope(resp), http.StatusOK, nil
 }
@@ -181,4 +218,23 @@ func marshalChatEnvelope(resp *llm.Response) []byte {
 func jsonErrBody(msg string) []byte {
 	b, _ := json.Marshal(map[string]interface{}{"error": msg})
 	return b
+}
+
+func (s *GroqAIService) logLeadForRM(userID uuid.UUID, jsonPayload string) {
+	if s.pool == nil {
+		return
+	}
+	ctx := context.Background()
+	query := `
+		INSERT INTO rm_client_interactions (user_id, rm_id, kind, body, follow_up_at)
+		SELECT $1, assigned_rm_id, 'task', $2, now()
+		FROM users 
+		WHERE id = $1 AND assigned_rm_id IS NOT NULL
+	`
+	_, err := s.pool.Exec(ctx, query, userID, jsonPayload)
+	if err != nil {
+		fmt.Printf("Failed to log lead: %v\n", err)
+	} else {
+		fmt.Printf("Successfully logged lead for user %s: %s\n", userID, jsonPayload)
+	}
 }

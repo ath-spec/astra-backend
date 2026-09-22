@@ -324,10 +324,17 @@ func (s *PortfolioAnalysisService) Allocation(ctx context.Context, userID uuid.U
 	return res, nil
 }
 
-// peerIndexFundPct is the asset-weighted share of index (passive) funds within
-// the equity mutual-fund holdings of every *other* user — the "investors like
-// you" benchmark. Best-effort: returns 0 on any error or when there is no peer
-// data yet.
+// peerIndexFundPct is the asset-weighted share of index (passive) funds
+// within the equity mutual-fund holdings across the whole user base — the
+// "investors like you" benchmark. Every user is seeded from the same single
+// "Good Investor" archetype (identical funds/units/allocation — only name,
+// phone, PAN, bank accounts and user ID actually differ between dummy
+// users), so there's no real "peer" distinction to make: excluding the
+// current user from their own average used to mean a lone/first user in the
+// database had zero peers and this silently returned 0 instead of the real
+// figure, even though their own holdings already are the population
+// average. Computed across every user (including self) so it's never
+// spuriously empty.
 func (s *PortfolioAnalysisService) peerIndexFundPct(ctx context.Context, userID uuid.UUID) float64 {
 	var idx, total float64
 	err := s.pool.QueryRow(ctx, `
@@ -342,8 +349,7 @@ func (s *PortfolioAnalysisService) peerIndexFundPct(ctx context.Context, userID 
 		FROM mf_folios f
 		JOIN fund_catalog c ON c.scheme_code = f.scheme_code
 		LEFT JOIN fund_allocation a ON a.scheme_code = f.scheme_code
-		WHERE f.user_id <> $1
-	`, userID).Scan(&idx, &total)
+	`).Scan(&idx, &total)
 	if err != nil || total <= 0 {
 		return 0
 	}
