@@ -324,6 +324,11 @@ func main() {
 	}
 	if idbiAccountsSvc != nil {
 		aaHandler.WithIDBIAccounts(idbiAccountsSvc)
+		// Same fold-in as GetAccounts above — without this the Home screen's
+		// Bank Accounts total (dashboardService) stayed bank_accounts-only
+		// while the "linked bank accounts" screen (aaHandler.GetAccounts)
+		// also counted IDBI-synced accounts, so the two screens disagreed.
+		dashboardService.WithIDBIAccounts(idbiAccountsSvc)
 	}
 	kycHandler := handler.NewKYCHandler(idbiKYCSvc).WithEvents(eventsPublisher)
 	mfHandler := handler.NewMFHandler(mfService).WithEvents(eventsPublisher)

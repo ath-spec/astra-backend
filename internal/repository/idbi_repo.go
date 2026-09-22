@@ -97,6 +97,28 @@ func (r *IDBIRepository) ListLinkedUserIDs(ctx context.Context) ([]uuid.UUID, er
 	return ids, rows.Err()
 }
 
+// DeleteCustomerLink revokes a user's IDBI account sync entirely: removes the
+// customer_link (so Refresh/List can no longer pull or serve anything for
+// them) and the mirrored idbi_accounts rows in the same transaction, so a
+// stale mirror can never outlive the link that authorized it. IDBI mirrors a
+// whole customer's account list under one cifId/custId — there is no
+// per-account revoke, only "stop syncing this customer entirely."
+func (r *IDBIRepository) DeleteCustomerLink(ctx context.Context, userID uuid.UUID) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("revoke idbi link: begin: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `DELETE FROM idbi_accounts WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("revoke idbi link: delete accounts: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM idbi_customer_link WHERE user_id = $1`, userID); err != nil {
+		return fmt.Errorf("revoke idbi link: delete link: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
 // MirroredAccount is a row of idbi_accounts.
 type MirroredAccount struct {
 	AccountNumber    string

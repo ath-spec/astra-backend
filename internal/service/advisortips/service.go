@@ -124,16 +124,20 @@ func (s *Service) Generate(ctx context.Context, subject string, topic Topic, pay
 		// gracefully, not go blank.
 		if dt, ok := deterministicTip(topic, payload); ok {
 			s.log.Warn("advisortips: llm call failed, using deterministic fallback", "topic", topic, "error", err)
-			tip := Tip{
+			// Deliberately not cached: this is a degraded stand-in for the
+			// real tip, not a result worth locking in for CacheTTL. Caching
+			// it would mean a transient Groq blip (or this exact
+			// json_validate_failed class of error) keeps serving the
+			// rule-based tip for up to CacheTTL even after Groq recovers,
+			// instead of the next request just trying Groq again.
+			return Tip{
 				Topic:       topic,
 				Agent:       agent.Name,
 				Text:        dt,
 				Model:       "deterministic",
 				Provider:    "deterministic",
 				GeneratedAt: time.Now().UTC(),
-			}
-			s.setCached(key, tip)
-			return tip, nil
+			}, nil
 		}
 		if err != nil {
 			return Tip{}, err

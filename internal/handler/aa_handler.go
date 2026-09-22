@@ -382,6 +382,34 @@ func (h *AAHandler) UnlinkAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if tag.RowsAffected() == 0 {
+		// Not a bank_accounts row — check whether it's one of the IDs
+		// GetAccounts synthesizes for the user's IDBI-synced accounts
+		// (uuid.NewSHA1(idbiAcctNamespace, accountNumber)). Those don't
+		// exist in bank_accounts at all, so without this the "remove"
+		// action on an IDBI account just 404'd and silently did nothing.
+		// IDBI mirrors a whole customer's account list under one link —
+		// there's no per-account revoke, so removing any one of them
+		// revokes the whole IDBI sync for this user.
+		if h.idbiAccounts != nil {
+			idbiAccs, ierr := h.idbiAccounts.List(r.Context(), userID)
+			if ierr == nil {
+				for _, a := range idbiAccs {
+					if uuid.NewSHA1(idbiAcctNamespace, []byte(a.AccountNumber)) == accountID {
+						if rerr := h.idbiAccounts.Revoke(r.Context(), userID); rerr != nil {
+							apiresponse.Error(w, rerr)
+							return
+						}
+						if h.events != nil {
+							go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
+						}
+						apiresponse.OK(w, map[string]string{
+							"message": "IDBI bank connection revoked successfully",
+						})
+						return
+					}
+				}
+			}
+		}
 		apiresponse.Error(w, apiresponse.NotFound("bank account not found"))
 		return
 	}

@@ -89,6 +89,12 @@ func (r *fakeRepo) ReplaceAccounts(_ context.Context, _ uuid.UUID, accs []idbima
 	return nil
 }
 
+func (r *fakeRepo) DeleteCustomerLink(_ context.Context, _ uuid.UUID) error {
+	r.link = nil
+	r.accounts = nil
+	return nil
+}
+
 func (r *fakeRepo) ListAccounts(_ context.Context, _ uuid.UUID) ([]repository.MirroredAccount, error) {
 	out := make([]repository.MirroredAccount, 0, len(r.accounts))
 	for _, a := range r.accounts {

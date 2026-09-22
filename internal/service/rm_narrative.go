@@ -24,6 +24,57 @@ var narrativeTopics = []string{
 	"spend_overview", "spend_categories", "spend_habits", "spend_income", "budget_health",
 }
 
+// Narrative groups split the one-shot 15-topic prompt into the two sets the
+// RM console actually asks for (portfolio tabs vs the spend-intelligence
+// tab). Asking the model for all 15 paragraphs in a single JSON completion
+// meant one truncated/malformed response (more likely the bigger the ask)
+// blanked every Pro Tip on every tab at once, and there was no way to retry
+// just the half that failed. Splitting the ask in two shrinks each prompt,
+// isolates failures to the tab that actually needs those topics, and lets a
+// client with no budget/spend data skip the spend call entirely.
+const (
+	NarrativeGroupPortfolio = "portfolio"
+	NarrativeGroupSpend     = "spend"
+)
+
+var (
+	portfolioNarrativeTopics = []string{"allocation", "genome", "discipline", "performance", "risk", "cost", "concentration", "cohort", "drift", "tax"}
+	spendNarrativeTopics     = []string{"spend_overview", "spend_categories", "spend_habits", "spend_income", "budget_health"}
+)
+
+// topicsForGroup resolves which topics a request is asking for. An empty or
+// unrecognized group keeps the old "everything in one call" behaviour so any
+// caller that doesn't pass one yet still works.
+func topicsForGroup(group string) []string {
+	switch group {
+	case NarrativeGroupPortfolio:
+		return portfolioNarrativeTopics
+	case NarrativeGroupSpend:
+		return spendNarrativeTopics
+	default:
+		return narrativeTopics
+	}
+}
+
+func filterTopics(m map[string]string, topics []string) map[string]string {
+	out := make(map[string]string, len(topics))
+	for _, t := range topics {
+		if v, ok := m[t]; ok {
+			out[t] = v
+		}
+	}
+	return out
+}
+
+func hasAnyTopic(m map[string]string, topics []string) bool {
+	for _, t := range topics {
+		if _, ok := m[t]; ok {
+			return true
+		}
+	}
+	return false
+}
+
 // narrativeMaxAge forces a refresh of an otherwise-unchanged narrative after
 // this long, so nothing goes stale indefinitely.
 const narrativeMaxAge = 30 * 24 * time.Hour
@@ -41,10 +92,14 @@ Reply ONLY in valid JSON format with a compact JSON object mapping each topic to
 // analytic topic. A cheap fingerprint query gates everything: while the
 // fingerprint and cache age are unchanged, the cached JSON is returned with no
 // analytics recompute and no model call.
-func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID, force bool) (map[string]string, error) {
+func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID, group string, force bool) (map[string]string, error) {
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
 		return nil, err
 	}
+
+	topics := topicsForGroup(group)
+	needPortfolio := group == "" || group == NarrativeGroupPortfolio
+	needSpend := group == "" || group == NarrativeGroupSpend
 
 	fp, err := s.narrativeFingerprint(ctx, userID)
 	if err != nil {
@@ -60,15 +115,18 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		`SELECT fingerprint, topics, updated_at FROM rm_client_narratives WHERE user_id = $1`, userID,
 	).Scan(&cachedFP, &cachedRaw, &updatedAt)
 
-	fresh := cachedFP == fp && time.Since(updatedAt) < narrativeMaxAge
-	if !force && fresh && len(cachedRaw) > 0 {
-		var m map[string]string
-		if json.Unmarshal(cachedRaw, &m) == nil && len(m) > 0 {
-			return m, nil
-		}
+	var cachedAll map[string]string
+	if len(cachedRaw) > 0 {
+		_ = json.Unmarshal(cachedRaw, &cachedAll)
 	}
 
-	// Fingerprint moved (or forced / aged) — do the full recompute + one call.
+	fresh := cachedFP == fp && time.Since(updatedAt) < narrativeMaxAge
+	if !force && fresh && hasAnyTopic(cachedAll, topics) {
+		return filterTopics(cachedAll, topics), nil
+	}
+
+	// Fingerprint moved (or forced / aged / never generated for this group)
+	// — do the recompute + one call, scoped to just what this group needs.
 	var (
 		pa  *rmdomain.ClientPortfolioAnalysis
 		an  *rmdomain.ClientAnalytics
@@ -85,45 +143,49 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	// Pro Tip on every tab for the client, with no deterministic fallback at
 	// all.
 	g, gctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID)
-		if e != nil {
-			slog.Warn("rm narrative: portfolio analysis failed", "user", userID, "error", e)
+	if needPortfolio {
+		g.Go(func() error {
+			v, e := s.PortfolioAnalysis(gctx, callerRMID, isAdmin, userID)
+			if e != nil {
+				slog.Warn("rm narrative: portfolio analysis failed", "user", userID, "error", e)
+				return nil
+			}
+			pa = v
 			return nil
-		}
-		pa = v
-		return nil
-	})
-	g.Go(func() error {
-		v, e := s.ClientAnalytics(gctx, callerRMID, isAdmin, userID)
-		if e != nil {
-			slog.Warn("rm narrative: client analytics failed", "user", userID, "error", e)
+		})
+		g.Go(func() error {
+			v, e := s.ClientAnalytics(gctx, callerRMID, isAdmin, userID)
+			if e != nil {
+				slog.Warn("rm narrative: client analytics failed", "user", userID, "error", e)
+				return nil
+			}
+			an = v
 			return nil
-		}
-		an = v
-		return nil
-	})
-	g.Go(func() error {
-		v, e := s.ClientAdvisory(gctx, callerRMID, isAdmin, userID)
-		if e != nil {
-			slog.Warn("rm narrative: client advisory failed", "user", userID, "error", e)
+		})
+		g.Go(func() error {
+			v, e := s.ClientAdvisory(gctx, callerRMID, isAdmin, userID)
+			if e != nil {
+				slog.Warn("rm narrative: client advisory failed", "user", userID, "error", e)
+				return nil
+			}
+			adv = v
 			return nil
-		}
-		adv = v
-		return nil
-	})
-	g.Go(func() error {
-		v, e := s.SpendIntelligence(gctx, callerRMID, isAdmin, userID)
-		if e != nil {
-			slog.Warn("rm narrative: spend intelligence failed", "user", userID, "error", e)
+		})
+	}
+	if needSpend {
+		g.Go(func() error {
+			v, e := s.SpendIntelligence(gctx, callerRMID, isAdmin, userID)
+			if e != nil {
+				slog.Warn("rm narrative: spend intelligence failed", "user", userID, "error", e)
+				return nil
+			}
+			si = v
 			return nil
-		}
-		si = v
-		return nil
-	})
+		})
+	}
 	_ = g.Wait()
 
-	// authorizeClient runs first inside each of the four calls above, so if
+	// authorizeClient runs first inside each of the calls above, so if
 	// the caller genuinely isn't allowed to see this client, surface that
 	// instead of silently returning an empty narrative.
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
@@ -132,40 +194,49 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 
 	blob := buildFiguresBlob(pa, an, adv, si)
 
-	// 1. Try AI-generated narrative through the LLM seam (Groq today). Skip
-	// the call entirely when there's nothing to summarize (blob empty), but
-	// still fall through to the deterministic builder below — it reads pa/
-	// an/adv/si directly rather than the blob, so e.g. a client with no
-	// budget set up still gets its "not set up yet" deterministic note
-	// instead of the whole narrative silently coming back empty.
+	// 1. Try AI-generated narrative through the LLM seam (Groq today), asking
+	// only for this group's topics — a smaller prompt/response is both
+	// cheaper and far less likely to be truncated or malformed than the old
+	// single 15-topic call. Skip the call entirely when there's nothing to
+	// summarize (blob empty), but still fall through to the deterministic
+	// builder below.
 	var m map[string]string
 	if s.llm != nil && strings.TrimSpace(blob) != "" {
-		m, _ = s.generateNarrative(ctx, blob)
+		m, _ = s.generateNarrative(ctx, blob, topics)
 	}
 
-	// If the model successfully generated the narrative, persist to cache
+	// If the model successfully generated this group's narrative, merge it
+	// into whatever's already cached for the OTHER group and persist — a
+	// plain overwrite here would wipe out the other group's cached topics
+	// every time either one regenerates.
 	if len(m) > 0 {
-		raw, _ := json.Marshal(m)
+		merged := cachedAll
+		if merged == nil {
+			merged = map[string]string{}
+		}
+		for k, v := range m {
+			merged[k] = v
+		}
+		raw, _ := json.Marshal(merged)
 		_, _ = s.pool.Exec(ctx, `
 			INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
 			VALUES ($1, $2, $3, now())
 			ON CONFLICT (user_id) DO UPDATE
 			SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
 		`, userID, fp, raw)
-		return m, nil
+		return filterTopics(merged, topics), nil
 	}
 
 	// 2. If Groq failed or is unconfigured:
-	// If an earlier Groq narrative exists in cache, serve it
-	if len(cachedRaw) > 0 {
-		var old map[string]string
-		if json.Unmarshal(cachedRaw, &old) == nil && len(old) > 0 {
-			return old, nil
-		}
+	// If an earlier Groq narrative exists in cache for this group, serve it
+	// rather than a blank/deterministic-only result.
+	if hasAnyTopic(cachedAll, topics) {
+		return filterTopics(cachedAll, topics), nil
 	}
 
-	// 3. Compute dynamic deterministic fallback on the fly (NOT cached, always live)
-	return buildDeterministicNarratives(pa, an, adv, si), nil
+	// 3. Compute dynamic deterministic fallback on the fly (NOT cached, always
+	// live) so the RM always sees *something* rather than an empty Pro Tip.
+	return filterTopics(buildDeterministicNarratives(pa, an, adv, si), topics), nil
 }
 
 // narrativeFingerprint is a single round-trip digest of the client's material
@@ -216,7 +287,7 @@ func (s *RMService) narrativeFingerprint(ctx context.Context, userID uuid.UUID) 
 		spendTxns, lastSpendDay, activeBudget), nil
 }
 
-func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[string]string, error) {
+func (s *RMService) generateNarrative(ctx context.Context, figures string, topics []string) (map[string]string, error) {
 	if s.llm == nil {
 		return nil, fmt.Errorf("llm provider not set")
 	}
@@ -224,8 +295,9 @@ func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[
 	callCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	system := narrativeSystemPrompt + "\n\nOnly write these topics: " + strings.Join(topics, ", ") + "."
 	req := s.agents.Get(agents.KeyRMNarrator).Request(
-		narrativeSystemPrompt,
+		system,
 		[]llm.Message{{Role: llm.RoleUser, Content: figures}},
 	)
 	resp, err := s.llm.Complete(callCtx, req)
@@ -249,7 +321,7 @@ func (s *RMService) generateNarrative(ctx context.Context, figures string) (map[
 	}
 
 	out := map[string]string{}
-	for _, t := range narrativeTopics {
+	for _, t := range topics {
 		if v := strings.TrimSpace(parsedMap[t]); v != "" {
 			out[t] = v
 		}

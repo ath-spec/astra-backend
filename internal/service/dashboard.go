@@ -21,6 +21,7 @@ import (
 	mfprovider "github.com/yourusername/astra-backend/internal/provider/mf"
 	stocksprovider "github.com/yourusername/astra-backend/internal/provider/stocks"
 	"github.com/yourusername/astra-backend/internal/repository"
+	"github.com/yourusername/astra-backend/internal/service/idbiaccounts"
 )
 
 // DashboardService composes the Stocks, MF, FD and bank-account domains'
@@ -30,15 +31,28 @@ import (
 // "today's" totals is intrinsic to computing the summary, not a separate
 // domain of its own.
 type DashboardService struct {
-	stocks   stocksprovider.Provider
-	mf       mfprovider.Provider
-	fd       fdprovider.Provider
-	userRepo repository.UserRepository
-	pool     *pgxpool.Pool
+	stocks       stocksprovider.Provider
+	mf           mfprovider.Provider
+	fd           fdprovider.Provider
+	userRepo     repository.UserRepository
+	pool         *pgxpool.Pool
+	idbiAccounts *idbiaccounts.Service
 }
 
 func NewDashboardService(stocks stocksprovider.Provider, mf mfprovider.Provider, fd fdprovider.Provider, userRepo repository.UserRepository, pool *pgxpool.Pool) *DashboardService {
 	return &DashboardService{stocks: stocks, mf: mf, fd: fd, userRepo: userRepo, pool: pool}
+}
+
+// WithIDBIAccounts wires the IDBI-synced deposit accounts (feature 1) into
+// the dashboard's bank balance total. Without this, the Home screen's Bank
+// Accounts figure was computed from the bank_accounts table alone while
+// GET /api/v1/aa/accounts (the screen you land on when you tap it) also
+// folds in the user's real IDBI accounts — so a user with IDBI accounts
+// synced saw two different totals and two different account counts for the
+// same "linked accounts" depending on which screen they were looking at.
+func (s *DashboardService) WithIDBIAccounts(svc *idbiaccounts.Service) *DashboardService {
+	s.idbiAccounts = svc
+	return s
 }
 
 // PortfolioInputs is the raw, per-provider data a portfolio valuation is
@@ -63,6 +77,7 @@ type PortfolioInputs struct {
 // state races here).
 func (s *DashboardService) FetchInputs(ctx context.Context, userID uuid.UUID) (*PortfolioInputs, error) {
 	var in PortfolioInputs
+	var idbiBankAccounts []repository.BankAccount
 	g, gCtx := errgroup.WithContext(ctx)
 	g.Go(func() error {
 		var err error
@@ -96,9 +111,37 @@ func (s *DashboardService) FetchInputs(ctx context.Context, userID uuid.UUID) (*
 		}
 		return nil
 	})
+	if s.idbiAccounts != nil {
+		g.Go(func() error {
+			// Mirrors the same fold-in GetAccounts does — a failure here (no
+			// link yet, IDBI gateway down) must not fail the whole dashboard,
+			// it just means this user's total is bank_accounts-only for now.
+			// Written to its own local, then merged into in.BankAccounts only
+			// after g.Wait() below — appending directly to in.BankAccounts
+			// here would race the GetBankAccounts goroutine writing that same
+			// field concurrently.
+			idbiAccs, ierr := s.idbiAccounts.List(gCtx, userID)
+			if ierr != nil {
+				return nil
+			}
+			for _, a := range idbiAccs {
+				bal := a.LedgerBalance
+				if bal == 0 {
+					bal = a.AvailableBalance
+				}
+				idbiBankAccounts = append(idbiBankAccounts, repository.BankAccount{
+					BankName:    "IDBI Bank",
+					AccountType: a.AccountType,
+					Balance:     bal,
+				})
+			}
+			return nil
+		})
+	}
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
+	in.BankAccounts = append(in.BankAccounts, idbiBankAccounts...)
 	return &in, nil
 }
 

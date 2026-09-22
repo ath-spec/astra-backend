@@ -144,6 +144,7 @@ func (h *AuthHandler) VerifyOTP(w http.ResponseWriter, r *http.Request) {
 		"token":         tokenString,
 		"refresh_token": refreshToken,
 		"is_new_user":   isNewUser,
+		"name":          user.Name,
 	})
 }
 
