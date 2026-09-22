@@ -21,5 +21,8 @@ echo "[$(date)] Database migrations ran successfully!"
 echo "[$(date)] Running seed script..."
 /app/seed_idbi_customers || echo "[$(date)] Seed script failed or already ran"
 
+echo "[$(date)] Seeding mock users..."
+/app/seed_mock_users || echo "[$(date)] Mock users seed failed"
+
 echo "[$(date)] Starting API server..."
 exec /app/main

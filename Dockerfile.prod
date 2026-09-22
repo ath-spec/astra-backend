@@ -11,6 +11,7 @@ WORKDIR /app
 # Copy the Pre-built binary files from the local bin-prod directory (built by 'make deploy')
 COPY bin-prod/main .
 COPY bin-prod/seed_idbi_customers .
+COPY bin-prod/seed_mock_users .
 COPY start.sh .
 COPY internal/database/migrations ./migrations
 COPY ["docs/IDBI APIs - Data.csv", "./docs/IDBI APIs - Data.csv"]

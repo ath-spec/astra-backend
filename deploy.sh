@@ -23,6 +23,12 @@ TAG=$(git rev-parse --short HEAD)
 echo "==> Downloading AWS RDS SSL Certificate"
 curl -sS -o global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
+echo "==> Building binaries locally"
+mkdir -p bin-prod
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin-prod/main ./cmd/api/main.go
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin-prod/seed_idbi_customers ./scripts/seed_idbi_customers.go
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o bin-prod/seed_mock_users ./scripts/seed_mock_users.go
+
 echo "==> Building image: $IMAGE:$TAG"
 docker build --platform linux/arm64 -t "$IMAGE:$TAG" .
 
