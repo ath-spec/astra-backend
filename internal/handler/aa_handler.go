@@ -27,13 +27,6 @@ import (
 // occupy the "id" field the accounts screen already expects.
 var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
 
-// detectedBanks is the fixed pair of banks the "bank account connection" demo
-// flow presents as already-detected on first entry (see DetectedAccounts) —
-// deliberately independent of the archetype-rotated discoverypool.BankPoolByArchetype
-// used everywhere else, so every demo user sees the same HDFC/ICICI pair the
-// product spec's walkthrough describes, instead of it drifting with archetype.
-var detectedBanks = []string{"HDFC Bank", "ICICI Bank"}
-
 // archetypeForUser reproduces the same phone+userID hash used at signup
 // (seedInitialUserData) so discovery ordering matches the persona the user
 // was actually seeded with, instead of drifting from it.
@@ -362,8 +355,15 @@ func (h *AAHandler) DetectedAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accounts := make([]BankAccountResponse, 0, len(detectedBanks))
-	for _, bankName := range detectedBanks {
+	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	count := discoverypool.SeedAccountCount
+	if count > len(bankPool) {
+		count = len(bankPool)
+	}
+	initialBanks := bankPool[:count]
+
+	accounts := make([]BankAccountResponse, 0, len(initialBanks))
+	for _, bankName := range initialBanks {
 		cand := discoverypool.Generate(userID, bankName, 1)
 		if linked[cand.BankName+"|"+cand.AccountNumber] {
 			continue
@@ -403,15 +403,30 @@ func (h *AAHandler) AvailableBanks(w http.ResponseWriter, r *http.Request) {
 		apiresponse.Error(w, err)
 		return
 	}
+	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	count := discoverypool.SeedAccountCount
+	if count > len(bankPool) {
+		count = len(bankPool)
+	}
+	initialBanks := bankPool[:count]
+	
 	detected := map[string]bool{}
-	for _, b := range detectedBanks {
+	for _, b := range initialBanks {
 		detected[b] = true
 	}
 
-	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
 	banks := make([]string, 0, len(bankPool))
 	for _, bankName := range bankPool {
 		if linkedBankNames[bankName] >= discoverypool.AccountsPerBank {
+			continue
+		}
+		if detected[bankName] && linkedBankNames[bankName] == 0 {
+			// Skip showing it in "Available Banks" if it's already in DetectedAccounts and not fully linked yet
+			// Actually, wait, let's keep the exact same logic as before:
+			// "every bank in the user's archetype pool except the two DetectedAccounts already covers"
+		}
+		// Let's just exclude detected entirely like before:
+		if detected[bankName] {
 			continue
 		}
 		banks = append(banks, bankName)
@@ -482,7 +497,6 @@ func (h *AAHandler) ConnectAccounts(w http.ResponseWriter, r *http.Request) {
 	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
 	var allBanks []string
 	allBanks = append(allBanks, bankPool...)
-	allBanks = append(allBanks, detectedBanks...)
 
 	for _, bankName := range allBanks {
 		for slot := 1; slot <= discoverypool.AccountsPerBank; slot++ {
