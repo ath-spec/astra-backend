@@ -60,7 +60,7 @@ func (m *memChatRepo) SaveSession(_ context.Context, s *repository.ChatSession) 
 }
 
 func newTestAI(p llm.Provider, sp speech.Provider, repo repository.ChatRepository) *GroqAIService {
-	return NewGroqAIService(p, sp, agents.New(agents.Overrides{}), repo)
+	return NewGroqAIService(p, sp, agents.New(agents.Overrides{}), repo, nil)
 }
 
 func TestGetChatCompletion_ReWrapsIntoOpenAIEnvelope(t *testing.T) {

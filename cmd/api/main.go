@@ -147,7 +147,7 @@ func main() {
 	})
 	slog.Info("AI providers", "llm", llmProvider.Name(), "speech", speechProvider.Name())
 
-	aiService := service.NewGroqAIService(llmProvider, speechProvider, agentCatalog, chatRepo)
+	aiService := service.NewGroqAIService(llmProvider, speechProvider, agentCatalog, chatRepo, db.Pool)
 	memoryService := service.NewMemoryService(chatMemoryRepo, llmProvider, agentCatalog)
 
 	var advisorTipsSvc *advisortipsservice.Service
