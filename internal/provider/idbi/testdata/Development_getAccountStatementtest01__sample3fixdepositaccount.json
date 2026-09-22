@@ -1,0 +1,181 @@
+{
+  "spec_file": "Open API Specifications (30).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/getAccountStatementtest01",
+  "path": "/Development/getAccountStatementtest01",
+  "example": "sample 3 fix deposit account",
+  "request": {
+    "consentId": "CONSENT-0003-FD",
+    "linkRefNumber": [
+      "lr-003-fd-0003-77gg88hh99ii"
+    ]
+  },
+  "status": 200,
+  "response": {
+    "ver": "1.21.0",
+    "data": [
+      {
+        "fiType": "TERM_DEPOSIT",
+        "Transactions": {
+          "Transaction": [
+            {
+              "mode": "NACH",
+              "reference": "RFN316600",
+              "amount": "4342.42",
+              "narration": "UPI/CR/22162/PAYEE0/ABCD",
+              "transactionalBalance": "495657.58",
+              "valueDate": "2025-05-08T00:00:00.000",
+              "type": "DEBIT",
+              "transactionTimestamp": "2025-05-08T07:30:00.000Z",
+              "txnId": "T3166100"
+            },
+            {
+              "mode": "ECS",
+              "reference": "RFN316601",
+              "amount": "4553.61",
+              "narration": "TO TRANSFER",
+              "transactionalBalance": "500211.19",
+              "valueDate": "2025-05-12T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-05-12T07:30:00.000Z",
+              "txnId": "T3166101"
+            },
+            {
+              "mode": "CHEQUE",
+              "reference": "RFN316602",
+              "amount": "4764.80",
+              "narration": "By Transfer",
+              "transactionalBalance": "504975.99",
+              "valueDate": "2025-05-17T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-05-17T07:30:00.000Z",
+              "txnId": "T3166102"
+            },
+            {
+              "mode": "CARD",
+              "reference": "RFN316603",
+              "amount": "4975.99",
+              "narration": "ACCT CHARGES",
+              "transactionalBalance": "500000.00",
+              "valueDate": "2025-05-23T00:00:00.000",
+              "type": "DEBIT",
+              "transactionTimestamp": "2025-05-23T07:30:00.000Z",
+              "txnId": "T3166103"
+            },
+            {
+              "mode": "UPI",
+              "reference": "RFN316604",
+              "amount": "5187.18",
+              "narration": "AEPS-ONUS-CW-34830",
+              "transactionalBalance": "505187.18",
+              "valueDate": "2025-05-30T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-05-30T07:30:00.000Z",
+              "txnId": "T3166104"
+            },
+            {
+              "mode": "NEFT",
+              "reference": "RFN316605",
+              "amount": "5398.37",
+              "narration": "CREDIT ENTRY",
+              "transactionalBalance": "510585.55",
+              "valueDate": "2025-06-07T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-06-07T07:30:00.000Z",
+              "txnId": "T3166105"
+            },
+            {
+              "mode": "IMPS",
+              "reference": "RFN316606",
+              "amount": "5609.56",
+              "narration": "INTEREST/SALARY",
+              "transactionalBalance": "504975.99",
+              "valueDate": "2025-06-16T00:00:00.000",
+              "type": "DEBIT",
+              "transactionTimestamp": "2025-06-16T07:30:00.000Z",
+              "txnId": "T3166106"
+            },
+            {
+              "mode": "ATM",
+              "reference": "RFN316607",
+              "amount": "5820.75",
+              "narration": "IMPS TRANSFER 3173",
+              "transactionalBalance": "510796.74",
+              "valueDate": "2025-06-26T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-06-26T07:30:00.000Z",
+              "txnId": "T3166107"
+            },
+            {
+              "mode": "CASH",
+              "reference": "RFN316608",
+              "amount": "6031.94",
+              "narration": "UPI/CR/15838/SENDER/PQRS",
+              "transactionalBalance": "516828.68",
+              "valueDate": "2025-07-07T00:00:00.000",
+              "type": "CREDIT",
+              "transactionTimestamp": "2025-07-07T07:30:00.000Z",
+              "txnId": "T3166108"
+            },
+            {
+              "mode": "RTGS",
+              "reference": "RFN316609",
+              "amount": "6243.13",
+              "narration": "NEFT OUTWARD 3175",
+              "transactionalBalance": "510585.55",
+              "valueDate": "2025-07-19T00:00:00.000",
+              "type": "DEBIT",
+              "transactionTimestamp": "2025-07-19T07:30:00.000Z",
+              "txnId": "T3166109"
+            }
+          ],
+          "endDate": "2025-07-19T07:30:00.000Z",
+          "startDate": "2025-05-05T07:30:00.000Z"
+        },
+        "bank": "IDBIBANK",
+        "linkReferenceNumber": "lr-003-fd-0003-77gg88hh99ii",
+        "Summary": {
+          "PendingTxns": {
+            "PendingTxn": {
+              "transactionType": "Debit",
+              "amount": 0
+            }
+          },
+          "accountSubType": "TERM_DEPOSIT",
+          "accountType": "REGULAR",
+          "currentBalance": "510585.55",
+          "balanceDateTime": "2025-07-19T07:30:00.000Z",
+          "branch": "DELHI",
+          "drawingLimit": "0",
+          "currentODLimit": "0",
+          "currency": "INR",
+          "ifsc": "IBKL0000107",
+          "micrCode": "110259003",
+          "facility": "NO_FACILITY_GRANTED",
+          "openingDate": "2020-02-20",
+          "status": "ACTIVE"
+        },
+        "maskedAccountNumber": "XXXXXXXXXX0008",
+        "Profile": {
+          "Holders": {
+            "Holder": [
+              {
+                "address": "12 Connaught Place, Central Delhi, DELHI, DL, 110001",
+                "dob": "1992-03-14",
+                "name": "NEHASINGH",
+                "mobile": "9765400022",
+                "nominee": "REGISTERED",
+                "ckycRegistered": "YES",
+                "landline": "",
+                "pan": "QRSTU1234M",
+                "email": "neha.singh@gmail"
+              }
+            ],
+            "type": "SINGLE"
+          }
+        }
+      }
+    ],
+    "status": "success"
+  }
+}

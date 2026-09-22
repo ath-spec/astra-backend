@@ -41,14 +41,14 @@ func (r *PostgresChatRepository) GetSessionForUser(ctx context.Context, userID u
 		ORDER BY updated_at DESC 
 		LIMIT 1
 	`
-	
+
 	row := r.db.Pool.QueryRow(ctx, query, userID)
-	
+
 	var session ChatSession
 	var messagesBytes []byte
-	
+
 	err := row.Scan(&session.ID, &session.UserID, &messagesBytes, &session.CreatedAt, &session.UpdatedAt)
-	
+
 	if err == pgx.ErrNoRows {
 		// Return a fresh session if none exists
 		return &ChatSession{
@@ -57,7 +57,7 @@ func (r *PostgresChatRepository) GetSessionForUser(ctx context.Context, userID u
 			Messages: []map[string]interface{}{},
 		}, nil
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("error fetching chat session: %w", err)
 	}
@@ -82,7 +82,7 @@ func (r *PostgresChatRepository) SaveSession(ctx context.Context, session *ChatS
 		ON CONFLICT (id) DO UPDATE 
 		SET messages = EXCLUDED.messages, updated_at = CURRENT_TIMESTAMP
 	`
-	
+
 	_, err = r.db.Pool.Exec(ctx, query, session.ID, session.UserID, messagesBytes)
 	if err != nil {
 		return fmt.Errorf("error saving chat session: %w", err)

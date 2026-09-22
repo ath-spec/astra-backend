@@ -1,0 +1,348 @@
+{
+  "version": "1.0",
+  "last_updated": "2024-01-15T10:00:00Z",
+  "merchants": [
+    {
+      "name": "Swiggy",
+      "aliases": ["@swiggy", "swiggy.in", "Swiggy Order", "swiggy.com", "swiggyinstamart"],
+      "category": "food",
+      "subcategory": "food_delivery",
+      "confidence": 0.98,
+      "source": "upipayments",
+      "pattern": "swiggy",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 125000
+    },
+    {
+      "name": "Zomato",
+      "aliases": ["@zomato", "Zomato Order", "zomato.com"],
+      "category": "food",
+      "subcategory": "food_delivery",
+      "confidence": 0.97,
+      "source": "paytm",
+      "pattern": "zomato",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 115000
+    },
+    {
+      "name": "Uber",
+      "aliases": ["@uber", "Uber Ride", "uber.com"],
+      "category": "transportation",
+      "subcategory": "ride_sharing",
+      "confidence": 0.95,
+      "source": "razorpay",
+      "pattern": "uber",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 98000
+    },
+    {
+      "name": "Ola",
+      "aliases": ["@ola", "Ola Cab", "olacabs.com"],
+      "category": "transportation",
+      "subcategory": "ride_sharing",
+      "confidence": 0.94,
+      "source": "paytm",
+      "pattern": "ola",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 85000
+    },
+    {
+      "name": "Netflix",
+      "aliases": ["@netflix", "Netflix Subscription", "netflix.com"],
+      "category": "entertainment",
+      "subcategory": "streaming",
+      "confidence": 0.99,
+      "source": "razorpay",
+      "pattern": "netflix",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 75000
+    },
+    {
+      "name": "Amazon",
+      "aliases": ["@amazon", "Amazon.in", "amazon pay", "amazon.in"],
+      "category": "shopping",
+      "subcategory": "ecommerce",
+      "confidence": 0.96,
+      "source": "upipayments",
+      "pattern": "amazon",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 150000
+    },
+    {
+      "name": "Flipkart",
+      "aliases": ["@flipkart", "Flipkart Order", "flipkart.com", "fkrt"],
+      "category": "shopping",
+      "subcategory": "ecommerce",
+      "confidence": 0.95,
+      "source": "paytm",
+      "pattern": "flipkart",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 120000
+    },
+    {
+      "name": "BookMyShow",
+      "aliases": ["@bookmyshow", "@bms", "BookMyShow Ticket"],
+      "category": "entertainment",
+      "subcategory": "movies",
+      "confidence": 0.97,
+      "source": "razorpay",
+      "pattern": "bookmyshow",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 45000
+    },
+    {
+      "name": "Jio Recharge",
+      "aliases": ["@jio", "Jio Recharge", "Reliance Jio"],
+      "category": "utilities",
+      "subcategory": "recharge",
+      "confidence": 0.98,
+      "source": "paytm",
+      "pattern": "jio",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 200000
+    },
+    {
+      "name": "Airtel",
+      "aliases": ["@airtel", "Airtel Recharge", "airtel.in"],
+      "category": "utilities",
+      "subcategory": "recharge",
+      "confidence": 0.97,
+      "source": "razorpay",
+      "pattern": "airtel",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 180000
+    },
+    {
+      "name": "Starbucks",
+      "aliases": ["@starbucks", "Starbucks Coffee"],
+      "category": "food",
+      "subcategory": "food_dining",
+      "confidence": 0.98,
+      "source": "razorpay",
+      "pattern": "starbucks",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 55000
+    },
+    {
+      "name": "McDonald's",
+      "aliases": ["@mcdonalds", "@mcd", "McDonald's"],
+      "category": "food",
+      "subcategory": "food_dining",
+      "confidence": 0.97,
+      "source": "paytm",
+      "pattern": "mcdonald",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 85000
+    },
+    {
+      "name": "BigBasket",
+      "aliases": ["@bigbasket", "BigBasket Groceries"],
+      "category": "food",
+      "subcategory": "groceries",
+      "confidence": 0.96,
+      "source": "paytm",
+      "pattern": "bigbasket",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 95000
+    },
+    {
+      "name": "Blinkit",
+      "aliases": ["@blinkit", "Blinkit Quick"],
+      "category": "food",
+      "subcategory": "groceries",
+      "confidence": 0.95,
+      "source": "razorpay",
+      "pattern": "blinkit",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 88000
+    },
+    {
+      "name": "PhonePe",
+      "aliases": ["@phonepe", "@ybl", "PhonePe Payment"],
+      "category": "other",
+      "subcategory": "wallet",
+      "confidence": 0.99,
+      "source": "upipayments",
+      "pattern": "phonepe",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 300000
+    },
+    {
+      "name": "Paytm",
+      "aliases": ["@paytm", "@ptm"],
+      "category": "other",
+      "subcategory": "wallet",
+      "confidence": 0.99,
+      "source": "paytm",
+      "pattern": "paytm",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 250000
+    },
+    {
+      "name": "Google Pay",
+      "aliases": ["@gpay", "Google Pay"],
+      "category": "other",
+      "subcategory": "wallet",
+      "confidence": 0.99,
+      "source": "razorpay",
+      "pattern": "googlepay",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 220000
+    },
+    {
+      "name": "Practo",
+      "aliases": ["@practo", "Practo Consultation"],
+      "category": "healthcare",
+      "subcategory": "healthcare",
+      "confidence": 0.96,
+      "source": "razorpay",
+      "pattern": "practo",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 35000
+    },
+    {
+      "name": "Apollo Pharmacy",
+      "aliases": ["@apolloph", "Apollo Pharmacy"],
+      "category": "healthcare",
+      "subcategory": "pharmacy",
+      "confidence": 0.97,
+      "source": "paytm",
+      "pattern": "apollo",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 65000
+    },
+    {
+      "name": "Cult.fit",
+      "aliases": ["@cultfit", "Cult Fitness"],
+      "category": "healthcare",
+      "subcategory": "fitness",
+      "confidence": 0.95,
+      "source": "razorpay",
+      "pattern": "cultfit",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 42000
+    },
+    {
+      "name": "Unacademy",
+      "aliases": ["@unacademy", "Unacademy Plus"],
+      "category": "education",
+      "subcategory": "online_courses",
+      "confidence": 0.96,
+      "source": "razorpay",
+      "pattern": "unacademy",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 28000
+    },
+    {
+      "name": "Byju's",
+      "aliases": ["@byjus", "Byju's Learning"],
+      "category": "education",
+      "subcategory": "education",
+      "confidence": 0.94,
+      "source": "paytm",
+      "pattern": "byjus",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 25000
+    },
+    {
+      "name": "PVR Cinemas",
+      "aliases": ["@pvr", "PVR Cinemas"],
+      "category": "entertainment",
+      "subcategory": "movies",
+      "confidence": 0.98,
+      "source": "razorpay",
+      "pattern": "pvr",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 38000
+    },
+    {
+      "name": "Spotify",
+      "aliases": ["@spotify", "Spotify Premium"],
+      "category": "entertainment",
+      "subcategory": "streaming",
+      "confidence": 0.97,
+      "source": "razorpay",
+      "pattern": "spotify",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 58000
+    },
+    {
+      "name": "Disney+ Hotstar",
+      "aliases": ["@hotstar", "@disney", "Hotstar"],
+      "category": "entertainment",
+      "subcategory": "streaming",
+      "confidence": 0.96,
+      "source": "paytm",
+      "pattern": "hotstar",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 52000
+    },
+    {
+      "name": "Myntra",
+      "aliases": ["@myntra", "Myntra Fashion"],
+      "category": "shopping",
+      "subcategory": "fashion",
+      "confidence": 0.95,
+      "source": "razorpay",
+      "pattern": "myntra",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 72000
+    },
+    {
+      "name": "Nykaa",
+      "aliases": ["@nykaa", "Nykaa Beauty"],
+      "category": "shopping",
+      "subcategory": "shopping",
+      "confidence": 0.94,
+      "source": "paytm",
+      "pattern": "nykaa",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 48000
+    },
+    {
+      "name": "MakeMyTrip",
+      "aliases": ["@makemyt", "MakeMyTrip Booking"],
+      "category": "travel",
+      "subcategory": "travel",
+      "confidence": 0.96,
+      "source": "razorpay",
+      "pattern": "makemytrip",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 32000
+    },
+    {
+      "name": "IRCTC",
+      "aliases": ["@irctc", "IRCTC Booking"],
+      "category": "travel",
+      "subcategory": "trains",
+      "confidence": 0.98,
+      "source": "upipayments",
+      "pattern": "irctc",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 68000
+    },
+    {
+      "name": "Indigo",
+      "aliases": ["@indigo", "Indigo Flight"],
+      "category": "travel",
+      "subcategory": "flights",
+      "confidence": 0.97,
+      "source": "razorpay",
+      "pattern": "indigo",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 42000
+    },
+    {
+      "name": "Razorpay",
+      "aliases": ["@razorpay", "Razorpay Gateway"],
+      "category": "savings",
+      "subcategory": "financial_services",
+      "confidence": 0.95,
+      "source": "razorpay",
+      "pattern": "razorpay",
+      "last_updated": "2024-01-15T10:00:00Z",
+      "transaction_count": 150000
+    }
+  ]
+}
+

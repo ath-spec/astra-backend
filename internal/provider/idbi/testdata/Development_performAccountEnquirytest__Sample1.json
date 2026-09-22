@@ -1,0 +1,105 @@
+{
+  "spec_file": "Open API Specifications (11).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/performAccountEnquirytest",
+  "path": "/Development/performAccountEnquirytest",
+  "example": "Sample 1",
+  "request": {
+    "acctId": "660100100003"
+  },
+  "status": 200,
+  "response": {
+    "acctId": "660100100003",
+    "acctType": {
+      "schmCode": "SB002",
+      "schmType": "SAVINGS"
+    },
+    "acctCurr": "INR",
+    "custId": "68453002",
+    "personName": {
+      "lastName": "PATIL",
+      "firstName": "PRIYA",
+      "middleName": "",
+      "name": "PRIYAPATIL",
+      "titlePrefix": "MS"
+    },
+    "acctOpenDt": "2018-04-18T00:00:00.000",
+    "bankAcctStatusCode": "A",
+    "bankInfo": {
+      "bankId": "IDBI001",
+      "name": "IDBIBANK",
+      "branchId": "105",
+      "branchName": "PUNE",
+      "postAddr": {
+        "addr1": "142, Lake View",
+        "addr2": "Near City Mall",
+        "addr3": "",
+        "city": "PUNE",
+        "stateProv": "MH",
+        "postalCode": "411001",
+        "country": "India",
+        "addrType": "REGISTERED"
+      }
+    },
+    "acctBal": [
+      {
+        "balType": "LEDGER",
+        "balAmt": {
+          "amountValue": "56780.25",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "AVAIL",
+        "balAmt": {
+          "amountValue": "55780.25",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "EFFAVL",
+        "balAmt": {
+          "amountValue": "50780.25",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "LIEN",
+        "balAmt": {
+          "amountValue": "5000.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "FLOAT",
+        "balAmt": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "DRWPWR",
+        "balAmt": {
+          "amountValue": "0.00",
+          "currencyCode": "INR"
+        }
+      },
+      {
+        "balType": "ACCBAL",
+        "balAmt": {
+          "amountValue": "56780.25",
+          "currencyCode": "INR"
+        }
+      }
+    ],
+    "custStat": {
+      "refCode": "GEN",
+      "refRecType": "",
+      "refDesc": "GENERAL"
+    },
+    "acctInqCustomData": {
+      "acctName": "PRIYAPATIL",
+      "status": "A"
+    }
+  }
+}

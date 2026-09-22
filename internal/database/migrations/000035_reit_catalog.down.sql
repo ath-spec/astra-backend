@@ -1,0 +1,2 @@
+DELETE FROM fund_allocation WHERE scheme_code IN ('MIRAE-REIT-G', 'ICICI-REIT-G', 'HDFC-REIT-G', 'SBI-REIT-G', 'MOTILAL-REIT-G');
+DELETE FROM fund_catalog WHERE scheme_code IN ('MIRAE-REIT-G', 'ICICI-REIT-G', 'HDFC-REIT-G', 'SBI-REIT-G', 'MOTILAL-REIT-G');

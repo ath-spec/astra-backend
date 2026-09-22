@@ -1,0 +1,81 @@
+{
+  "spec_file": "Open API Specifications (28).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/fetchLoanAccountLimitstest",
+  "path": "/Development/fetchLoanAccountLimitstest",
+  "example": "sample 1",
+  "request": {
+    "foracid": "660100100003"
+  },
+  "status": 200,
+  "response": {
+    "accountLimitDetails": {
+      "acctDrwngPowerLimitHistMsgInq": {
+        "olimitLL": [
+          {
+            "applicableDate": "2022-07-29T00:00:00.000",
+            "drwngPower": {
+              "amountValue": "4000000.00",
+              "currencyCode": "INR"
+            },
+            "drwngPowerPcnt": {
+              "value": "0.0"
+            }
+          },
+          {
+            "applicableDate": "2022-06-02T00:00:00.000",
+            "drwngPower": {
+              "amountValue": "3814000.00",
+              "currencyCode": "INR"
+            },
+            "drwngPowerPcnt": {
+              "value": "0.0"
+            }
+          },
+          {
+            "applicableDate": "2019-03-05T00:00:00.000",
+            "drwngPower": {
+              "amountValue": "4000000.00",
+              "currencyCode": "INR"
+            },
+            "drwngPowerPcnt": {
+              "value": "0.0"
+            }
+          },
+          {
+            "applicableDate": "2018-10-30T00:00:00.000",
+            "drwngPower": {
+              "amountValue": "2915000.00",
+              "currencyCode": "INR"
+            },
+            "drwngPowerPcnt": {
+              "value": "0.0"
+            }
+          },
+          {
+            "applicableDate": "2018-04-20T00:00:00.000",
+            "drwngPower": {
+              "amountValue": "0.00",
+              "currencyCode": "INR"
+            },
+            "drwngPowerPcnt": {
+              "value": "0.0"
+            }
+          }
+        ]
+      },
+      "acctSanctLimitHistMsg": {
+        "olimitLL": [
+          {
+            "applicableDate": "2018-04-20T00:00:00.000",
+            "expiryDate": "2099-12-31T00:00:00.000",
+            "sanctLimit": {
+              "amountValue": "4000000.00",
+              "currencyCode": "INR"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

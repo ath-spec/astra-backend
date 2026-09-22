@@ -1,0 +1,845 @@
+{
+  "spec_file": "Open API Specifications (23).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/generateLoanRepaymentScheduletest",
+  "path": "/Development/generateLoanRepaymentScheduletest",
+  "example": "sample 1",
+  "request": {
+    "loanModellingMsgInputVO": {
+      "mandatoryParameters": {
+        "crncyCode": "INR",
+        "originationDate": "2020-08-31T00:00:00.000",
+        "schmCode": {
+          "schmCode": "EIDEM"
+        }
+      },
+      "advanceParameters": {
+        "eIFormula": ""
+      },
+      "Variables": {
+        "loanAmount": {
+          "amountValue": "100000",
+          "currencyCode": "INR"
+        },
+        "intRate": {
+          "Value": "1.2"
+        },
+        "noOfInstalmnts": "24"
+      }
+    }
+  },
+  "status": 200,
+  "response": {
+    "loanModellingSchOutputVO": {
+      "lamodRepaymentLL": [
+        {
+          "flowAmt": {
+            "amountValue": "4218.95",
+            "currencyCode": "INR"
+          },
+          "noOfInstalments": "24",
+          "flowStartDate": null,
+          "Freq": "M",
+          "Key": {
+            "serial_num": "1"
+          },
+          "flowDesc": "EI INSTALMENT"
+        }
+      ],
+      "oamortLL": [
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "4118.95",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "100.00",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "95881.05",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "100.00",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2020-10-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4118.95",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "1"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "8242.02",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "195.88",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "91757.98",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "95.88",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2020-10-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4123.07",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "2"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "12369.21",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "287.64",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "87630.79",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "91.76",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2020-12-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4127.19",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "3"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "16500.53",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "375.27",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "83499.47",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "87.63",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2020-12-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4131.32",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "4"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "20635.98",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "458.77",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "79364.02",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "83.50",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-01-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4135.45",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "5"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "24775.56",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "538.13",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "75224.44",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "79.36",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-03-03T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4139.59",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "6"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "28919.29",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "613.36",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "71080.71",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "75.22",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-03-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4143.73",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "7"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "33067.16",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "684.44",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "66932.84",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "71.08",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-05-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4147.87",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "8"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "37219.17",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "751.37",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "62780.83",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "66.93",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-05-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4152.02",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "9"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "41375.34",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "814.15",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "58624.66",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "62.78",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-07-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4156.17",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "10"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "45535.67",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "872.78",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "54464.33",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "58.62",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-07-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4160.32",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "11"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "49700.15",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "927.24",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "50299.85",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "54.46",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-08-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4164.49",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "12"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "53868.80",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "977.54",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "46131.20",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "50.30",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-10-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4168.65",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "13"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "58041.62",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1023.67",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "41958.38",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "46.13",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-10-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4172.82",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "14"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "62218.61",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1065.63",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "37781.39",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "41.96",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-12-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4176.99",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "15"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "66399.78",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1103.41",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "33600.22",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "37.78",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2021-12-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4181.17",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "16"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "70585.13",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1137.01",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "29414.87",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "33.60",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-01-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4185.35",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "17"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "74774.66",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1166.43",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "25225.34",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "29.41",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-03-03T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4189.53",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "18"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "78968.39",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1191.65",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "21031.61",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "25.23",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-03-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4193.72",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "19"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "83166.31",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1212.68",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "16833.69",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "21.03",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-05-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4197.92",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "20"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "87368.42",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1229.52",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "12631.58",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "16.83",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-05-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4202.12",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "21"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "91574.74",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1242.15",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "8425.26",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "12.63",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-07-01T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4206.32",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "22"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "95785.27",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1250.57",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "4214.73",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "8.43",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-07-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4210.52",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "23"
+          }
+        },
+        {
+          "amortStruct": {
+            "cummPrincAmt": {
+              "amountValue": "100000.00",
+              "currencyCode": "INR"
+            },
+            "cummIntAmt": {
+              "amountValue": "1254.79",
+              "currencyCode": "INR"
+            },
+            "princOutStanding": {
+              "amountValue": "0.00",
+              "currencyCode": "INR"
+            },
+            "instlAmt": {
+              "amountValue": "4218.95",
+              "currencyCode": "INR"
+            },
+            "intAmt": {
+              "amountValue": "4.21",
+              "currencyCode": "INR"
+            },
+            "flowDate": "2022-08-31T00:00:00.000",
+            "princAmt": {
+              "amountValue": "4214.73",
+              "currencyCode": "INR"
+            },
+            "flowDesc": "EQUATED INSTALLMENT FLOW"
+          },
+          "Key": {
+            "serial_num": "24"
+          }
+        }
+      ]
+    }
+  }
+}

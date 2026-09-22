@@ -1,0 +1,864 @@
+{
+  "spec_file": "Open API Specifications (15).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/fetchLoanInterestRatestest",
+  "path": "/Development/fetchLoanInterestRatestest",
+  "example": "Sample 2",
+  "request": {
+    "crncyCode": "INR",
+    "intTblCode": {
+      "tblCode": "LY002"
+    },
+    "loanAmt": {
+      "amountValue": "10000",
+      "currencyCode": "INR"
+    },
+    "loanPerdDays": "0",
+    "loanPerdMnths": "12",
+    "originationDate": "2022-01-03T17:13:06.751"
+  },
+  "status": 200,
+  "response": {
+    "aaPartyIdType": "MOBILE",
+    "aaPartyIdValue": "9876500011",
+    "aaProductId": "TEST",
+    "aaVua": "9876500011@onemoney",
+    "accountType": "SBA",
+    "acctCurr": "INR",
+    "acctId": "660100100004",
+    "acctOpenDt": "2019-09-12T00:00:00.000",
+    "balances": {
+      "FLOAT": "0.00",
+      "AVAIL": "88500.50",
+      "LEDGER": "89500.50",
+      "LIEN": "3000.00",
+      "ACCBAL": "89500.50",
+      "DRWPWR": "0.00",
+      "EFFAVL": "85500.50"
+    },
+    "bankAcctStatusCode": "A",
+    "bankId": "IDBI001",
+    "bankName": "IDBIBANK",
+    "branchId": "106",
+    "branchName": "MUMBAI",
+    "cibilDob": "05111988",
+    "cibilGender": "Male",
+    "cibilResponse": {
+      "fetchCibilScoreResponse": {
+        "body": {
+          "dcResponse": {
+            "decision": "Pass",
+            "applicant": {
+              "name": {
+                "firstName": "ARJUN"
+              }
+            }
+          }
+        },
+        "header": {
+          "success": true
+        }
+      }
+    },
+    "cibilStateCode": "27",
+    "ckycAppFormNo": "FF02",
+    "ckycBranchCode": "MBBRANCH",
+    "ckycDob": "05-11-1988",
+    "ckycGender": "M",
+    "ckycInfo": {
+      "parentCompany": "TSSCPL",
+      "ckycPhotoBytes": "y",
+      "ckycRequestId": "412",
+      "applicationFormNo": "FF02",
+      "ckycRequestDate": "20-Aug-2020",
+      "ckycAge": "37",
+      "recordIdentifier": "1802609",
+      "ckycUpdatedDate": "15-Aug-2020",
+      "ckycGenDate": "15-Aug-2020",
+      "ckycPhoto": "x",
+      "queryId": "1802609",
+      "idDetails": [
+        {
+          "type": "B",
+          "status": "03"
+        },
+        {
+          "type": "C",
+          "status": "02"
+        }
+      ]
+    },
+    "ckycInputIdType": "C",
+    "ckycNo": "600011122233",
+    "ckycQueryId": "1802609",
+    "ckycRecordId": "1802609",
+    "ckycSourceSystem": "Finacle",
+    "comuAddr1": "88 Marine Drive",
+    "comuAddr2": "Nariman Point",
+    "comuCity": "MUMBAI",
+    "comuCountry": "IN",
+    "comuPincode": "400021",
+    "comuState": "MH",
+    "consentHandle": "7bcde845-cf4c-4a6b-9bd9-4a1e29d15825",
+    "consentId": "CONSENT-0002",
+    "consentInfo": {
+      "accountID": "660100100004",
+      "consentCreationData": "2026-06-23T10:15:30Z",
+      "consentID": "CONSENT-0002",
+      "consentHandle": "7bcde845-cf4c-4a6b-9bd9-4a1e29d15825",
+      "vua": "9876500011@onemoney",
+      "productID": "TEST",
+      "aaId": "AA_00223344",
+      "accounts": [
+        {
+          "fiType": "DEPOSIT",
+          "linkReferenceNumber": "LRN0003",
+          "fipId": "IDBI001",
+          "maskedAccountNumber": "XXXXXXXX0004",
+          "fipName": "IDBI Bank",
+          "accountType": "SAVINGS"
+        }
+      ],
+      "status": "ACTIVE",
+      "timestamp": "2026-06-23T10:20:00Z"
+    },
+    "custCifId": "77123456",
+    "custLimitInfo": {
+      "emptyLimitRecords": "4",
+      "custRating": "A",
+      "accountManager": "MIGR2",
+      "exposure": {
+        "fundedLimit": {
+          "amount": "9800000.00",
+          "currency": "INR"
+        },
+        "nonFundedLimit": {
+          "amount": "0.00",
+          "currency": ""
+        },
+        "totalOutstanding": {
+          "amount": "9800000.00",
+          "currency": "INR"
+        },
+        "totalNodeLimit": {
+          "amount": "15500000.00",
+          "currency": "INR"
+        },
+        "totalLimit": {
+          "amount": "15500000.00",
+          "currency": "INR"
+        },
+        "totalNodeOutstanding": {
+          "amount": "9800000.00",
+          "currency": "INR"
+        }
+      },
+      "limits": [
+        {
+          "sanctionDate": "14-01-2019",
+          "expiryDate": "31-12-2099",
+          "currency": "INR"
+        }
+      ]
+    },
+    "custMobileNo": "9876500011",
+    "custName": "ARJUNMEHTA",
+    "custSex": "M",
+    "custTitleCode": "MR",
+    "customerId": "77712345",
+    "dateOfBirth": "1988-11-05",
+    "decryptInfo": {
+      "redirect": "https://myapp.com/consent/callback",
+      "errorCode": "0",
+      "sessionId": "9a1123c9-1b0b-4265-c076-7995ed097d6d",
+      "srcRef": "7bcde845-cf4c-4a6b-9bd9-4a1e29d15825",
+      "status": "S",
+      "txnId": "3624e105-2a35-4187-aa44-ddf12befeb41"
+    },
+    "ein": "248186",
+    "emailId": "arjun.mehta@gmail",
+    "finProStmt": {
+      "linkReferenceNumber": "29929ad7-e6ff-4a0c-ae25-5efe6ea3ad9f",
+      "maskedAccountNumber": "XXXXXXXX0004",
+      "fiType": "DEPOSIT",
+      "ifsc": "IBKL0000106",
+      "micrCode": "400259003",
+      "facility": "NO_FACILITY_GRANTED",
+      "balanceDateTime": "2025-06-30T10:21:03.000Z",
+      "startDate": "2025-06-01",
+      "endDate": "2025-06-30",
+      "nominee": "REGISTERED",
+      "transactions": [
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2001",
+          "amount": "3008.61",
+          "narration": "F2 FinPro 1",
+          "reference": "RFNF21",
+          "transactionTimestamp": "2025-06-01T11:00:00.000",
+          "valueDate": "2025-06-01",
+          "currentBalance": "86507.39"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2002",
+          "amount": "8457.58",
+          "narration": "F2 FinPro 2",
+          "reference": "RFNF22",
+          "transactionTimestamp": "2025-06-02T11:00:00.000",
+          "valueDate": "2025-06-02",
+          "currentBalance": "78049.81"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2003",
+          "amount": "10694.09",
+          "narration": "F2 FinPro 3",
+          "reference": "RFNF23",
+          "transactionTimestamp": "2025-06-03T11:00:00.000",
+          "valueDate": "2025-06-03",
+          "currentBalance": "88743.90"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2004",
+          "amount": "10280.04",
+          "narration": "F2 FinPro 4",
+          "reference": "RFNF24",
+          "transactionTimestamp": "2025-06-04T11:00:00.000",
+          "valueDate": "2025-06-04",
+          "currentBalance": "78463.86"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2005",
+          "amount": "5933.19",
+          "narration": "F2 FinPro 5",
+          "reference": "RFNF25",
+          "transactionTimestamp": "2025-06-05T11:00:00.000",
+          "valueDate": "2025-06-05",
+          "currentBalance": "72530.67"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2006",
+          "amount": "6864.94",
+          "narration": "F2 FinPro 6",
+          "reference": "RFNF26",
+          "transactionTimestamp": "2025-06-06T11:00:00.000",
+          "valueDate": "2025-06-06",
+          "currentBalance": "79395.61"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2007",
+          "amount": "7872.18",
+          "narration": "F2 FinPro 7",
+          "reference": "RFNF27",
+          "transactionTimestamp": "2025-06-07T11:00:00.000",
+          "valueDate": "2025-06-07",
+          "currentBalance": "71523.43"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2008",
+          "amount": "11787.42",
+          "narration": "F2 FinPro 8",
+          "reference": "RFNF28",
+          "transactionTimestamp": "2025-06-08T11:00:00.000",
+          "valueDate": "2025-06-08",
+          "currentBalance": "59736.01"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2009",
+          "amount": "8053.61",
+          "narration": "F2 FinPro 9",
+          "reference": "RFNF29",
+          "transactionTimestamp": "2025-06-09T11:00:00.000",
+          "valueDate": "2025-06-09",
+          "currentBalance": "67789.62"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2010",
+          "amount": "6202.20",
+          "narration": "F2 FinPro 10",
+          "reference": "RFNF210",
+          "transactionTimestamp": "2025-06-10T11:00:00.000",
+          "valueDate": "2025-06-10",
+          "currentBalance": "61587.42"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2011",
+          "amount": "7600.56",
+          "narration": "F2 FinPro 11",
+          "reference": "RFNF211",
+          "transactionTimestamp": "2025-06-11T11:00:00.000",
+          "valueDate": "2025-06-11",
+          "currentBalance": "53986.86"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2012",
+          "amount": "928.84",
+          "narration": "F2 FinPro 12",
+          "reference": "RFNF212",
+          "transactionTimestamp": "2025-06-12T11:00:00.000",
+          "valueDate": "2025-06-12",
+          "currentBalance": "54915.70"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2013",
+          "amount": "1130.57",
+          "narration": "F2 FinPro 13",
+          "reference": "RFNF213",
+          "transactionTimestamp": "2025-06-13T11:00:00.000",
+          "valueDate": "2025-06-13",
+          "currentBalance": "53785.13"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2014",
+          "amount": "10699.04",
+          "narration": "F2 FinPro 14",
+          "reference": "RFNF214",
+          "transactionTimestamp": "2025-06-14T11:00:00.000",
+          "valueDate": "2025-06-14",
+          "currentBalance": "43086.09"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2015",
+          "amount": "14756.22",
+          "narration": "F2 FinPro 15",
+          "reference": "RFNF215",
+          "transactionTimestamp": "2025-06-15T11:00:00.000",
+          "valueDate": "2025-06-15",
+          "currentBalance": "57842.31"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2016",
+          "amount": "9101.16",
+          "narration": "F2 FinPro 16",
+          "reference": "RFNF216",
+          "transactionTimestamp": "2025-06-16T11:00:00.000",
+          "valueDate": "2025-06-16",
+          "currentBalance": "48741.15"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2017",
+          "amount": "6207.20",
+          "narration": "F2 FinPro 17",
+          "reference": "RFNF217",
+          "transactionTimestamp": "2025-06-17T11:00:00.000",
+          "valueDate": "2025-06-17",
+          "currentBalance": "42533.95"
+        },
+        {
+          "mode": "REMITTANCE",
+          "type": "CREDIT",
+          "txnId": "F2D2018",
+          "amount": "2970.06",
+          "narration": "F2 FinPro 18",
+          "reference": "RFNF218",
+          "transactionTimestamp": "2025-06-18T11:00:00.000",
+          "valueDate": "2025-06-18",
+          "currentBalance": "45504.01"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2019",
+          "amount": "7782.46",
+          "narration": "F2 FinPro 19",
+          "reference": "RFNF219",
+          "transactionTimestamp": "2025-06-19T11:00:00.000",
+          "valueDate": "2025-06-19",
+          "currentBalance": "37721.55"
+        },
+        {
+          "mode": "OTHERS",
+          "type": "DEBIT",
+          "txnId": "F2D2020",
+          "amount": "14740.11",
+          "narration": "F2 FinPro 20",
+          "reference": "RFNF220",
+          "transactionTimestamp": "2025-06-20T11:00:00.000",
+          "valueDate": "2025-06-20",
+          "currentBalance": "22981.44"
+        }
+      ]
+    },
+    "firstName": "ARJUN",
+    "foracid": "660100100004",
+    "fullStmt": {
+      "ffdBalance": "15000.00",
+      "userDefinedBalance": "85500.50",
+      "hasMoreData": "N",
+      "transactions": [
+        {
+          "pstdDate": "2025-06-01T10:00:00.000",
+          "instrumentId": "",
+          "amount": "14891.88",
+          "txnDate": "2025-06-01T00:00:00.000",
+          "txnDesc": "S2 TXN 1",
+          "txnType": "D",
+          "txnBalance": "105108.12",
+          "txnCat": "TCI",
+          "txnId": "S21001",
+          "txnSrlNo": "1",
+          "valueDate": "2025-06-01T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-02T10:00:00.000",
+          "instrumentId": "",
+          "amount": "12969.22",
+          "txnDate": "2025-06-02T00:00:00.000",
+          "txnDesc": "S2 TXN 2",
+          "txnType": "D",
+          "txnBalance": "92138.90",
+          "txnCat": "TCI",
+          "txnId": "S21002",
+          "txnSrlNo": "2",
+          "valueDate": "2025-06-02T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-03T10:00:00.000",
+          "instrumentId": "",
+          "amount": "2252.90",
+          "txnDate": "2025-06-03T00:00:00.000",
+          "txnDesc": "S2 TXN 3",
+          "txnType": "C",
+          "txnBalance": "94391.80",
+          "txnCat": "TCI",
+          "txnId": "S21003",
+          "txnSrlNo": "3",
+          "valueDate": "2025-06-03T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-04T10:00:00.000",
+          "instrumentId": "",
+          "amount": "5324.08",
+          "txnDate": "2025-06-04T00:00:00.000",
+          "txnDesc": "S2 TXN 4",
+          "txnType": "D",
+          "txnBalance": "89067.72",
+          "txnCat": "TCI",
+          "txnId": "S21004",
+          "txnSrlNo": "4",
+          "valueDate": "2025-06-04T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-05T10:00:00.000",
+          "instrumentId": "",
+          "amount": "10961.52",
+          "txnDate": "2025-06-05T00:00:00.000",
+          "txnDesc": "S2 TXN 5",
+          "txnType": "D",
+          "txnBalance": "78106.20",
+          "txnCat": "TCI",
+          "txnId": "S21005",
+          "txnSrlNo": "5",
+          "valueDate": "2025-06-05T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-06T10:00:00.000",
+          "instrumentId": "",
+          "amount": "10812.28",
+          "txnDate": "2025-06-06T00:00:00.000",
+          "txnDesc": "S2 TXN 6",
+          "txnType": "C",
+          "txnBalance": "88918.48",
+          "txnCat": "TCI",
+          "txnId": "S21006",
+          "txnSrlNo": "6",
+          "valueDate": "2025-06-06T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-07T10:00:00.000",
+          "instrumentId": "",
+          "amount": "14078.39",
+          "txnDate": "2025-06-07T00:00:00.000",
+          "txnDesc": "S2 TXN 7",
+          "txnType": "D",
+          "txnBalance": "74840.09",
+          "txnCat": "TCI",
+          "txnId": "S21007",
+          "txnSrlNo": "7",
+          "valueDate": "2025-06-07T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-08T10:00:00.000",
+          "instrumentId": "",
+          "amount": "6620.55",
+          "txnDate": "2025-06-08T00:00:00.000",
+          "txnDesc": "S2 TXN 8",
+          "txnType": "D",
+          "txnBalance": "68219.54",
+          "txnCat": "TCI",
+          "txnId": "S21008",
+          "txnSrlNo": "8",
+          "valueDate": "2025-06-08T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-09T10:00:00.000",
+          "instrumentId": "",
+          "amount": "12535.52",
+          "txnDate": "2025-06-09T00:00:00.000",
+          "txnDesc": "S2 TXN 9",
+          "txnType": "C",
+          "txnBalance": "80755.06",
+          "txnCat": "TCI",
+          "txnId": "S21009",
+          "txnSrlNo": "9",
+          "valueDate": "2025-06-09T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-10T10:00:00.000",
+          "instrumentId": "",
+          "amount": "10219.43",
+          "txnDate": "2025-06-10T00:00:00.000",
+          "txnDesc": "S2 TXN 10",
+          "txnType": "D",
+          "txnBalance": "70535.63",
+          "txnCat": "TCI",
+          "txnId": "S21010",
+          "txnSrlNo": "10",
+          "valueDate": "2025-06-10T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-11T10:00:00.000",
+          "instrumentId": "",
+          "amount": "4898.84",
+          "txnDate": "2025-06-11T00:00:00.000",
+          "txnDesc": "S2 TXN 11",
+          "txnType": "D",
+          "txnBalance": "65636.79",
+          "txnCat": "TCI",
+          "txnId": "S21011",
+          "txnSrlNo": "11",
+          "valueDate": "2025-06-11T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-12T10:00:00.000",
+          "instrumentId": "",
+          "amount": "9019.92",
+          "txnDate": "2025-06-12T00:00:00.000",
+          "txnDesc": "S2 TXN 12",
+          "txnType": "C",
+          "txnBalance": "74656.71",
+          "txnCat": "TCI",
+          "txnId": "S21012",
+          "txnSrlNo": "12",
+          "valueDate": "2025-06-12T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-13T10:00:00.000",
+          "instrumentId": "",
+          "amount": "13295.95",
+          "txnDate": "2025-06-13T00:00:00.000",
+          "txnDesc": "S2 TXN 13",
+          "txnType": "D",
+          "txnBalance": "61360.76",
+          "txnCat": "TCI",
+          "txnId": "S21013",
+          "txnSrlNo": "13",
+          "valueDate": "2025-06-13T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-14T10:00:00.000",
+          "instrumentId": "",
+          "amount": "12769.86",
+          "txnDate": "2025-06-14T00:00:00.000",
+          "txnDesc": "S2 TXN 14",
+          "txnType": "D",
+          "txnBalance": "48590.90",
+          "txnCat": "TCI",
+          "txnId": "S21014",
+          "txnSrlNo": "14",
+          "valueDate": "2025-06-14T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-15T10:00:00.000",
+          "instrumentId": "",
+          "amount": "7826.62",
+          "txnDate": "2025-06-15T00:00:00.000",
+          "txnDesc": "S2 TXN 15",
+          "txnType": "C",
+          "txnBalance": "56417.52",
+          "txnCat": "TCI",
+          "txnId": "S21015",
+          "txnSrlNo": "15",
+          "valueDate": "2025-06-15T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-16T10:00:00.000",
+          "instrumentId": "",
+          "amount": "9040.53",
+          "txnDate": "2025-06-16T00:00:00.000",
+          "txnDesc": "S2 TXN 16",
+          "txnType": "D",
+          "txnBalance": "47376.99",
+          "txnCat": "TCI",
+          "txnId": "S21016",
+          "txnSrlNo": "16",
+          "valueDate": "2025-06-16T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-17T10:00:00.000",
+          "instrumentId": "",
+          "amount": "1000.62",
+          "txnDate": "2025-06-17T00:00:00.000",
+          "txnDesc": "S2 TXN 17",
+          "txnType": "D",
+          "txnBalance": "46376.37",
+          "txnCat": "TCI",
+          "txnId": "S21017",
+          "txnSrlNo": "17",
+          "valueDate": "2025-06-17T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-18T10:00:00.000",
+          "instrumentId": "",
+          "amount": "4019.73",
+          "txnDate": "2025-06-18T00:00:00.000",
+          "txnDesc": "S2 TXN 18",
+          "txnType": "C",
+          "txnBalance": "50396.10",
+          "txnCat": "TCI",
+          "txnId": "S21018",
+          "txnSrlNo": "18",
+          "valueDate": "2025-06-18T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-19T10:00:00.000",
+          "instrumentId": "",
+          "amount": "12062.36",
+          "txnDate": "2025-06-19T00:00:00.000",
+          "txnDesc": "S2 TXN 19",
+          "txnType": "D",
+          "txnBalance": "38333.74",
+          "txnCat": "TCI",
+          "txnId": "S21019",
+          "txnSrlNo": "19",
+          "valueDate": "2025-06-19T00:00:00.000"
+        },
+        {
+          "pstdDate": "2025-06-20T10:00:00.000",
+          "instrumentId": "",
+          "amount": "6507.55",
+          "txnDate": "2025-06-20T00:00:00.000",
+          "txnDesc": "S2 TXN 20",
+          "txnType": "D",
+          "txnBalance": "31826.19",
+          "txnCat": "TCI",
+          "txnId": "S21020",
+          "txnSrlNo": "20",
+          "valueDate": "2025-06-20T00:00:00.000"
+        }
+      ]
+    },
+    "gstStateCode": "27",
+    "hpPayoffInfo": {
+      "interestRate": "9.000000",
+      "interestSinceLastApplication": "842.00",
+      "pendingPenalInterest": "0",
+      "netPayofamt": "600842.00",
+      "accountLiab": "600000.00",
+      "pendingOverdueInterest": "0",
+      "pendingPrincipal": "600000.00",
+      "pendingNormalInterest": "0"
+    },
+    "hrmsChannelName": "WEB_APP",
+    "hrmsInfo": {
+      "supSol": "CC002",
+      "fullNameTitle": "Mr Arjun Mehta",
+      "gender": "M",
+      "supLocation": "Mumbai",
+      "supposition": "AGM - RBD",
+      "vertical": "Retail Banking",
+      "empClass": "Permanent",
+      "supEmail": "vikram.rao@bank.com",
+      "sol": "CC002",
+      "posId": "POS55443",
+      "supZone": "Mumbai Zone",
+      "otpId": 776251,
+      "zone": "Mumbai Zone",
+      "supGrade": "AGM",
+      "grade": "Senior Manager",
+      "organization": "Corporate Centre Mumbai",
+      "location": "Mumbai",
+      "position": "Manager",
+      "region": "West",
+      "email": "arjun.mehta@gmail",
+      "supEin": "130055",
+      "supFullNameTitle": "Mr Vikram Rao"
+    },
+    "hrmsOtpRequired": "Y",
+    "lastName": "MEHTA",
+    "leads": [
+      {
+        "preferedTime": "",
+        "product": "Car Loan",
+        "solid": "0200",
+        "prodCategory": "Loans",
+        "leadType": "NEW",
+        "leadSource": "Website",
+        "preferedDate": "",
+        "prodSubCategory": "Auto Loan",
+        "leadChannel": "Online",
+        "estimatedAmount": "800000",
+        "leadId": "LD-002-001"
+      }
+    ],
+    "lien": {
+      "newLienAmt": "3000",
+      "lienId": "LIEN660100100004",
+      "endDate": "2027-07-08",
+      "reasonCode": "ACCOUNT_LIEN",
+      "oldLienAmt": "0",
+      "startDate": "2026-07-09",
+      "remarks": "Lien"
+    },
+    "loanAcctId": "660100100004",
+    "loanInfo": {
+      "loanPeriodDays": "0",
+      "rePmtMethod": "EMI",
+      "emiAmount": "30500",
+      "loanPeriodMonths": "180",
+      "amtAvailForDisb": "500000",
+      "disbAmt": "3000000",
+      "loanAmt": "3000000",
+      "netIntRate": "9.25",
+      "amtAlreadyDisb": "2500000",
+      "operAcctId": "SB87654321"
+    },
+    "loanLimits": {
+      "drwngPower": [
+        {
+          "pcnt": "0.0",
+          "amountValue": "6000000.00",
+          "applicableDate": "2023-01-15T00:00:00.000"
+        }
+      ],
+      "sanctLimit": [
+        {
+          "expiryDate": "2099-12-31T00:00:00.000",
+          "amountValue": "6000000.00",
+          "applicableDate": "2019-09-15T00:00:00.000"
+        }
+      ]
+    },
+    "loanOverdue": [
+      {
+        "totalIntOvdu": "0.00",
+        "totalIntDmd": "512.00",
+        "pTotalColl": "0.00",
+        "pTotalOvdu": "0.00",
+        "pTotalDmd": "45200.75",
+        "acctId": "660100100004",
+        "totalIntColl": "0.00"
+      }
+    ],
+    "loanOverdueDetails": [
+      {
+        "accountId": "660100100004",
+        "overdueDate": "NULL",
+        "customerId": "77712345",
+        "dpd": "0",
+        "outstandingBal": "4850200",
+        "npaStatus": "SA",
+        "totalOverdueAmt": "0",
+        "npaDate": "NULL"
+      }
+    ],
+    "modeOfOperation": "SINGLE",
+    "moduleType": "DEPOSIT",
+    "natIdCardNo": "445566778899",
+    "panCardNo": "LMNPV6789K",
+    "primarySolId": "106",
+    "rateInfo": {
+      "baseRate": "9.75",
+      "effectiveRate": "9.75",
+      "penalRate": "1.0",
+      "slabs": [
+        {
+          "from": "0.00",
+          "to": "9954446.98",
+          "maxMonths": 360,
+          "maxDays": 30,
+          "normalPct": "11.50",
+          "penalPct": "2.0"
+        }
+      ]
+    },
+    "refCode": "GEN",
+    "refDesc": "GENERAL",
+    "schmCode": "SB003",
+    "schmType": "SAVINGS",
+    "stmtInfo": {
+      "fiType": "DEPOSIT",
+      "linkReferenceNumber": "29929ad7-e6ff-4a0c-ae25-5efe6ea3ad9f",
+      "endDate": "2025-06-15T00:00:00.000",
+      "balanceDateTime": "2025-06-15T00:00:00.000",
+      "nominee": "REGISTERED",
+      "micrCode": "400259003",
+      "transactions": [
+        {
+          "mode": "UPI",
+          "reference": "RFN00299001",
+          "amount": "25000.00",
+          "narration": "Salary Credit",
+          "transactionalBalance": "114500.50",
+          "valueDate": "2025-06-01T00:00:00.000",
+          "type": "CREDIT",
+          "transactionTimestamp": "2025-06-01T09:00:00.000",
+          "txnId": "TXN1001"
+        },
+        {
+          "mode": "NEFT",
+          "reference": "RFN00299002",
+          "amount": "5000.00",
+          "narration": "Rent Payment",
+          "transactionalBalance": "109500.50",
+          "valueDate": "2025-06-05T00:00:00.000",
+          "type": "DEBIT",
+          "transactionTimestamp": "2025-06-05T14:30:00.000",
+          "txnId": "TXN1002"
+        }
+      ],
+      "ifscCode": "IBKL0000106",
+      "maskedAccountNumber": "XXXXXXXX0004",
+      "startDate": "2025-06-01T00:00:00.000"
+    },
+    "wcConsentHandle": "7bcde845-cf4c-4a6b-9bd9-4a1e29d15825",
+    "wcConsentId": "CONSENT-0002",
+    "webRedirectInfo": {
+      "webRedirectionUrl": "https://webrd.onemoney.in/uat/v2/?ecreq=arjun002encryptedstringexample&reqdate=250220261248050&fi=X2ndUserFI&requestorType=dHxl",
+      "ver": "1.21.0",
+      "timestamp": "2026-06-22T17:40:00Z"
+    }
+  }
+}

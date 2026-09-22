@@ -1,0 +1,30 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    schema:
+      - "internal/database/migrations/000001_init.up.sql"
+      - "internal/database/migrations/000007_spend_analytics.up.sql"
+      - "internal/database/migrations/000027_idbi_accounts.up.sql"
+      - "internal/database/migrations/000028_spend_transactions_source.up.sql"
+      - "internal/database/migrations/000029_idbi_loans.up.sql"
+      - "internal/database/migrations/000030_idbi_ckyc.up.sql"
+      - "internal/database/migrations/000031_idbi_credit_exposure.up.sql"
+      - "internal/database/migrations/000032_idbi_aa.up.sql"
+      - "internal/database/migrations/000033_idbi_seed_customers.up.sql"
+    queries: "internal/db/query"
+    gen:
+      go:
+        package: "db"
+        out: "internal/db"
+        sql_package: "pgx/v5"
+        emit_interface: false
+        emit_json_tags: true
+        emit_empty_slices: true
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "NullUUID"

@@ -1,0 +1,82 @@
+{
+  "spec_file": "Open API Specifications (16).yaml",
+  "method": "POST",
+  "url": "https://sandboxpocgatewayprod.idbi.bank.in/Development/searchCkycDetailstest",
+  "path": "/Development/searchCkycDetailstest",
+  "example": "sample 1",
+  "request": {
+    "input": {
+      "apiToken": "3420c172-fba9-44ac-ba95-2a9bb66f788f",
+      "parentCompany": "AAAAA8597P",
+      "searchInCkycRequestDetails": [
+        {
+          "queryId": "1702508",
+          "recordIdentifier": "1702508",
+          "applicationFormNo": "FF01",
+          "branchCode": "HOBRANCH",
+          "inputIdType": "C",
+          "inputIdNo": "FGHPP4567T",
+          "apiTags": "",
+          "sourceSystem": "Finacle",
+          "sourceSystemSegment": "",
+          "remarks": ""
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "response": {
+    "result": {
+      "parentCompany": "TSSCPL",
+      "requestStatus": "AcceptedbyTW",
+      "requestRejectionCode": "",
+      "requestRejectionDescription": "",
+      "details": {
+        "searchInCkycResponseDetails": {
+          "queryId": "1702508",
+          "transactionStatus": "CkycSuccess",
+          "branchCode": "105",
+          "recordIdentifier": "1702508",
+          "applicationFormNo": "FF01",
+          "sourceSystem": "Finacle",
+          "sourceSystemSegment": "",
+          "apiTags": "",
+          "remarks": "",
+          "ckycAvailable": "Yes",
+          "ckycAccType": "Normal",
+          "ckycId": "600098765432",
+          "ckycAge": "20",
+          "ckycFatherName": "",
+          "ckycPhotoImageType": "jpg",
+          "ckycGenDate": "23-Jul-2019",
+          "ckycName": "MS PRIYA",
+          "ckycPhoto": "/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVRP",
+          "ckycRequestId": "288",
+          "ckycRequestDate": "19-Sep-2019",
+          "ckycUpdatedDate": "23-Jul-2019",
+          "ckycPhotoBytes": "/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVRPUjogZ2QtanBlZy",
+          "ckycremarks": "",
+          "ckycIdDetails": {
+            "id": [
+              {
+                "ckycAvailableIdType": "B",
+                "ckycAvailableIdTypeStatus": "03",
+                "ckycIdremarks": ""
+              },
+              {
+                "ckycAvailableIdType": "C",
+                "ckycAvailableIdTypeStatus": "02",
+                "ckycIdremarks": ""
+              }
+            ]
+          }
+        }
+      },
+      "errors": {
+        "code": "",
+        "type": "",
+        "message": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS mandates;
+DROP TABLE IF EXISTS payments;
