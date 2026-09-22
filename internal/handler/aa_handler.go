@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
 	"log/slog"
@@ -36,7 +38,31 @@ var discoveryAcctNamespace = uuid.MustParse("7d3b6e2a-9c41-4b8f-8e2d-5a1f9c6b0d4
 // stocks/MF/FD MockProviders stand in for their real vendors: a real
 // backend endpoint with deterministic, per-user output, not hardcoded
 // client-side data.
-var discoveryBankPool = []string{"ICICI Bank", "HDFC Bank", "Axis Bank", "State Bank of India"}
+//
+// This pool is indexed by the same 0-3 investor archetype used everywhere
+// else mock data varies per user (seedInitialUserData, SeedBankDependentData)
+// — each row is a rotation of the same 4 banks. Without this, every user got
+// index [0,1,2,3] verbatim, so the first two unlinked candidates were always
+// ICICI then HDFC for literally everyone; rotating per archetype means the
+// discovered pair actually differs by persona while staying deterministic.
+var discoveryBankPoolByArchetype = [4][]string{
+	{"Axis Bank", "ICICI Bank", "HDFC Bank", "State Bank of India"},
+	{"ICICI Bank", "HDFC Bank", "Axis Bank", "State Bank of India"},
+	{"State Bank of India", "Axis Bank", "HDFC Bank", "ICICI Bank"},
+	{"HDFC Bank", "State Bank of India", "ICICI Bank", "Axis Bank"},
+}
+
+// archetypeForUser reproduces the same phone+userID hash used at signup
+// (seedInitialUserData) so discovery ordering matches the persona the user
+// was actually seeded with, instead of drifting from it.
+func archetypeForUser(pool *pgxpool.Pool, ctx context.Context, userID uuid.UUID) int {
+	var phoneNumber string
+	if err := pool.QueryRow(ctx, `SELECT phone_number FROM users WHERE id = $1`, userID).Scan(&phoneNumber); err != nil {
+		return 1 // default rotation (matches the original ICICI/HDFC order) if lookup fails
+	}
+	sum := sha256.Sum256([]byte(phoneNumber + userID.String()))
+	return int(binary.BigEndian.Uint32(sum[:4]) % 4)
+}
 
 // DiscoverAccounts simulates an AA discovery step: it returns up to two
 // bank accounts the user hasn't already linked, with a deterministic
@@ -71,8 +97,9 @@ func (h *AAHandler) DiscoverAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 
+	bankPool := discoveryBankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
 	accounts := make([]BankAccountResponse, 0, 2)
-	for _, bankName := range discoveryBankPool {
+	for _, bankName := range bankPool {
 		if linked[bankName] || len(accounts) >= 2 {
 			continue
 		}
