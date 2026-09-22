@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: astra-ingress
+  namespace: default
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /astra-api
+            pathType: Prefix
+            backend:
+              service:
+                name: astra-api-service
+                port:
+                  number: 80
+
+          - path: /astra-rm
+            pathType: Prefix
+            backend:
+              service:
+                name: astra-rm-service
+                port:
+                  number: 80
