@@ -531,13 +531,13 @@ func (h *AAHandler) ConnectAccounts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var hadNoAccounts bool
+	var needsSeeding bool
 	if h.seeder != nil {
-		var existing int
+		var fdCount int
 		if err := h.pool.QueryRow(r.Context(),
-			`SELECT count(*) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID,
-		).Scan(&existing); err == nil {
-			hadNoAccounts = existing == 0
+			`SELECT count(*) FROM fd_accounts WHERE user_id = $1`, userID,
+		).Scan(&fdCount); err == nil {
+			needsSeeding = fdCount == 0
 		}
 	}
 
@@ -566,7 +566,7 @@ func (h *AAHandler) ConnectAccounts(w http.ResponseWriter, r *http.Request) {
 	if h.events != nil {
 		go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
 	}
-	if h.seeder != nil && hadNoAccounts && firstInsertedID != uuid.Nil {
+	if h.seeder != nil && needsSeeding && firstInsertedID != uuid.Nil {
 		if err := h.seeder.SeedBankDependentData(context.Background(), userID, firstInsertedID); err != nil {
 			slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
 		}
@@ -656,13 +656,13 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 	// Checked before the insert below so this always reflects "had zero
 	// bank accounts before this call," not "has one now" (which would be
 	// true after every single AddAccount, including the second, third, ...).
-	var hadNoAccounts bool
+	var needsSeeding bool
 	if h.seeder != nil {
-		var existing int
+		var fdCount int
 		if err := h.pool.QueryRow(r.Context(),
-			`SELECT count(*) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID,
-		).Scan(&existing); err == nil {
-			hadNoAccounts = existing == 0
+			`SELECT count(*) FROM fd_accounts WHERE user_id = $1`, userID,
+		).Scan(&fdCount); err == nil {
+			needsSeeding = fdCount == 0
 		}
 	}
 
@@ -689,7 +689,7 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 	// Best-effort, same pattern as the RM auto-assign on signup: this is
 	// demo/mock enrichment (FDs, mandates), never something that should
 	// fail or slow down the user's actual bank-linking request.
-	if h.seeder != nil && hadNoAccounts {
+	if h.seeder != nil && needsSeeding {
 		if err := h.seeder.SeedBankDependentData(context.Background(), userID, acc.ID); err != nil {
 			slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
 		}
