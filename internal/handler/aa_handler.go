@@ -27,6 +27,13 @@ import (
 // occupy the "id" field the accounts screen already expects.
 var idbiAcctNamespace = uuid.MustParse("1b671a64-40d5-491e-99b0-da01ff1f3341")
 
+// detectedBanks is the fixed pair of banks the "bank account connection" demo
+// flow presents as already-detected on first entry (see DetectedAccounts) —
+// deliberately independent of the archetype-rotated discoverypool.BankPoolByArchetype
+// used everywhere else, so every demo user sees the same HDFC/ICICI pair the
+// product spec's walkthrough describes, instead of it drifting with archetype.
+var detectedBanks = []string{"HDFC Bank", "ICICI Bank"}
+
 // archetypeForUser reproduces the same phone+userID hash used at signup
 // (seedInitialUserData) so discovery ordering matches the persona the user
 // was actually seeded with, instead of drifting from it.
@@ -219,6 +226,9 @@ func (h *AAHandler) Routes() chi.Router {
 	r := chi.NewRouter()
 	r.Get("/accounts", h.GetAccounts)
 	r.Get("/accounts/discover", h.DiscoverAccounts)
+	r.Get("/accounts/detected", h.DetectedAccounts)
+	r.Get("/accounts/available-banks", h.AvailableBanks)
+	r.Post("/accounts/connect", h.ConnectAccounts)
 	r.Post("/accounts", h.AddAccount)
 	r.Post("/accounts/link", h.AddAccount)
 	r.Delete("/accounts/{accountID}", h.UnlinkAccount)
@@ -251,13 +261,12 @@ func (h *AAHandler) WebhookRoutes() chi.Router {
 	return r
 }
 
-func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
-	userID, ok := authmw.GetUserID(r.Context())
-	if !ok {
-		apiresponse.Error(w, apiresponse.ErrUnauthorized)
-		return
-	}
-
+// connectedAccounts assembles the user's full set of already-linked
+// accounts — IDBI-synced (feature 1) plus manually/demo-connected
+// bank_accounts rows — in the one shape both GetAccounts and ConnectAccounts
+// (which returns the post-connect list so the client never has to
+// re-request it) need.
+func (h *AAHandler) connectedAccounts(ctx context.Context, userID uuid.UUID) ([]BankAccountResponse, error) {
 	// Feature 1: when the user has synced IDBI accounts, fold those in
 	// alongside bank_accounts (below) rather than replacing them — a bank
 	// added manually via the "connect more accounts" search (AddAccount,
@@ -266,7 +275,7 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	// vanishes from this list the moment IDBI accounts exist.
 	var accounts []BankAccountResponse
 	if h.idbiAccounts != nil {
-		if idbiAccs, ierr := h.idbiAccounts.List(r.Context(), userID); ierr == nil && len(idbiAccs) > 0 {
+		if idbiAccs, ierr := h.idbiAccounts.List(ctx, userID); ierr == nil && len(idbiAccs) > 0 {
 			for _, a := range idbiAccs {
 				bal := a.LedgerBalance
 				if bal == 0 {
@@ -289,23 +298,21 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	rows, err := h.pool.Query(r.Context(), `
+	rows, err := h.pool.Query(ctx, `
 		SELECT id, bank_name, account_type, balance, created_at, COALESCE(account_number, '')
 		FROM bank_accounts
 		WHERE user_id = $1 AND unlinked_at IS NULL
 		ORDER BY created_at ASC
 	`, userID)
 	if err != nil {
-		apiresponse.Error(w, err)
-		return
+		return nil, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var acc BankAccountResponse
 		if err := rows.Scan(&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance, &acc.CreatedAt, &acc.AccountNumber); err != nil {
-			apiresponse.Error(w, err)
-			return
+			return nil, err
 		}
 		acc.IsLinked = true
 		accounts = append(accounts, acc)
@@ -314,11 +321,316 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 	if accounts == nil {
 		accounts = []BankAccountResponse{}
 	}
+	return accounts, nil
+}
+
+func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+
+	accounts, err := h.connectedAccounts(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
 
 	apiresponse.OK(w, map[string]any{
 		"accounts": accounts,
 		"count":    len(accounts),
 	})
+}
+
+// DetectedAccounts serves the fixed two-account "already detected" pair
+// (see detectedBanks) the bank-connection demo flow shows on first entry,
+// pre-checked and awaiting approval — distinct from DiscoverAccounts' full
+// pool, which backs the separate "pick an additional bank" list. Accounts
+// the user has already connected (by bank_name+account_number, same as
+// DiscoverAccounts) are excluded so a repeat visit doesn't re-offer them.
+func (h *AAHandler) DetectedAccounts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+
+	linked, err := h.linkedBankSet(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+
+	accounts := make([]BankAccountResponse, 0, len(detectedBanks))
+	for _, bankName := range detectedBanks {
+		cand := discoverypool.Generate(userID, bankName, 1)
+		if linked[cand.BankName+"|"+cand.AccountNumber] {
+			continue
+		}
+		accounts = append(accounts, BankAccountResponse{
+			ID:            cand.ID,
+			BankName:      cand.BankName,
+			AccountType:   cand.AccountType,
+			Balance:       cand.Balance,
+			CreatedAt:     time.Now(),
+			IsLinked:      false,
+			AccountNumber: cand.AccountNumber,
+		})
+	}
+
+	apiresponse.OK(w, map[string]any{
+		"accounts": accounts,
+		"count":    len(accounts),
+	})
+}
+
+// AvailableBanks lists the "add another bank" picker's candidates: every
+// bank in the user's archetype pool except the two DetectedAccounts already
+// covers and any bank the user has fully exhausted (every slot already
+// connected). Grouped as bank names only — ConnectAccounts resolves the
+// actual next free slot per bank at connect time, same as DiscoverAccounts
+// already does for the legacy picker.
+func (h *AAHandler) AvailableBanks(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+
+	linkedBankNames, err := h.linkedBankNameSet(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	detected := map[string]bool{}
+	for _, b := range detectedBanks {
+		detected[b] = true
+	}
+
+	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	banks := make([]string, 0, len(bankPool))
+	for _, bankName := range bankPool {
+		if detected[bankName] {
+			continue
+		}
+		if linkedBankNames[bankName] >= discoverypool.AccountsPerBank {
+			continue
+		}
+		banks = append(banks, bankName)
+	}
+
+	apiresponse.OK(w, map[string]any{
+		"banks": banks,
+		"count": len(banks),
+	})
+}
+
+// connectAccountsRequest is the combined "Approve & Proceed" / "Proceed"
+// payload: the demo bank-connection flow lets a user re-approve some subset
+// of the fixed DetectedAccounts candidates and/or add whole new banks in one
+// round trip, instead of two separate calls.
+type connectAccountsRequest struct {
+	SelectedExistingAccounts []string `json:"selected_existing_accounts"`
+	BanksToAdd                []string `json:"banks_to_add"`
+}
+
+// ConnectAccounts is the single endpoint behind both CTA labels ("Approve &
+// Proceed" for detected-only, "Proceed" once an additional bank is picked):
+// it persists whichever DetectedAccounts candidates the user kept checked,
+// mock-generates and persists one account per requested new bank, and
+// returns the full resulting connected-account list plus just the ones this
+// call added (so the success screen can show "Axis Bank connected" without
+// diffing the whole list client-side).
+func (h *AAHandler) ConnectAccounts(w http.ResponseWriter, r *http.Request) {
+	userID, ok := authmw.GetUserID(r.Context())
+	if !ok {
+		apiresponse.Error(w, apiresponse.ErrUnauthorized)
+		return
+	}
+
+	var req connectAccountsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apiresponse.Error(w, apiresponse.Validation("invalid request body: %v", err))
+		return
+	}
+	if len(req.SelectedExistingAccounts) == 0 && len(req.BanksToAdd) == 0 {
+		apiresponse.Error(w, apiresponse.Validation("select at least one bank account or bank to continue"))
+		return
+	}
+
+	linked, err := h.linkedBankSet(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+	linkedBankNames, err := h.linkedBankNameSet(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+
+	var toInsert []discoverypool.Account
+
+	// Resolve each requested "existing" account ID against the fixed
+	// DetectedAccounts candidates — that's the only source of IDs this field
+	// can legitimately reference, so an ID that doesn't match any of them
+	// (stale, tampered, already connected) is silently skipped rather than
+	// erroring the whole request.
+	wanted := map[string]bool{}
+	for _, id := range req.SelectedExistingAccounts {
+		wanted[id] = true
+	}
+	
+	bankPool := discoverypool.BankPoolByArchetype[archetypeForUser(h.pool, r.Context(), userID)]
+	var allBanks []string
+	allBanks = append(allBanks, bankPool...)
+	allBanks = append(allBanks, detectedBanks...)
+
+	for _, bankName := range allBanks {
+		for slot := 1; slot <= discoverypool.AccountsPerBank; slot++ {
+			cand := discoverypool.Generate(userID, bankName, slot)
+			if !wanted[cand.ID.String()] {
+				continue
+			}
+			if linked[cand.BankName+"|"+cand.AccountNumber] {
+				continue
+			}
+			toInsert = append(toInsert, cand)
+			linked[cand.BankName+"|"+cand.AccountNumber] = true
+		}
+	}
+
+	// For each requested new bank, mock-generate its next free slot — same
+	// deterministic generator DiscoverAccounts/DetectedAccounts use, so the
+	// same user+bank always gets the same account number back rather than a
+	// fresh one on every retry.
+	for _, bankName := range req.BanksToAdd {
+		slotUsed := linkedBankNames[bankName]
+		for slot := 1; slot <= discoverypool.AccountsPerBank; slot++ {
+			cand := discoverypool.Generate(userID, bankName, slot)
+			if linked[cand.BankName+"|"+cand.AccountNumber] {
+				continue
+			}
+			toInsert = append(toInsert, cand)
+			linked[cand.BankName+"|"+cand.AccountNumber] = true
+			linkedBankNames[bankName] = slotUsed + 1
+			break
+		}
+	}
+
+	if len(toInsert) == 0 {
+		// Everything requested was already connected — not an error, just a
+		// no-op the client can render the same as a fresh success.
+		accounts, err := h.connectedAccounts(r.Context(), userID)
+		if err != nil {
+			apiresponse.Error(w, err)
+			return
+		}
+		apiresponse.OK(w, map[string]any{
+			"newly_added":        []BankAccountResponse{},
+			"connected_accounts": accounts,
+		})
+		return
+	}
+
+	var hadNoAccounts bool
+	if h.seeder != nil {
+		var existing int
+		if err := h.pool.QueryRow(r.Context(),
+			`SELECT count(*) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL`, userID,
+		).Scan(&existing); err == nil {
+			hadNoAccounts = existing == 0
+		}
+	}
+
+	newlyAdded := make([]BankAccountResponse, 0, len(toInsert))
+	var firstInsertedID uuid.UUID
+	for _, cand := range toInsert {
+		var acc BankAccountResponse
+		err := h.pool.QueryRow(r.Context(), `
+			INSERT INTO bank_accounts (user_id, bank_name, account_type, balance, account_number)
+			VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+			RETURNING id, bank_name, account_type, balance, created_at, COALESCE(account_number, '')
+		`, userID, cand.BankName, cand.AccountType, cand.Balance, cand.AccountNumber).Scan(
+			&acc.ID, &acc.BankName, &acc.AccountType, &acc.Balance, &acc.CreatedAt, &acc.AccountNumber,
+		)
+		if err != nil {
+			apiresponse.Error(w, err)
+			return
+		}
+		acc.IsLinked = true
+		newlyAdded = append(newlyAdded, acc)
+		if firstInsertedID == uuid.Nil {
+			firstInsertedID = acc.ID
+		}
+	}
+
+	if h.events != nil {
+		go h.events.UserChanged(context.Background(), userID, events.TypeBankAccountChanged)
+	}
+	if h.seeder != nil && hadNoAccounts && firstInsertedID != uuid.Nil {
+		if err := h.seeder.SeedBankDependentData(context.Background(), userID, firstInsertedID); err != nil {
+			slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
+		}
+	}
+
+	accounts, err := h.connectedAccounts(r.Context(), userID)
+	if err != nil {
+		apiresponse.Error(w, err)
+		return
+	}
+
+	apiresponse.OK(w, map[string]any{
+		"newly_added":        newlyAdded,
+		"connected_accounts": accounts,
+	})
+}
+
+// linkedBankSet returns the same "bank name|account number" membership set
+// DiscoverAccounts uses, shared here so DetectedAccounts/ConnectAccounts
+// exclude candidates the user already connected the same way.
+func (h *AAHandler) linkedBankSet(ctx context.Context, userID uuid.UUID) (map[string]bool, error) {
+	rows, err := h.pool.Query(ctx, `
+		SELECT bank_name, COALESCE(account_number, '') FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	linked := map[string]bool{}
+	for rows.Next() {
+		var name, acctNum string
+		if err := rows.Scan(&name, &acctNum); err != nil {
+			return nil, err
+		}
+		linked[name+"|"+acctNum] = true
+	}
+	return linked, rows.Err()
+}
+
+// linkedBankNameSet counts how many slots are already connected per bank
+// name, so AvailableBanks can hide a bank once every slot it offers is
+// taken, and ConnectAccounts can pick the next free slot for a requested
+// bank instead of colliding with one already connected.
+func (h *AAHandler) linkedBankNameSet(ctx context.Context, userID uuid.UUID) (map[string]int, error) {
+	rows, err := h.pool.Query(ctx, `
+		SELECT bank_name, count(*) FROM bank_accounts WHERE user_id = $1 AND unlinked_at IS NULL GROUP BY bank_name
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var name string
+		var n int
+		if err := rows.Scan(&name, &n); err != nil {
+			return nil, err
+		}
+		counts[name] = n
+	}
+	return counts, rows.Err()
 }
 
 func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
@@ -381,11 +693,9 @@ func (h *AAHandler) AddAccount(w http.ResponseWriter, r *http.Request) {
 	// demo/mock enrichment (FDs, mandates), never something that should
 	// fail or slow down the user's actual bank-linking request.
 	if h.seeder != nil && hadNoAccounts {
-		go func() {
-			if err := h.seeder.SeedBankDependentData(context.Background(), userID, acc.ID); err != nil {
-				slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
-			}
-		}()
+		if err := h.seeder.SeedBankDependentData(context.Background(), userID, acc.ID); err != nil {
+			slog.Error("seed bank dependent data failed", "user_id", userID, "error", err)
+		}
 	}
 
 	apiresponse.Created(w, acc)
