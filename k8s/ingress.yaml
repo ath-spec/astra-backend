@@ -6,6 +6,8 @@ metadata:
   annotations:
     alb.ingress.kubernetes.io/scheme: internal
     alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/rewrite-target: /
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
 spec:
   ingressClassName: alb
   rules:
@@ -18,7 +20,6 @@ spec:
                 name: astra-api-service
                 port:
                   number: 80
-
           - path: /astra-rm
             pathType: Prefix
             backend:
