@@ -101,9 +101,20 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 	needPortfolio := group == "" || group == NarrativeGroupPortfolio
 	needSpend := group == "" || group == NarrativeGroupSpend
 
-	fp, err := s.narrativeFingerprint(ctx, userID)
-	if err != nil {
-		return nil, err
+	// The fingerprint query is just as capable of hitting a transient DB
+	// hiccup (pool exhaustion under a Client360-page burst of concurrent
+	// requests, a slow connection acquire) as any of the analytics calls
+	// below — but unlike those, this one used to abort the whole request
+	// with a hard error before ever reaching the deterministic fallback.
+	// That's exactly what made a transient failure here look like "no
+	// fallback ran at all": it never got the chance to. Degrade the same
+	// way the rest of this function does — skip the cache (we have no valid
+	// fingerprint to compare against or persist) and fall through to a live
+	// recompute + deterministic narrative instead of erroring out.
+	fp, fpErr := s.narrativeFingerprint(ctx, userID)
+	if fpErr != nil {
+		slog.Warn("rm narrative: fingerprint query failed, skipping cache", "user", userID, "error", fpErr)
+		force = true
 	}
 
 	var (
@@ -111,9 +122,11 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		cachedRaw []byte
 		updatedAt time.Time
 	)
-	_ = s.pool.QueryRow(ctx,
-		`SELECT fingerprint, topics, updated_at FROM rm_client_narratives WHERE user_id = $1`, userID,
-	).Scan(&cachedFP, &cachedRaw, &updatedAt)
+	if fpErr == nil {
+		_ = s.pool.QueryRow(ctx,
+			`SELECT fingerprint, topics, updated_at FROM rm_client_narratives WHERE user_id = $1`, userID,
+		).Scan(&cachedFP, &cachedRaw, &updatedAt)
+	}
 
 	var cachedAll map[string]string
 	if len(cachedRaw) > 0 {
@@ -217,13 +230,19 @@ func (s *RMService) ClientNarrative(ctx context.Context, callerRMID uuid.UUID, i
 		for k, v := range m {
 			merged[k] = v
 		}
-		raw, _ := json.Marshal(merged)
-		_, _ = s.pool.Exec(ctx, `
-			INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
-			VALUES ($1, $2, $3, now())
-			ON CONFLICT (user_id) DO UPDATE
-			SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
-		`, userID, fp, raw)
+		// Only persist against a real fingerprint — writing one keyed on the
+		// empty string from a failed fingerprint query would make a later,
+		// healthy request with a real (non-empty) fingerprint spuriously
+		// look stale-but-different forever, and vice versa.
+		if fpErr == nil {
+			raw, _ := json.Marshal(merged)
+			_, _ = s.pool.Exec(ctx, `
+				INSERT INTO rm_client_narratives (user_id, fingerprint, topics, updated_at)
+				VALUES ($1, $2, $3, now())
+				ON CONFLICT (user_id) DO UPDATE
+				SET fingerprint = EXCLUDED.fingerprint, topics = EXCLUDED.topics, updated_at = now()
+			`, userID, fp, raw)
+		}
 		return filterTopics(merged, topics), nil
 	}
 

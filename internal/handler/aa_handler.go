@@ -176,6 +176,12 @@ type BankAccountResponse struct {
 	// from a simulated AA-discovery candidate (DiscoverAccounts) that the
 	// user still has to approve before it's ever written to bank_accounts.
 	IsLinked bool `json:"is_linked"`
+	// AccountNumber is only populated for IDBI-synced accounts (the real
+	// number IDBI reports back, see idbiAccounts.List below) — manually
+	// added accounts have no real account number anywhere in the system
+	// (bank_accounts never collected one), so this is omitted for them and
+	// the frontend falls back to a synthesized display value.
+	AccountNumber string `json:"account_number,omitempty"`
 }
 
 func (h *AAHandler) Routes() chi.Router {
@@ -240,12 +246,13 @@ func (h *AAHandler) GetAccounts(w http.ResponseWriter, r *http.Request) {
 					name = "IDBI Bank — " + a.BranchName
 				}
 				accounts = append(accounts, BankAccountResponse{
-					ID:          uuid.NewSHA1(idbiAcctNamespace, []byte(a.AccountNumber)),
-					BankName:    name,
-					AccountType: a.AccountType,
-					Balance:     bal,
-					CreatedAt:   a.SyncedAt,
-					IsLinked:    true,
+					ID:            uuid.NewSHA1(idbiAcctNamespace, []byte(a.AccountNumber)),
+					BankName:      name,
+					AccountType:   a.AccountType,
+					Balance:       bal,
+					CreatedAt:     a.SyncedAt,
+					IsLinked:      true,
+					AccountNumber: a.AccountNumber,
 				})
 			}
 		}
