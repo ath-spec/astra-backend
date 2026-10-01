@@ -347,7 +347,8 @@ func main() {
 	r := chi.NewRouter()
 
 	// Base Middleware — execution order matches r.Use() registration order.
-	r.Use(middleware.RequestID)     // 1. generate X-Request-Id
+	r.Use(authmw.IPBlocklistMiddleware) // 0. drop known-malicious IPs immediately (403)
+	r.Use(middleware.RequestID)         // 1. generate X-Request-Id
 	r.Use(middleware.RealIP)        // 2. resolve real client IP
 	r.Use(authmw.WithRequestLogger) // 3. inject per-request slog.Logger into ctx
 	r.Use(authmw.Interceptor)       // 4. set security headers, echo X-Request-Id in response, log 5xx errors
