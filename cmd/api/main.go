@@ -47,6 +47,7 @@ import (
 	idbikycservice "github.com/yourusername/astra-backend/internal/service/idbikyc"
 	idbileadsservice "github.com/yourusername/astra-backend/internal/service/idbileads"
 	idbiloansservice "github.com/yourusername/astra-backend/internal/service/idbiloans"
+	rmbffservice "github.com/yourusername/astra-backend/internal/service/rmbff"
 	rmcreditriskservice "github.com/yourusername/astra-backend/internal/service/rmcreditrisk"
 	statementsyncservice "github.com/yourusername/astra-backend/internal/service/statementsync"
 )
@@ -94,6 +95,19 @@ func main() {
 			slog.Warn("RM_SEED_ON_BOOT: seeding failed (continuing)", "error", serr)
 		} else {
 			slog.Info("RM_SEED_ON_BOOT: staff seeded", "users_assigned", res.UsersAssigned)
+		}
+		// Demo-only risk data for the RM console; never enable in production.
+		if os.Getenv("RM_SEED_CREDIT_EXPOSURE") == "true" {
+			if n, serr := rmseed.SeedSpendStress(ctx, db.Pool); serr != nil {
+				slog.Warn("RM_SEED_CREDIT_EXPOSURE: spend stress seeding failed (continuing)", "error", serr)
+			} else {
+				slog.Info("RM_SEED_CREDIT_EXPOSURE: spend stress rows added", "rows", n)
+			}
+			if n, cerr := rmseed.SeedCreditExposure(ctx, db.Pool); cerr != nil {
+				slog.Warn("RM_SEED_CREDIT_EXPOSURE: seeding failed (continuing)", "error", cerr)
+			} else {
+				slog.Info("RM_SEED_CREDIT_EXPOSURE: demo credit exposure seeded", "clients", n)
+			}
 		}
 	}
 
@@ -340,6 +354,11 @@ func main() {
 	watchlistHandler := handler.NewWatchlistHandler(watchlistService)
 	rmAuthHandler := handler.NewRMAuthHandler(rmAuthService)
 	rmHandler := handler.NewRMHandler(rmService)
+	var bffScores rmbffservice.ScoreSource // stays a true nil interface when the score feature is off
+	if creditScoreSvc != nil {
+		bffScores = creditScoreSvc
+	}
+	rmBFFHandler := handler.NewRMBFFHandler(rmbffservice.New(rmService, db.Pool, bffScores))
 	rmAdminHandler := handler.NewRMAdminHandler(rmAdminService).WithEvents(eventsPublisher, assignmentRepo)
 	rmChatHandler := handler.NewRMChatHandler(rmChatService)
 
@@ -349,10 +368,10 @@ func main() {
 	// Base Middleware — execution order matches r.Use() registration order.
 	r.Use(authmw.IPBlocklistMiddleware) // 0. drop known-malicious IPs immediately (403)
 	r.Use(middleware.RequestID)         // 1. generate X-Request-Id
-	r.Use(middleware.RealIP)        // 2. resolve real client IP
-	r.Use(authmw.WithRequestLogger) // 3. inject per-request slog.Logger into ctx
-	r.Use(authmw.Interceptor)       // 4. set security headers, echo X-Request-Id in response, log 5xx errors
-	r.Use(authmw.StructuredLogger)  // 5. emit one JSON summary line per request
+	r.Use(middleware.RealIP)            // 2. resolve real client IP
+	r.Use(authmw.WithRequestLogger)     // 3. inject per-request slog.Logger into ctx
+	r.Use(authmw.Interceptor)           // 4. set security headers, echo X-Request-Id in response, log 5xx errors
+	r.Use(authmw.StructuredLogger)      // 5. emit one JSON summary line per request
 	// VerboseLogger dumps full request bodies/headers (including
 	// Authorization) to logs — it must never run by default in a deployed
 	// environment. Opt in locally only, with DEBUG_VERBOSE_LOG=true.
@@ -479,6 +498,7 @@ func main() {
 			r.Get("/auth/me", rmAuthHandler.Me)
 			r.Patch("/auth/me", rmAuthHandler.UpdateMe)
 			rmHandler.Register(r)     // /clients, /dashboard/summary, ...
+			rmBFFHandler.Register(r)  // /bff/dashboard, ...
 			rmChatHandler.Register(r) // /chat, /chat/history, /chat/tts, /chat/stt
 			idbiRMHandler.Register(r) // /idbi/clients/{userID}/credit-risk (feature-flagged)
 
