@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"hash/fnv"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,7 +39,8 @@ type Source interface {
 type Service struct {
 	src Source
 	ttl time.Duration
-	// per-user cache
+	// per-user cache, guarded by mu (Get is called from concurrent requests)
+	mu    sync.Mutex
 	cache map[uuid.UUID]cacheEntry
 }
 
@@ -55,6 +57,8 @@ func New(src Source, ttl time.Duration) *Service {
 }
 
 func (s *Service) Get(ctx context.Context, userID uuid.UUID) (Score, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if e, ok := s.cache[userID]; ok && time.Now().Before(e.exp) {
 		return e.s, nil
 	}

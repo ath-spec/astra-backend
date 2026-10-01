@@ -145,6 +145,11 @@ func (s *RMService) authorizeClient(ctx context.Context, callerRMID uuid.UUID, i
 	return nil
 }
 
+// AuthorizeClient is the exported form of authorizeClient for the RM BFF.
+func (s *RMService) AuthorizeClient(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID) error {
+	return s.authorizeClient(ctx, callerRMID, isAdmin, userID)
+}
+
 // GetClient assembles the full 360° view for one client.
 func (s *RMService) GetClient(ctx context.Context, callerRMID uuid.UUID, isAdmin bool, userID uuid.UUID, growthDays int) (*rmdomain.ClientDetail, error) {
 	if err := s.authorizeClient(ctx, callerRMID, isAdmin, userID); err != nil {
